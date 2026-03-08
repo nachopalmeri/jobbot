@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobBot AR — Tu cazador de empleos IT en Buenos Aires</title>
+  <meta name="description"
+    content="Bot de Telegram que monitorea automáticamente ofertas laborales IT cada 2 horas. LinkedIn AR, Remotive, Arbeitnow, Jobicy — sin perderte ninguna oportunidad.">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Syne:wght@400;500;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080b0f;
+      --surface: #0d1117;
+      --border: #1c2733;
+      --green: #00ff88;
+      --green-dim: #00cc66;
+      --green-glow: #00ff8844;
+      --cyan: #00d4ff;
+      --amber: #ffb300;
+      --red: #ff4757;
+      --text: #c9d1d9;
+      --text-muted: #6e7681;
+      --white: #f0f6fc;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NOISE OVERLAY ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      opacity: 0.4;
+    }
+
+    /* ── GRID BACKGROUND ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(8, 11, 15, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .nav-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 18px;
+      color: var(--white);
+      letter-spacing: -0.5px;
+    }
+
+    .nav-logo span {
+      color: var(--green);
+    }
+
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--green);
+      color: #000;
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 13px;
+      text-decoration: none;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+
+    .nav-cta:hover {
+      background: var(--green-dim);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--green-glow);
+    }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 120px 0 80px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 255, 136, 0.08);
+      border: 1px solid rgba(0, 255, 136, 0.25);
+      border-radius: 2px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--green);
+      margin-bottom: 24px;
+      animation: fadeInUp 0.6s ease both;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+      }
+    }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(36px, 5vw, 58px);
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1.1;
+      letter-spacing: -1.5px;
+      margin-bottom: 24px;
+      animation: fadeInUp 0.6s 0.1s ease both;
+    }
+
+    .hero h1 .accent {
+      color: var(--green);
+    }
+
+    .hero h1 .line2 {
+      display: block;
+      color: var(--text-muted);
+      font-size: 0.7em;
+      font-weight: 500;
+      letter-spacing: -0.5px;
+      margin-top: 4px;
+    }
+
+    .hero-desc {
+      color: var(--text-muted);
+      font-size: 15px;
+      line-height: 1.7;
+      margin-bottom: 36px;
+      max-width: 440px;
+      animation: fadeInUp 0.6s 0.2s ease both;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      animation: fadeInUp 0.6s 0.3s ease both;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--green);
+      color: #000;
+      padding: 14px 28px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-primary:hover {
+      background: var(--green-dim);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px var(--green-glow);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: transparent;
+      color: var(--text);
+      padding: 14px 28px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-weight: 500;
+      font-size: 14px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+      color: var(--white);
+      transform: translateY(-2px);
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── TERMINAL WINDOW ── */
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      animation: fadeInUp 0.6s 0.4s ease both;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 255, 136, 0.05);
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #161b22;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red {
+      background: #ff5f56;
+    }
+
+    .dot-amber {
+      background: #ffbd2e;
+    }
+
+    .dot-green {
+      background: #27c93f;
+    }
+
+    .terminal-title {
+      margin-left: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .terminal-body {
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.8;
+      min-height: 300px;
+    }
+
+    .t-line {
+      display: flex;
+      gap: 10px;
+    }
+
+    .t-prompt {
+      color: var(--green);
+      white-space: nowrap;
+    }
+
+    .t-cmd {
+      color: var(--white);
+    }
+
+    .t-out {
+      color: var(--text-muted);
+      padding-left: 20px;
+    }
+
+    .t-ok {
+      color: var(--green);
+      padding-left: 20px;
+    }
+
+    .t-warn {
+      color: var(--amber);
+      padding-left: 20px;
+    }
+
+    .t-err {
+      color: var(--red);
+      padding-left: 20px;
+    }
+
+    .t-info {
+      color: var(--cyan);
+      padding-left: 20px;
+    }
+
+    .t-blank {
+      height: 8px;
+    }
+
+    .t-cursor {
+      display: inline-block;
+      width: 8px;
+      height: 14px;
+      background: var(--green);
+      vertical-align: middle;
+      animation: blink 1.1s step-end infinite;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0;
+      }
+    }
+
+    /* Typing animation */
+    .typed {
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .t1 {
+      animation: typing 0.6s 0.5s steps(40) both;
+    }
+
+    .t2 {
+      animation: typing 0.4s 1.3s steps(40) both;
+    }
+
+    .t3 {
+      animation: typing 0.5s 1.9s steps(40) both;
+    }
+
+    .t4 {
+      animation: typing 0.3s 2.6s steps(40) both;
+    }
+
+    .t5 {
+      animation: typing 0.5s 3.0s steps(40) both;
+    }
+
+    .t6 {
+      animation: typing 0.4s 3.7s steps(40) both;
+    }
+
+    .t7 {
+      animation: typing 0.5s 4.2s steps(40) both;
+    }
+
+    .t8 {
+      animation: typing 0.6s 4.9s steps(40) both;
+    }
+
+    .t9 {
+      animation: typing 0.4s 5.6s steps(40) both;
+    }
+
+    .t10 {
+      animation: typing 0.5s 6.1s steps(40) both;
+    }
+
+    @keyframes typing {
+      from {
+        max-width: 0;
+      }
+
+      to {
+        max-width: 100%;
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn 0.4s ease both;
+    }
+
+    .d1 {
+      animation-delay: 0.5s;
+    }
+
+    .d2 {
+      animation-delay: 1.3s;
+    }
+
+    .d3 {
+      animation-delay: 2.6s;
+    }
+
+    .d4 {
+      animation-delay: 3.7s;
+    }
+
+    .d5 {
+      animation-delay: 4.9s;
+    }
+
+    .d6 {
+      animation-delay: 5.6s;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0
+      }
+
+      to {
+        opacity: 1
+      }
+    }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 28px 0;
+      margin: 0;
+    }
+
+    .stats-inner {
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-num {
+      display: block;
+      font-family: 'Syne', sans-serif;
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--green);
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── SECTION ── */
+    section {
+      padding: 80px 0;
+    }
+
+    .section-tag {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+    }
+
+    .section-desc {
+      color: var(--text-muted);
+      max-width: 520px;
+      line-height: 1.7;
+      margin-bottom: 48px;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 2px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .step {
+      background: var(--surface);
+      padding: 32px 28px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .step:hover {
+      background: #13181f;
+    }
+
+    .step-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+
+    .step-icon {
+      font-size: 28px;
+      margin-bottom: 16px;
+    }
+
+    .step h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+
+    .step p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── FEATURES ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 28px;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--green), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(0, 255, 136, 0.3);
+      transform: translateY(-3px);
+    }
+
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(0, 255, 136, 0.1);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── SOURCES ── */
+    .sources-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .source-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+
+    .source-pill:hover {
+      border-color: rgba(0, 255, 136, 0.3);
+      color: var(--white);
+    }
+
+    .source-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .source-dot.dim {
+      background: var(--text-muted);
+    }
+
+    /* ── COMMANDS ── */
+    .commands-list {
+      display: grid;
+      gap: 2px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .cmd-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      background: var(--surface);
+      padding: 18px 24px;
+      transition: background 0.15s;
+    }
+
+    .cmd-row:hover {
+      background: #13181f;
+    }
+
+    .cmd-name {
+      font-weight: 700;
+      color: var(--cyan);
+      white-space: nowrap;
+      min-width: 180px;
+    }
+
+    .cmd-desc {
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ── CTA FINAL ── */
+    .cta-section {
+      text-align: center;
+      padding: 100px 0;
+      position: relative;
+    }
+
+    .cta-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 300px;
+      background: radial-gradient(ellipse, rgba(0, 255, 136, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .cta-section h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(32px, 5vw, 54px);
+      font-weight: 800;
+      color: var(--white);
+      letter-spacing: -1.5px;
+      margin-bottom: 20px;
+    }
+
+    .cta-section h2 span {
+      color: var(--green);
+    }
+
+    .cta-section p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 40px;
+      max-width: 440px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .telegram-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: #229ED9;
+      color: #fff;
+      padding: 16px 36px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      transition: all 0.2s;
+      letter-spacing: 0.3px;
+    }
+
+    .telegram-btn:hover {
+      background: #1a8fc4;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 40px rgba(34, 158, 217, 0.3);
+    }
+
+    .telegram-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: white;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+    }
+
+    .footer-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      color: var(--white);
+    }
+
+    .footer-logo span {
+      color: var(--green);
+    }
+
+    .footer-text {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+    }
+
+    .footer-links a {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--green);
+    }
+
+    /* ── LIVE INDICATOR ── */
+    .stat-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: var(--green);
+      margin-top: 6px;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+
+    .stat-live.visible {
+      opacity: 1;
+    }
+
+    .stat-live .live-dot {
+      width: 5px;
+      height: 5px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+
+      .nav-cta span {
+        display: none;
+      }
+
+      .cmd-name {
+        min-width: 130px;
+      }
+
+      .footer-inner {
+        justify-content: center;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-inner">
+      <div class="nav-logo">Job<span>Bot</span>.ar</div>
+      <a href="https://t.me/jobs912bot" class="nav-cta">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
+        </svg>
+        <span>Abrir en Telegram</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-grid">
+        <div>
+          <div class="hero-badge">
+            <span class="badge-dot"></span>
+            Bot activo · Monitoreando 24/7
+          </div>
+          <h1>
+            Tu radar de<br />
+            <span class="accent">empleos IT</span>
+            <span class="line2">en Buenos Aires</span>
+          </h1>
+          <p class="hero-desc">
+            Bot de Telegram que monitorea automáticamente ofertas laborales cada 2 horas. Python, Backend, Junior,
+            Pasantías — sin perderte ninguna oportunidad.
+          </p>
+          <div class="hero-actions">
+            <a href="https://t.me/jobs912bot" class="btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
+              </svg>
+              Activar bot gratis
+            </a>
+            <a href="https://github.com/nachopalmeri/-jobbot-landing" class="btn-secondary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+              Ver código
+            </a>
+          </div>
+        </div>
+
+        <!-- TERMINAL -->
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-amber"></span>
+            <span class="dot dot-green"></span>
+            <span class="terminal-title">job_bot — python bot.py</span>
+          </div>
+          <div class="terminal-body">
+            <div class="t-line fade-in d1">
+              <span class="t-prompt">$</span>
+              <span class="t-cmd typed t1">python bot.py</span>
+            </div>
+            <div class="t-ok fade-in d2 typed t2">✅ Bot listo · scheduler 2h activo</div>
+            <div class="t-blank"></div>
+            <div class="t-info fade-in d3 typed t3">⏰ Iniciando ciclo automático...</div>
+            <div class="t-ok fade-in d3 typed t4">&nbsp;&nbsp;✅ LinkedIn AR: 4 resultado(s)</div>
+            <div class="t-ok fade-in d3 typed t5">&nbsp;&nbsp;✅ Remotive: 3 resultado(s)</div>
+            <div class="t-ok fade-in d3 typed t6">&nbsp;&nbsp;✅ Arbeitnow: 2 resultado(s)</div>
+            <div class="t-ok fade-in d3 typed t7">&nbsp;&nbsp;✅ Jobicy: 5 resultado(s)</div>
+            <div class="t-blank"></div>
+            <div class="t-info fade-in d4 typed t8">📊 14 jobs únicos encontrados</div>
+            <div class="t-ok fade-in d5 typed t9">🔔 Enviando 9 ofertas nuevas...</div>
+            <div class="t-blank"></div>
+            <div class="t-line fade-in d6">
+              <span class="t-prompt">$</span>
+              <span class="t-cursor"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar">
+    <div class="container">
+      <div class="stats-inner">
+        <div class="stat">
+          <span class="stat-num" id="stat-sources">5+</span>
+          <div class="stat-label">fuentes de empleo</div>
+        </div>
+        <div class="stat">
+          <span class="stat-num">2h</span>
+          <div class="stat-label">intervalo de monitoreo</div>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="stat-users">—</span>
+          <div class="stat-label">usuarios activos</div>
+          <div class="stat-live" id="stat-live-users"><span class="live-dot"></span> en vivo</div>
+        </div>
+        <div class="stat">
+          <span class="stat-num" id="stat-jobs">—</span>
+          <div class="stat-label">ofertas encontradas</div>
+          <div class="stat-live" id="stat-live-jobs"><span class="live-dot"></span> en vivo</div>
+        </div>
+        <div class="stat">
+          <span class="stat-num">100%</span>
+          <div class="stat-label">gratuito y open source</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <section>
+    <div class="container">
+      <div class="section-tag">// cómo funciona</div>
+      <h2 class="section-title">De cero a alertas en 5 minutos</h2>
+      <p class="section-desc">Sin configuraciones complejas. Abrís Telegram, mandás /start y el bot empieza a trabajar
+        por vos.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01 —</div>
+          <div class="step-icon">🤖</div>
+          <h3>Abrí el bot</h3>
+          <p>Buscá @jobs912bot en Telegram y enviá /start. Listo, estás registrado.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">02 —</div>
+          <div class="step-icon">⚙️</div>
+          <h3>Configurá tu perfil</h3>
+          <p>Usá /preferencias y respondé 5 preguntas: nivel, rol, tecnologías, ubicación y antigüedad máxima. El bot
+            genera keywords automáticamente.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">03 —</div>
+          <div class="step-icon">🔔</div>
+          <h3>Activá alertas</h3>
+          <p>Con /activar_alertas el bot empieza a monitorear cada 2 horas y te avisa solo si hay algo nuevo.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">04 —</div>
+          <div class="step-icon">🎯</div>
+          <h3>Recibí ofertas</h3>
+          <p>Te llegan notificaciones con título, empresa, ubicación y link directo. Sin ruido ni duplicados.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section style="padding-top:0">
+    <div class="container">
+      <div class="section-tag">// funcionalidades</div>
+      <h2 class="section-title">Todo lo que necesitás</h2>
+      <p class="section-desc">Construido específicamente para estudiantes de IT y juniors buscando su primera
+        oportunidad.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3>Multi-fuente</h3>
+          <p>Busca simultáneamente en LinkedIn Argentina, Remotive, Arbeitnow, Jobicy y feeds RSS personalizados.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🚫</div>
+          <h3>Sin duplicados</h3>
+          <p>Base de datos SQLite con hash de URLs. Cada oferta te llega exactamente una vez, nunca más.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎛️</div>
+          <h3>Keywords inteligentes</h3>
+          <p>Se generan automáticamente según tu perfil: nivel de experiencia + tecnologías + rol. Hasta 10 keywords
+            optimizadas.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📡</div>
+          <h3>RSS personalizados</h3>
+          <p>Agregá el feed de cualquier empresa con /agregar_feed. Globant, Mercado Libre, Ualá, y más.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📄</div>
+          <h3>CV siempre listo</h3>
+          <p>Subí tu CV en PDF con /cargar_cv y tenelo accesible cuando lo necesites desde cualquier dispositivo.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Remoto incluido</h3>
+          <p>Detecta posiciones remotas globales que aceptan candidatos de Argentina y LATAM. Más oportunidades.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>Filtros inteligentes</h3>
+          <p>Filtra automáticamente por nivel de experiencia, ubicación y antigüedad de la oferta. No ves roles que no
+            aplican.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⏳</div>
+          <h3>Control de antigüedad</h3>
+          <p>Elegí si querés ver ofertas de las últimas 24h, 3 días, 1 semana, 1 mes o 3 meses. Vos decidís la frescura.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section style="padding-top:0">
+    <div class="container">
+      <div class="section-tag">// fuentes monitoreadas</div>
+      <h2 class="section-title">¿Dónde busca el bot?</h2>
+      <p class="section-desc">APIs públicas y RSS feeds reales — no scraping que se rompe, sino datos que siempre
+        llegan.</p>
+      <div class="sources-grid">
+        <div class="source-pill"><span class="source-dot"></span>LinkedIn AR (Google News RSS)</div>
+        <div class="source-pill"><span class="source-dot"></span>Remotive API</div>
+        <div class="source-pill"><span class="source-dot"></span>Arbeitnow API</div>
+        <div class="source-pill"><span class="source-dot"></span>Jobicy API</div>
+        <div class="source-pill"><span class="source-dot"></span>RSS personalizados</div>
+        <div class="source-pill"><span class="source-dot dim"></span>Google Jobs (SerpAPI)</div>
+        <div class="source-pill"><span class="source-dot dim"></span>Twitter/X (plan pago)</div>
+      </div>
+      <p style="margin-top:20px; font-size:12px; color:var(--text-muted)">
+        ● Activo sin configuración &nbsp;&nbsp; ○ Requiere API key
+      </p>
+    </div>
+  </section>
+
+  <!-- COMMANDS -->
+  <section style="padding-top:0">
+    <div class="container">
+      <div class="section-tag">// comandos</div>
+      <h2 class="section-title">Interfaz de Telegram</h2>
+      <p class="section-desc">Todo desde el chat, sin apps extra ni dashboards complicados.</p>
+      <div class="commands-list">
+        <div class="cmd-row">
+          <span class="cmd-name">/start</span>
+          <span class="cmd-desc">Inicializar el bot y ver el menú de bienvenida</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/preferencias</span>
+          <span class="cmd-desc">Configurar nivel, rol, tecnologías, ubicación y antigüedad máxima</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/buscar</span>
+          <span class="cmd-desc">Lanzar una búsqueda manual inmediata</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/activar_alertas</span>
+          <span class="cmd-desc">Activar el monitoreo automático cada 2 horas</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/desactivar_alertas</span>
+          <span class="cmd-desc">Pausar el monitoreo automático</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/cargar_cv</span>
+          <span class="cmd-desc">Subir tu CV en PDF o TXT (máx. 5 MB)</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/agregar_feed</span>
+          <span class="cmd-desc">Agregar el RSS de una empresa específica</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/mis_feeds</span>
+          <span class="cmd-desc">Ver tus feeds RSS personalizados</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/eliminar_feed</span>
+          <span class="cmd-desc">Eliminar un feed RSS por su ID</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/estado</span>
+          <span class="cmd-desc">Ver tu configuración actual, keywords y último chequeo</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/web</span>
+          <span class="cmd-desc">Ver el link a esta web</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/ayuda</span>
+          <span class="cmd-desc">Ver todos los comandos disponibles</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="cta-glow"></div>
+    <div class="container">
+      <h2>Empezá a buscar<br /><span>más inteligente</span></h2>
+      <p>Gratis, open source y listo para usar. Mientras vos dormís, el bot trabaja.</p>
+      <a href="https://t.me/jobs912bot" class="telegram-btn">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
+        </svg>
+        Abrir JobBot en Telegram
+      </a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-logo">Job<span>Bot</span>.ar</div>
+        <div class="footer-text">Hecho con ☕ por Nacho (PISCU) — Lic. Gestión de TI · Buenos Aires</div>
+        <div class="footer-links">
+          <a href="https://github.com/nachopalmeri/-jobbot-landing">GitHub</a>
+          <a href="https://t.me/jobs912bot">Telegram</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- STATS FETCHER -->
+  <script>
+    (function () {
+      // URL del stats API del bot — cambiá esto cuando expongas el bot públicamente
+      // Puede ser vía ngrok, Cloudflare Tunnel, o un VPS
+      const STATS_API_URL = 'https://jobbot-api.example.com/api/stats';
+
+      async function fetchStats() {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000);
+
+          const response = await fetch(STATS_API_URL, {
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(timeout);
+
+          if (!response.ok) throw new Error('API no disponible');
+          const data = await response.json();
+
+          // Actualizar stats en el DOM
+          if (data.total_users !== undefined) {
+            document.getElementById('stat-users').textContent = data.total_users;
+            document.getElementById('stat-live-users').classList.add('visible');
+          }
+          if (data.total_jobs_found !== undefined) {
+            const jobsNum = data.total_jobs_found;
+            document.getElementById('stat-jobs').textContent =
+              jobsNum >= 1000 ? (jobsNum / 1000).toFixed(1) + 'k' : jobsNum;
+            document.getElementById('stat-live-jobs').classList.add('visible');
+          }
+          if (data.sources_count !== undefined) {
+            document.getElementById('stat-sources').textContent = data.sources_count + '+';
+          }
+
+        } catch (err) {
+          // Fallback silencioso — los stats simplemente muestran "—"
+          console.log('Stats API no disponible, usando valores por defecto');
+        }
+      }
+
+      // Fetch stats al cargar la página
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', fetchStats);
+      } else {
+        fetchStats();
+      }
+    })();
+  </script>
+
+</body>
+
+</html>
