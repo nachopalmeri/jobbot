@@ -517,21 +517,12 @@ class JobScraper:
 
         # Palabras de ubicación del usuario para matching
         user_terms = set(user_parts)
-        # Agregar variantes comunes
-        if "argentina" in user_terms or "buenos" in user_terms:
-            user_terms.update(["argentina", "ar", "buenos aires", "latam",
-                               "latin america", "south america", "sudamérica",
-                               "sudamerica", "latinoamérica", "latinoamerica",
-                               "americas", "america"])
+        # Agregar variantes comunes si detectamos Argentina o Buenos Aires
+        if any(term in ["argentina", "buenos", "aires"] for term in user_terms):
+            user_terms.update(config.LOCATION_VARIANTS)
 
         # Términos que indican "abierto a cualquiera" (se aceptan siempre)
-        global_terms = {
-            "anywhere", "worldwide", "global", "globally", "remote",
-            "🌐", "remoto", "international", "all countries",
-            "any location", "no restriction", "earth",
-            "americas", "america", "latam", "latin america",
-            "south america", "worldwide",
-        }
+        global_terms = config.GLOBAL_LOCATION_TERMS
 
         filtered = []
         for job in jobs:
@@ -574,24 +565,8 @@ class JobScraper:
         base_negatives = config.NEGATIVE_KEYWORDS.copy()
 
         # Keywords negativas dinámicas por nivel
-        level = experience_level.lower()
-        if level in ["sin_experiencia", "junior"]:
-            base_negatives.extend([
-                "senior", "sr", "lead", "manager", "staff", "principal", "director",
-                "head", "arquitecto", "architect", "expert", "experto",
-                "3 años", "4 años", "5 años", "3 years", "4 years", "5 years",
-                "ssr", "semi senior", "semi-senior"  # Un JR puro a veces no aplica a SSR
-            ])
-        elif level == "semi_senior":
-            base_negatives.extend([
-                "lead", "manager", "staff", "principal", "director", "head",
-                "trainee", "pasantía", "pasantia", "intern", "internship"
-            ])
-        elif level == "senior":
-            base_negatives.extend([
-                "trainee", "pasantía", "pasantia", "intern", "internship",
-                "junior", "jr", "entry level"
-            ])
+        level_negatives = config.LEVEL_NEGATIVE_KEYWORDS.get(experience_level.lower(), [])
+        base_negatives.extend(level_negatives)
 
         # Deduplicar
         negatives = list(set([n.lower() for n in base_negatives]))

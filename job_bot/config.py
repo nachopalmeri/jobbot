@@ -60,6 +60,50 @@ NEGATIVE_KEYWORDS = [
     "lead developer", "tech lead", "arquitecto", "5+ años",
 ]
 
+# Keywords negativas específicas por nivel de experiencia
+LEVEL_NEGATIVE_KEYWORDS = {
+    "sin_experiencia": [
+        "senior", "sr", "lead", "manager", "staff", "principal", "director",
+        "head", "arquitecto", "architect", "expert", "experto",
+        "3 años", "4 años", "5 años", "3 years", "4 years", "5 years",
+        "ssr", "semi senior", "semi-senior"
+    ],
+    "junior": [
+        "senior", "sr", "lead", "manager", "staff", "principal", "director",
+        "head", "arquitecto", "architect", "expert", "experto",
+        "3 años", "4 años", "5 años", "3 years", "4 years", "5 years",
+        "ssr", "semi senior", "semi-senior"
+    ],
+    "semi_senior": [
+        "lead", "manager", "staff", "principal", "director", "head",
+        "trainee", "pasantía", "pasantia", "intern", "internship"
+    ],
+    "senior": [
+        "trainee", "pasantía", "pasantia", "intern", "internship",
+        "junior", "jr", "entry level"
+    ]
+}
+
+# ============================================================
+# FILTROS DE UBICACIÓN
+# ============================================================
+# Variantes para detectar Argentina/LATAM (usado para emparejar ubicación del usuario)
+LOCATION_VARIANTS = [
+    "argentina", "ar", "buenos aires", "latam",
+    "latin america", "south america", "sudamérica",
+    "sudamerica", "latinoamérica", "latinoamerica",
+    "americas", "america"
+]
+
+# Términos que indican que un trabajo es global/remoto y aceptable siempre
+GLOBAL_LOCATION_TERMS = {
+    "anywhere", "worldwide", "global", "globally", "remote",
+    "🌐", "remoto", "international", "all countries",
+    "any location", "no restriction", "earth",
+    "americas", "america", "latam", "latin america",
+    "south america"
+}
+
 # ============================================================
 # FUENTES - Activar/desactivar scrapers
 # ============================================================

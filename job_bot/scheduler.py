@@ -5,6 +5,7 @@ Este módulo es llamado por el JobQueue de python-telegram-bot
 cada CHECK_INTERVAL_HOURS horas para todos los usuarios con alertas activas.
 """
 
+import html
 import asyncio
 import logging
 from typing import List, Dict
@@ -26,48 +27,50 @@ logger = logging.getLogger(__name__)
 
 def format_job_message(job: Dict) -> str:
     """
-    Convierte un dict de trabajo en un mensaje formateado para Telegram.
-    Usa MarkdownV2-safe escaping mínimo para evitar errores de parse.
+    Convierte un dict de trabajo en un mensaje formateado para Telegram usando HTML.
+    Esto es más robusto ante caracteres especiales que el Markdown.
     """
-    # Sanitizar texto para no romper el Markdown de Telegram
     def safe(text: str) -> str:
-        return str(text).replace("*", "").replace("_", "").replace("`", "").replace("[", "").replace("]", "")[:200]
+        if not text: return ""
+        # Escapar caracteres HTML y truncar
+        return html.escape(str(text))[:200]
 
     title   = safe(job.get("title",    "Sin título"))
     company = safe(job.get("company",  "N/A"))
     loc     = safe(job.get("location", "N/A"))
     source  = safe(job.get("source",   "Desconocida"))
-    url     = job.get("url", "")
+    url     = html.escape(job.get("url", "")) # Escapar URL también por seguridad
     date    = safe(job.get("date",     ""))
     desc    = safe(job.get("description", ""))
 
     lines = [
-        "🆕 *Nueva oportunidad encontrada*",
+        "🆕 <b>Nueva oportunidad encontrada</b>",
         "━━━━━━━━━━━━━━━━━━━━━━━",
-        f"💼 *{title}*",
+        f"💼 <b>{title}</b>",
         f"🏢 {company}",
         f"📍 {loc}",
-        f"🌐 Fuente: _{source}_",
+        f"🌐 Fuente: <i>{source}</i>",
     ]
 
     if desc:
-        lines.append(f"📝 _{desc[:180]}..._")
+        lines.append(f"📝 <i>{desc[:180]}...</i>")
 
     if date:
         lines.append(f"📅 {date}")
 
     if url:
-        lines.append(f"\n🔗 [Ver oferta completa]({url})")
+        # En HTML de Telegram, los links se hacen con <a href="..."></a>
+        lines.append(f"\n🔗 <a href='{url}'>Ver oferta completa</a>")
 
     return "\n".join(lines)
 
 
 def format_summary_header(count: int) -> str:
-    """Mensaje de resumen antes de listar las ofertas."""
+    """Mensaje de resumen antes de listar las ofertas usando HTML."""
     plural = "s" if count > 1 else ""
     return (
-        f"🔔 *¡Encontré {count} nueva{plural} oferta{plural} para vos!*\n"
-        f"_{config.CHECK_INTERVAL_HOURS}h de monitoreo automático_"
+        f"🔔 <b>¡Encontré {count} nueva{plural} oferta{plural} para vos!</b>\n"
+        f"<i>{config.CHECK_INTERVAL_HOURS}h de monitoreo automático</i>"
     )
 
 
@@ -146,7 +149,7 @@ async def check_jobs_for_user(
                     "✅ No hay nada nuevo que no hayas visto.\n\n"
                     "_(Las alertas automáticas siguen activas)_"
                 ),
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
             )
         return
 
@@ -177,7 +180,7 @@ async def check_jobs_for_user(
             await bot.send_message(
                 chat_id=telegram_id,
                 text=msg,
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
             )
             db.mark_job_seen(telegram_id, job)
@@ -196,7 +199,7 @@ async def check_jobs_for_user(
                     f"ℹ️ Hay {remaining} oferta{'s' if remaining > 1 else ''} más disponible{'s' if remaining > 1 else ''}.\n"
                     "Usá /buscar para verlas en el próximo ciclo."
                 ),
-                parse_mode=ParseMode.MARKDOWN,
+                parse_mode=ParseMode.HTML,
             )
         except TelegramError:
             pass
