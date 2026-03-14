@@ -202,6 +202,16 @@
       color: var(--green);
     }
 
+    .hero h1 .version {
+      font-size: 0.4em;
+      background: var(--green);
+      color: #000;
+      padding: 2px 8px;
+      border-radius: 4px;
+      vertical-align: middle;
+      margin-left: 10px;
+    }
+
     .hero h1 .line2 {
       display: block;
       color: var(--text-muted);
@@ -917,19 +927,17 @@
   <section class="hero">
     <div class="container">
       <div class="hero-grid">
-        <div>
+        <div class="hero-content">
           <div class="hero-badge">
-            <span class="badge-dot"></span>
-            Bot activo · Monitoreando 24/7
+            <div class="badge-dot"></div>
+            SISTEMA OPERATIVO v2.0 INSTALADO
           </div>
-          <h1>
-            Tu radar de<br />
-            <span class="accent">empleos IT</span>
-            <span class="line2">en Buenos Aires</span>
+          <h1>Cazador de empleos <span class="accent">IT</span> <span class="version">PRO</span>
+            <span class="line2">Buenos Aires & Latam</span>
           </h1>
           <p class="hero-desc">
-            Bot de Telegram que monitorea automáticamente ofertas laborales cada 2 horas. Python, Backend, Junior,
-            Pasantías — sin perderte ninguna oportunidad.
+            El bot de Telegram más avanzado para programadores. Monitoreo 24/7, <span style="color:var(--green)">Análisis de GitHub con IA</span>,
+            simulador de entrevistas y tracker de postulaciones.
           </p>
           <div class="hero-actions">
             <a href="https://t.me/jobs912bot" class="btn-primary">
@@ -1031,8 +1039,7 @@
           <div class="step-num">02 —</div>
           <div class="step-icon">⚙️</div>
           <h3>Configurá tu perfil</h3>
-          <p>Usá /preferencias y respondé 5 preguntas: nivel, rol, tecnologías, ubicación y antigüedad máxima. El bot
-            genera keywords automáticamente.</p>
+          <p>Usá /preferencias y respondé 6 preguntas: nivel, rol, tecnologías, ubicación, modalidad y antigüedad. El bot genera keywords inteligentes.</p>
         </div>
         <div class="step">
           <div class="step-num">03 —</div>
@@ -1060,46 +1067,38 @@
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon">🔍</div>
-          <h3>Multi-fuente</h3>
-          <p>Busca simultáneamente en LinkedIn Argentina, Remotive, Arbeitnow, Jobicy y feeds RSS personalizados.</p>
+          <h3>Monitoreo Smart</h3>
+          <p>Scrapeo constante de LinkedIn, Remotive, Himalayas y más. Filtramos por Seniority y Modalidad.</p>
+        </div>
+        <div class="feature-card" style="border-color: var(--cyan);">
+          <div class="feature-icon" style="background: rgba(0, 212, 255, 0.1); color: var(--cyan);">📊</div>
+          <h3>GitHub Match PRO</h3>
+          <p>Analizamos tus repositorios y los comparamos con la oferta. Te decimos qué proyectos destacar.</p>
+        </div>
+        <div class="feature-card" style="border-color: var(--cyan);">
+          <div class="feature-icon" style="background: rgba(0, 212, 255, 0.1); color: var(--cyan);">📝</div>
+          <h3>Job Tracker</h3>
+          <p>Gestioná todas tus aplicaciones desde el bot. Cambiá estados, agregá notas y no pierdas el hilo.</p>
         </div>
         <div class="feature-card">
-          <div class="feature-icon">🚫</div>
-          <h3>Sin duplicados</h3>
-          <p>Base de datos SQLite con hash de URLs. Cada oferta te llega exactamente una vez, nunca más.</p>
+          <div class="feature-icon">🤖</div>
+          <h3>AI Match Score</h3>
+          <p>Llama 3.3 analiza tu CV y cada oferta para darte un score de 1 a 100 de compatibilidad.</p>
         </div>
         <div class="feature-card">
-          <div class="feature-icon">🎛️</div>
-          <h3>Keywords inteligentes</h3>
-          <p>Se generan automáticamente según tu perfil: nivel de experiencia + tecnologías + rol. Hasta 10 keywords
-            optimizadas.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">📡</div>
-          <h3>RSS personalizados</h3>
-          <p>Agregá el feed de cualquier empresa con /agregar_feed. Globant, Mercado Libre, Ualá, y más.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">📄</div>
-          <h3>CV siempre listo</h3>
-          <p>Subí tu CV en PDF con /cargar_cv y tenelo accesible cuando lo necesites desde cualquier dispositivo.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">🌐</div>
-          <h3>Remoto incluido</h3>
-          <p>Detecta posiciones remotas globales que aceptan candidatos de Argentina y LATAM. Más oportunidades.</p>
+          <div class="feature-icon">🎯</div>
+          <h3>Simulador Técnico</h3>
+          <p>Entrená para entrevistas reales con preguntas generadas por IA basadas en la vacante.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">🛡️</div>
-          <h3>Filtros inteligentes</h3>
-          <p>Filtra automáticamente por nivel de experiencia, ubicación y antigüedad de la oferta. No ves roles que no
-            aplican.</p>
+          <h3>GDPR & Privacidad</h3>
+          <p>Tus datos son tuyos. Borrá toda tu información con un solo comando cuando consigas trabajo.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">⏳</div>
           <h3>Control de antigüedad</h3>
-          <p>Elegí si querés ver ofertas de las últimas 24h, 3 días, 1 semana, 1 mes o 3 meses. Vos decidís la frescura.
-          </p>
+          <p>Elegí si querés ver ofertas de las últimas 24h, 1 semana o 3 meses. Vos decidís la frescura.</p>
         </div>
       </div>
     </div>
@@ -1113,7 +1112,8 @@
       <p class="section-desc">APIs públicas y RSS feeds reales — no scraping que se rompe, sino datos que siempre
         llegan.</p>
       <div class="sources-grid">
-        <div class="source-pill"><span class="source-dot"></span>LinkedIn AR (Google News RSS)</div>
+        <div class="source-pill"><span class="source-dot"></span>LinkedIn AR (Google News)</div>
+        <div class="source-pill"><span class="source-dot"></span>Himalayas (Startups)</div>
         <div class="source-pill"><span class="source-dot"></span>Remotive API</div>
         <div class="source-pill"><span class="source-dot"></span>Arbeitnow API</div>
         <div class="source-pill"><span class="source-dot"></span>Jobicy API</div>
@@ -1124,6 +1124,86 @@
       <p style="margin-top:20px; font-size:12px; color:var(--text-muted)">
         ● Activo sin configuración &nbsp;&nbsp; ○ Requiere API key
       </p>
+
+      <!-- PRO MOCKUP -->
+      <div style="margin-top: 60px; text-align: center;">
+        <img src="mockup_pro.png" alt="JobBot Pro Features" style="max-width: 100%; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 40px 100px rgba(0, 255, 136, 0.1);">
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING / COMPARISON -->
+  <section style="padding-top:0" id="pro">
+    <div class="container">
+      <div class="section-tag">// el siguiente nivel</div>
+      <h2 class="section-title">Pasate a <span style="color:var(--green)">PRO</span></h2>
+      <p class="section-desc">Liberá todo el poder de la IA y gestioná tu carrera como un experto.</p>
+      
+      <style>
+        .pricing-table {
+          width: 100%;
+          border-collapse: collapse;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        .pricing-table th, .pricing-table td {
+          padding: 20px;
+          text-align: left;
+          border-bottom: 1px solid var(--border);
+        }
+        .pricing-table th {
+          background: #161b22;
+          color: var(--white);
+          font-family: 'Syne', sans-serif;
+          font-size: 14px;
+        }
+        .pricing-table td:first-child {
+          color: var(--text-muted);
+          font-weight: 500;
+        }
+        .check { color: var(--green); }
+        .cross { color: var(--text-muted); opacity: 0.5; }
+        .pro-highlight { background: rgba(0, 255, 136, 0.03); }
+      </style>
+
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th>Funcionalidad</th>
+            <th>Free</th>
+            <th style="color: var(--green);">PRO</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Alertas de Empleo</td>
+            <td>Cada 12hs</td>
+            <td class="pro-highlight"><b>Cada 2hs (Real-time)</b></td>
+          </tr>
+          <tr>
+            <td>Keywords de búsqueda</td>
+            <td>Máximo 2</td>
+            <td class="pro-highlight"><b>Ilimitadas</b></td>
+          </tr>
+          <tr>
+            <td>GitHub Match Score</td>
+            <td><span class="cross">✕</span></td>
+            <td class="pro-highlight"><span class="check">✔</span> <b>Ilimitado</b></td>
+          </tr>
+          <tr>
+            <td>Job Tracker personal</td>
+            <td>Limitado (3)</td>
+            <td class="pro-highlight"><span class="check">✔</span> <b>Ilimitado</b></td>
+          </tr>
+          <tr>
+            <td>Simulador de Entrevistas</td>
+            <td>3 por semana</td>
+            <td class="pro-highlight"><b>Ilimitado</b></td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 
@@ -1140,43 +1220,36 @@
         </div>
         <div class="cmd-row">
           <span class="cmd-name">/preferencias</span>
-          <span class="cmd-desc">Configurar nivel, rol, tecnologías, ubicación y antigüedad máxima</span>
+          <span class="cmd-desc">Configurar nivel, rol, tecnologías, ubicación, modalidad y antigüedad</span>
         </div>
         <div class="cmd-row">
-          <span class="cmd-name">/buscar</span>
-          <span class="cmd-desc">Lanzar una búsqueda manual inmediata</span>
+            <span class="cmd-name">/github</span>
+            <span class="cmd-desc"><span style="color:var(--cyan)">[PRO]</span> Analizá tu código y hacé match técnico con ofertas reales.</span>
         </div>
         <div class="cmd-row">
-          <span class="cmd-name">/activar_alertas</span>
-          <span class="cmd-desc">Activar el monitoreo automático cada 2 horas</span>
+            <span class="cmd-name">/track [id]</span>
+            <span class="cmd-desc"><span style="color:var(--cyan)">[PRO]</span> Gestioná tus postulaciones y cambiá estados desde el bot.</span>
         </div>
         <div class="cmd-row">
-          <span class="cmd-name">/desactivar_alertas</span>
-          <span class="cmd-desc">Pausar el monitoreo automático</span>
+          <span class="cmd-name">/horarios</span>
+          <span class="cmd-desc">Configurar frecuencia (ej: cada 3hs) y franja horaria de alertas.</span>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/entrevista</span>
+          <span class="cmd-desc">Simulador de entrevista técnica generado por IA basado en una vacante.</span>
+        </div>
+        </div>
+        <div class="cmd-row">
+          <span class="cmd-name">/analizar_oferta [URL]</span>
+          <span class="cmd-desc">Compara tu CV contra un link de trabajo</span>
         </div>
         <div class="cmd-row">
           <span class="cmd-name">/cargar_cv</span>
-          <span class="cmd-desc">Subir tu CV en PDF o TXT (máx. 5 MB)</span>
+          <span class="cmd-desc">Subir tu currículum en PDF o TXT</span>
         </div>
         <div class="cmd-row">
-          <span class="cmd-name">/agregar_feed</span>
-          <span class="cmd-desc">Agregar el RSS de una empresa específica</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/mis_feeds</span>
-          <span class="cmd-desc">Ver tus feeds RSS personalizados</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/eliminar_feed</span>
-          <span class="cmd-desc">Eliminar un feed RSS por su ID</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/estado</span>
-          <span class="cmd-desc">Ver tu configuración actual, keywords y último chequeo</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/web</span>
-          <span class="cmd-desc">Ver el link a esta web</span>
+          <span class="cmd-name">/borrar_datos</span>
+          <span class="cmd-desc">Eliminar TODA tu información (GDPR)</span>
         </div>
         <div class="cmd-row">
           <span class="cmd-name">/ayuda</span>

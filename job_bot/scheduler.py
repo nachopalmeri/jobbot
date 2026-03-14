@@ -1,8 +1,8 @@
 """
 scheduler.py - Lógica de chequeo periódico y formato de notificaciones.
 
-Este módulo es llamado por el JobQueue de python-telegram-bot
-cada CHECK_INTERVAL_HOURS horas para todos los usuarios con alertas activas.
+Ejecutado cada SCHEDULER_POLL_MINUTES minutos para usuarios cuyo
+intervalo personal haya vencido y estén dentro de su ventana horaria.
 """
 
 import html
@@ -17,6 +17,7 @@ from telegram.error import TelegramError
 import config
 from database import Database
 from job_scraper import JobScraper
+from cv_analyzer import parse_cv, format_job_with_score
 
 logger = logging.getLogger(__name__)
 
@@ -59,18 +60,32 @@ def format_job_message(job: Dict) -> str:
         lines.append(f"📅 {date}")
 
     if url:
-        # En HTML de Telegram, los links se hacen con <a href="..."></a>
         lines.append(f"\n🔗 <a href='{url}'>Ver oferta completa</a>")
+
+    # Si el job tiene match info (del CV analyzer)
+    if job.get("match_score") is not None:
+        score = job["match_score"]
+        if score >= 80:
+            score_emoji = "🟢"
+        elif score >= 60:
+            score_emoji = "🟡"
+        elif score >= 40:
+            score_emoji = "🟠"
+        else:
+            score_emoji = "🔴"
+        lines.append(f"\n{score_emoji} <b>Match con tu CV: {score}%</b>")
+        if job.get("match_info"):
+            lines.append(f"📝 {job['match_info']}")
 
     return "\n".join(lines)
 
 
-def format_summary_header(count: int) -> str:
+def format_summary_header(count: int, interval_hours: int = 6) -> str:
     """Mensaje de resumen antes de listar las ofertas usando HTML."""
     plural = "s" if count > 1 else ""
     return (
         f"🔔 <b>¡Encontré {count} nueva{plural} oferta{plural} para vos!</b>\n"
-        f"<i>{config.CHECK_INTERVAL_HOURS}h de monitoreo automático</i>"
+        f"<i>Monitoreo cada {interval_hours}h</i>"
     )
 
 
@@ -115,6 +130,7 @@ async def check_jobs_for_user(
     profile = db.get_user_profile(telegram_id)
     exp_level = profile.get("experience_level", "junior")
     max_age_days = profile.get("max_job_age_days", 30)
+    modality = profile.get("job_modality", "cualquiera")
 
     # --- Buscar en todas las fuentes estándar ---
     all_jobs = scraper.search_all(keywords, location, max_age_days=max_age_days)
@@ -130,8 +146,9 @@ async def check_jobs_for_user(
         except Exception as e:
             logger.error("Error en custom feed '%s': %s", feed["feed_name"], e)
 
-    # --- Aplicar filtro de keywords negativas ---
+    # --- Aplicar filtro de keywords negativas y de modalidad ---
     all_jobs = JobScraper.apply_negative_filter(all_jobs, experience_level=exp_level)
+    all_jobs = JobScraper.apply_modality_filter(all_jobs, modality=modality)
 
     # --- Filtrar los que ya se enviaron ---
     new_jobs = db.filter_new_jobs(telegram_id, all_jobs)
@@ -147,20 +164,38 @@ async def check_jobs_for_user(
                     "🔍 Búsqueda completada.\n"
                     f"📊 Se revisaron {len(all_jobs)} ofertas en total.\n"
                     "✅ No hay nada nuevo que no hayas visto.\n\n"
-                    "_(Las alertas automáticas siguen activas)_"
+                    "<i>Las alertas automáticas siguen activas</i>"
                 ),
                 parse_mode=ParseMode.HTML,
             )
         return
 
+    # --- Enriquecer con CV match si el usuario tiene CV ---
+    cv_text = None
+    if user.get("cv_path"):
+        cv_text = parse_cv(user["cv_path"])
+
+    if cv_text:
+        enriched_jobs = []
+        for job in new_jobs:
+            enriched_job, score = format_job_with_score(job, cv_text)
+            enriched_jobs.append(enriched_job)
+        # Ordenar por relevancia (mayor score primero)
+        new_jobs = sorted(enriched_jobs, key=lambda j: j.get("match_score", 0), reverse=True)
+        logger.info("Jobs enriquecidos con match de CV para usuario %s", telegram_id)
+
     logger.info("Enviando %d nuevas ofertas al usuario %s", len(new_jobs), telegram_id)
+
+    # --- Obtener intervalo del usuario para el header ---
+    schedule = db.get_user_schedule(telegram_id)
+    user_interval = schedule.get("check_interval_hours", 6)
 
     # --- Enviar encabezado ---
     try:
         await bot.send_message(
             chat_id=telegram_id,
-            text=format_summary_header(len(new_jobs)),
-            parse_mode=ParseMode.MARKDOWN,
+            text=format_summary_header(len(new_jobs), interval_hours=user_interval),
+            parse_mode=ParseMode.HTML,
         )
     except TelegramError as e:
         logger.error("Error enviando encabezado a %s: %s", telegram_id, e)

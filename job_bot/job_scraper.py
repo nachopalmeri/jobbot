@@ -5,6 +5,7 @@ Fuentes implementadas:
   ✅ Remotive API         - API pública gratuita, trabajos remotos IT
   ✅ Arbeitnow API        - API pública gratuita, trabajos remotos/global
   ✅ Jobicy API           - API pública gratuita, trabajos remotos IT
+  ✅ Himalayas API        - API pública gratuita, startups & tech remotos
   ✅ Google Jobs           - SerpAPI (100 req gratis/mes — requiere key)
   ✅ Twitter/X             - API v2 (requiere plan Basic $100/mes)
   ✅ Custom RSS            - Cualquier feed RSS que agregues
@@ -71,6 +72,10 @@ class JobScraper:
 
             if config.SOURCES_ENABLED.get("jobicy"):
                 self._safe_search("Jobicy", self.search_jobicy, all_jobs, keyword)
+                time.sleep(1)
+
+            if config.SOURCES_ENABLED.get("himalayas"):
+                self._safe_search("Himalayas", self.search_himalayas, all_jobs, keyword)
                 time.sleep(1)
 
             if config.SOURCES_ENABLED.get("serpapi_google"):
@@ -250,6 +255,55 @@ class JobScraper:
                 "url":         item.get("url", ""),
                 "description": (description[:280] + salary) if salary else description[:300],
                 "source":      "Jobicy",
+                "date":        item.get("pubDate", ""),
+            })
+
+        return jobs
+
+    # ----------------------------------------------------------
+    # 4. HIMALAYAS — API PÚBLICA GRATUITA
+    # ----------------------------------------------------------
+
+    def search_himalayas(self, query: str) -> List[Dict]:
+        """
+        Himalayas API — Tech & Startup remote jobs.
+        API pública sin key: https://himalayas.app/jobs/api
+        """
+        url = "https://himalayas.app/jobs/api"
+        # The API doesn't have a direct search query param in its free tier,
+        # but supports limit and offset. We fetch the latest and filter.
+        params = {"limit": 50} 
+
+        try:
+            response = requests.get(url, params=params, headers=HEADERS, timeout=config.REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as e:
+            logger.error("Himalayas API error: %s", e)
+            return []
+
+        jobs: List[Dict] = []
+        query_lower = query.lower()
+        items = data.get("jobs", [])
+        
+        # Filtro manual porque la API no tiene ?search=
+        matched_items = [
+            item for item in items 
+            if query_lower in item.get("title", "").lower() or query_lower in item.get("description", "").lower()
+        ][:config.MAX_RESULTS_PER_SOURCE]
+
+        for item in matched_items:
+            # Limpiar HTML
+            raw_desc = item.get("description", "")
+            description = BeautifulSoup(raw_desc, "html.parser").get_text(separator=" ").strip()
+
+            jobs.append({
+                "title":       item.get("title", "Sin título").strip(),
+                "company":     item.get("companyName", "N/A"),
+                "location":    item.get("locationRestrictions", ["🌐 Remoto"])[0] if item.get("locationRestrictions") else "🌐 Remoto",
+                "url":         item.get("applicationLink", "") or item.get("himalayasCompanyProfileLink", ""),
+                "description": description[:300],
+                "source":      "Himalayas",
                 "date":        item.get("pubDate", ""),
             })
 
@@ -549,6 +603,43 @@ class JobScraper:
             # Si llegamos acá, el job tiene una ubicación específica que no coincide → rechazar
             logger.debug("Filtrado por ubicación: '%s' (job: %s)", job_loc, job.get("title", ""))
 
+        return filtered
+
+    # ----------------------------------------------------------
+    # FILTRO POR MODALIDAD (Remoto, Híbrido, Presencial)
+    # ----------------------------------------------------------
+
+    @staticmethod
+    def apply_modality_filter(jobs: List[Dict], modality: str) -> List[Dict]:
+        """
+        Filtra trabajos según su modalidad. Por defecto, 'cualquiera' no filtra nada.
+        Usa heurísticas en location/título/descripción para determinarlo.
+        """
+        modality = modality.lower()
+        if modality not in ["remoto", "híbrido", "hibrido", "presencial"]:
+            return jobs
+
+        filtered = []
+        for job in jobs:
+            text = f"{job.get('title','')} {job.get('location','')} {job.get('description','')}".lower()
+            
+            # Detectar la modalidad del trabajo actual
+            is_remote = any(m in text for m in ["remoto", "remote", "anywhere", "work from home", "wfh"])
+            is_hybrid = any(m in text for m in ["híbrido", "hibrido", "hybrid"])
+            # Si no es remoto ni híbrido, asumimos presencial/onsite
+            is_onsite = ("onsite" in text or "on-site" in text or "presencial" in text) or (not is_remote and not is_hybrid)
+
+            if modality == "remoto" and (is_remote or job.get("source") in ["Remotive", "Arbeitnow", "Jobicy", "Himalayas"]):
+                filtered.append(job)
+            elif modality in ["híbrido", "hibrido"] and (is_hybrid or (is_remote and is_onsite)):
+                filtered.append(job)
+            elif modality == "presencial" and is_onsite and not is_remote and not is_hybrid:
+                filtered.append(job)
+            elif is_remote and modality == "remoto": # Fallback
+                filtered.append(job)
+                
+        # Mostrar el total que quedó después del filtrado
+        logger.debug("Filtrado por modalidad '%s': quedaron %d de %d", modality, len(filtered), len(jobs))
         return filtered
 
     # ----------------------------------------------------------

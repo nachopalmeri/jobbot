@@ -27,15 +27,30 @@ TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "")
 # ============================================================
 # BASE DE DATOS Y ARCHIVOS
 # ============================================================
+DATABASE_TYPE = os.getenv("DATABASE_TYPE", "sqlite").lower()
 DATABASE_PATH = os.getenv("DATABASE_PATH", "job_bot.db")
 CV_STORAGE_PATH = os.getenv("CV_STORAGE_PATH", "cvs/")
 
+# Supabase (Postgres)
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "")  # URL de conexión directa a PG
+
 # ============================================================
-# SCHEDULER
+# SCHEDULER (per-user — valores almacenados en DB por usuario)
 # ============================================================
-# Intervalo entre chequeos automáticos (en horas)
-# 2 horas = buen balance entre frescura y no sobrecargar las fuentes
-CHECK_INTERVAL_HOURS = int(os.getenv("CHECK_INTERVAL_HOURS", "2"))
+# El intervalo real es por usuario (3-24h), estos son los límites
+MIN_CHECK_INTERVAL_HOURS = 3
+MAX_CHECK_INTERVAL_HOURS = 24
+DEFAULT_CHECK_INTERVAL_HOURS = 6
+# Cada cuántos minutos el scheduler revisa si hay usuarios pendientes
+SCHEDULER_POLL_MINUTES = int(os.getenv("SCHEDULER_POLL_MINUTES", "10"))
+
+# ============================================================
+# GROQ API (para CV Analyzer — Llama 3.3 70B)
+# ============================================================
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 # ============================================================
 # BÚSQUEDA - Defaults para Buenos Aires
@@ -109,10 +124,11 @@ GLOBAL_LOCATION_TERMS = {
 # ============================================================
 # APIs gratuitas que funcionan sin key:
 SOURCES_ENABLED = {
-    "linkedin_google":  True,            # LinkedIn AR via Google News RSS (local!) ✅
+    "linkedin_google": True,            # LinkedIn AR via Google News RSS (local!) ✅
     "remotive":        True,            # API pública gratuita (trabajos remotos IT) ✅
     "arbeitnow":       True,            # API pública gratuita (trabajos remotos/global) ✅
     "jobicy":          True,            # API pública gratuita (trabajos remotos IT) ✅
+    "himalayas":       True,            # API pública gratuita (remotos/tech) ✅
     "custom_rss":      True,            # Feeds personalizados del usuario ✅
     "serpapi_google":  bool(SERPAPI_KEY),       # Requiere API key de SerpAPI
     "twitter":         bool(TWITTER_BEARER_TOKEN),  # Requiere plan Basic de Twitter

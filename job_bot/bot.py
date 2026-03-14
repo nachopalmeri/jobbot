@@ -29,6 +29,13 @@ from database import Database
 from job_scraper import JobScraper
 from scheduler import check_jobs_for_user
 from stats_api import run_stats_api
+from cv_analyzer import (
+    parse_cv, extract_keywords, compare_cv_with_offer,
+    format_cv_analysis, analyze_with_gemini,
+    generate_interview_questions, evaluate_interview_answer,
+    generate_cover_letter,
+)
+from github_analyzer import fetch_github_repos, analyze_github_match
 
 # ============================================================
 # LOGGING
@@ -49,10 +56,12 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # INSTANCIAS GLOBALES
 # ============================================================
-db = Database(config.DATABASE_PATH)
+db = Database()
 scraper = JobScraper()
 
-WAITING_LEVEL, WAITING_ROLE, WAITING_TECHS, WAITING_LOCATION, WAITING_MAX_AGE = range(5)
+WAITING_LEVEL, WAITING_ROLE, WAITING_TECHS, WAITING_LOCATION, WAITING_MAX_AGE, WAITING_MODALITY = range(6)
+WAITING_INTERVAL, WAITING_START_HOUR, WAITING_END_HOUR = range(10, 13)
+WAITING_INTERVIEW_START, WAITING_INTERVIEW_ANSWER = range(20, 22)
 
 # ============================================================
 # SCHEDULER EN THREAD SEPARADO (reemplaza JobQueue)
@@ -61,23 +70,22 @@ WAITING_LEVEL, WAITING_ROLE, WAITING_TECHS, WAITING_LOCATION, WAITING_MAX_AGE = 
 
 def run_scheduler(app: Application, loop: asyncio.AbstractEventLoop):
     """
-    Corre en un thread separado. Cada CHECK_INTERVAL_HOURS horas
-    chequea ofertas para todos los usuarios con alertas activas.
+    Corre en un thread separado. Cada SCHEDULER_POLL_MINUTES minutos
+    revisa qué usuarios tienen su intervalo personal vencido
+    Y están dentro de su ventana horaria de alertas.
     """
-    # Esperar 5 minutos antes del primer chequeo
-    logger.info("⏰ Scheduler iniciado. Primer chequeo en 5 minutos.")
-    time.sleep(5 * 60)
+    poll_minutes = config.SCHEDULER_POLL_MINUTES
+    logger.info("⏰ Scheduler inteligente iniciado. Polling cada %d min. Primer check en 3 min.", poll_minutes)
+    time.sleep(3 * 60)  # Esperar 3 min antes del primer chequeo
 
     while True:
         try:
-            logger.info("⏰ Iniciando ciclo automático del scheduler...")
-            active_users = db.get_all_active_users()
-            logger.info("👥 %d usuario(s) con alertas activas", len(active_users))
+            due_users = db.get_users_due_for_check()
+            logger.info("⏰ Scheduler poll | %d usuario(s) pendientes de chequeo", len(due_users))
 
-            for user in active_users:
+            for user in due_users:
                 tid = user["telegram_id"]
                 try:
-                    # Ejecutar la corutina async desde el thread sincrónico usando el loop principal
                     future = asyncio.run_coroutine_threadsafe(
                         check_jobs_for_user(app.bot, tid, db, scraper, notify_if_empty=False),
                         loop,
@@ -87,12 +95,12 @@ def run_scheduler(app: Application, loop: asyncio.AbstractEventLoop):
                     logger.error("Error en scheduler para usuario %s: %s", tid, e)
                 time.sleep(2)
 
-            logger.info("✅ Ciclo automático completado. Próximo en %dh.", config.CHECK_INTERVAL_HOURS)
+            if due_users:
+                logger.info("✅ Ciclo completado para %d usuario(s).", len(due_users))
         except Exception as e:
             logger.error("Error en ciclo del scheduler: %s", e)
 
-        # Dormir hasta el próximo ciclo
-        time.sleep(config.CHECK_INTERVAL_HOURS * 3600)
+        time.sleep(poll_minutes * 60)
 
 
 # ============================================================
@@ -104,15 +112,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👋 ¡Hola {user.first_name}! Soy tu asistente de búsqueda laboral IT.\n\n"
         "🎯 Qué puedo hacer:\n"
-        "• Monitorear ofertas cada 2 horas automáticamente\n"
+        "• Monitorear ofertas con horarios personalizados (3-24h)\n"
         "• Buscar en LinkedIn AR, Remotive, Arbeitnow, Jobicy y más\n"
         "• Notificarte SOLO cuando hay algo nuevo\n"
-        "• Guardar tu CV para tenerlo a mano\n\n"
-        "📋 Comandos:\n"
+        "• Guardar y analizar tu CV\n\n"
+        "📋 Comandos principales:\n"
         "/preferencias — Configurar tu perfil y zona\n"
+        "/horarios — Elegir cada cuánto y en qué horarios buscamos\n"
         "/cargar_cv — Subir tu CV (PDF o TXT)\n"
         "/buscar — Búsqueda inmediata\n"
-        "/activar_alertas — Monitoreo automático cada 2h\n"
+        "/activar_alertas — Monitoreo automático\n"
         "/desactivar_alertas — Pausar monitoreo\n"
         "/estado — Ver tu configuración\n"
         "/ayuda — Todos los comandos\n\n"
@@ -131,6 +140,7 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     custom_feeds = db.get_custom_feeds(user.id)
 
     profile = db.get_user_profile(user.id)
+    schedule = db.get_user_schedule(user.id)
     level_names = {
         "sin_experiencia": "Sin experiencia",
         "junior": "Junior",
@@ -147,6 +157,10 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     location = user_data.get("location") or config.DEFAULT_LOCATION
     kw_lines = "\n".join(f"  • {kw}" for kw in keywords) if keywords else "  Sin keywords"
 
+    interval = schedule.get("check_interval_hours", 6)
+    start_h = schedule.get("alert_start_hour", 8)
+    end_h = schedule.get("alert_end_hour", 22)
+
     feeds_section = ""
     if custom_feeds:
         feeds_section = "\n\nFeeds RSS personalizados:\n"
@@ -161,6 +175,7 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🛠 Tecnología: {tec}\n"
         f"⏳ Antigüedad máx: {profile.get('max_job_age_days', 30)} días\n\n"
         f"🔔 Alertas: {alertas}\n"
+        f"⏰ Frecuencia: cada {interval}h (de {start_h}:00 a {end_h}:00)\n"
         f"📄 CV: {cv}\n"
         f"🕐 Último chequeo: {last}\n\n"
         f"🔍 Keywords generadas ({len(keywords)}):\n{kw_lines}"
@@ -178,7 +193,7 @@ async def preferencias_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         "⚙️ Configurar tu perfil de búsqueda\n\n"
         "Respondé unas preguntas simples y yo armo las búsquedas.\n\n"
-        "<b>Paso 1/5 — ¿Cuál es tu nivel de experiencia?</b>\n\n"
+        "<b>Paso 1/6 — ¿Cuál es tu nivel de experiencia?</b>\n\n"
         "Escribí el número:\n"
         "1️⃣ Sin experiencia (busco mi primer empleo)\n"
         "2️⃣ Junior (menos de 2 años)\n"
@@ -212,7 +227,7 @@ async def preferencias_recibe_level(update: Update, context: ContextTypes.DEFAUL
     }
     await update.message.reply_text(
         f"✅ Nivel: <b>{level_names[level]}</b>\n\n"
-        "💼 <b>Paso 2/5 — ¿Qué tipo de rol buscás?</b>\n\n"
+        "💼 <b>Paso 2/6 — ¿Qué tipo de rol buscás?</b>\n\n"
         "Escribí uno o varios separados por coma:\n"
         "• backend\n"
         "• frontend\n"
@@ -237,7 +252,7 @@ async def preferencias_recibe_role(update: Update, context: ContextTypes.DEFAULT
     context.user_data["role_type"] = text
     await update.message.reply_text(
         f"✅ Rol: <b>{text}</b>\n\n"
-        "🛠 <b>Paso 3/5 — ¿Qué tecnologías sabés o estás aprendiendo?</b>\n\n"
+        "🛠 <b>Paso 3/6 — ¿Qué tecnologías sabés o estás aprendiendo?</b>\n\n"
         "Escribí separadas por coma:\n"
         "Ejemplo: Python, JavaScript, SQL, React, Java\n\n"
         "Si no sabés todavía, escribí: general",
@@ -262,7 +277,7 @@ async def preferencias_recibe_techs(update: Update, context: ContextTypes.DEFAUL
 
     await update.message.reply_text(
         f"✅ Tecnologías: <b>{text}</b>\n\n"
-        "📍 <b>Paso 4/5 — ¿En qué zona buscás trabajo?</b>\n\n"
+        "📍 <b>Paso 4/6 — ¿En qué zona buscás trabajo?</b>\n\n"
         f"Ubicación actual: {curr_location}\n\n"
         "Escribí la nueva ubicación o escribí 'misma' para mantener la actual.",
         parse_mode=ParseMode.HTML,
@@ -285,7 +300,35 @@ async def preferencias_recibe_location(update: Update, context: ContextTypes.DEF
 
     await update.message.reply_text(
         f"✅ Ubicación: <b>{location}</b>\n\n"
-        "⏳ <b>Paso 5/5 — ¿Qué antigüedad máxima pueden tener las ofertas?</b>\n\n"
+        "🏠 <b>Paso 5/6 — ¿Qué modalidad de trabajo buscás?</b>\n\n"
+        "Escribí una opción:\n"
+        "1️⃣ Remoto\n"
+        "2️⃣ Híbrido\n"
+        "3️⃣ Presencial\n"
+        "4️⃣ Cualquiera\n\n"
+        "Respondé con el número o la palabra.",
+        parse_mode=ParseMode.HTML,
+    )
+    return WAITING_MODALITY
+
+async def preferencias_recibe_modality(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
+    mod_map = {
+        "1": "remoto", "remoto": "remoto",
+        "2": "híbrido", "hibrido": "híbrido",
+        "3": "presencial", "presencial": "presencial",
+        "4": "cualquiera", "cualquiera": "cualquiera",
+    }
+    modality = mod_map.get(text)
+    if not modality:
+        await update.message.reply_text("❌ Respondé con 1, 2, 3 o 4.")
+        return WAITING_MODALITY
+        
+    context.user_data["job_modality"] = modality
+    
+    await update.message.reply_text(
+        f"✅ Modalidad: <b>{modality.capitalize()}</b>\n\n"
+        "⏳ <b>Paso 6/6 — ¿Qué antigüedad máxima pueden tener las ofertas?</b>\n\n"
         "Escribí el número:\n"
         "1️⃣ 24 horas\n"
         "2️⃣ 3 días\n"
@@ -321,8 +364,9 @@ async def preferencias_recibe_max_age(update: Update, context: ContextTypes.DEFA
     role_type = context.user_data.get("role_type", "")
     technologies = context.user_data.get("technologies", "")
     location = context.user_data.get("location") or config.DEFAULT_LOCATION
+    modality = context.user_data.get("job_modality", "cualquiera")
     
-    db.set_user_profile(user_id, exp_level, role_type, technologies, "cualquiera", max_job_age_days=max_age)
+    db.set_user_profile(user_id, exp_level, role_type, technologies, modality, max_job_age_days=max_age)
 
     # Generar keywords automáticas
     smart_keywords = db.generate_smart_keywords(user_id)
@@ -347,6 +391,7 @@ async def preferencias_recibe_max_age(update: Update, context: ContextTypes.DEFA
         f"💼 Rol: {role_type}\n"
         f"🛠 Tecnologías: {technologies}\n"
         f"📍 Ubicación: {location}\n"
+        f"🏠 Modalidad: {modality.capitalize()}\n"
         f"⏳ Antigüedad máx: {age_labels[max_age]}\n\n"
         f"🔍 Keywords generadas automáticamente:\n{kw_text}\n\n"
         "Ahora:\n"
@@ -448,11 +493,16 @@ async def activar_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Configurá tus keywords primero con /preferencias")
         return
     db.set_alerts_active(user_id, True)
+    schedule = db.get_user_schedule(user_id)
+    interval = schedule.get("check_interval_hours", 6)
+    start_h = schedule.get("alert_start_hour", 8)
+    end_h = schedule.get("alert_end_hour", 22)
     await update.message.reply_text(
         f"✅ Alertas activadas!\n\n"
-        f"Te notifico cada {config.CHECK_INTERVAL_HOURS} horas si hay nuevas ofertas.\n"
-        f"Monitoreando {len(keywords)} keywords.\n\n"
-        "Primer chequeo automático: en ~5 min desde que arranqué.\n"
+        f"⏰ Frecuencia: cada {interval} horas\n"
+        f"🕐 Horario activo: {start_h}:00 a {end_h}:00\n"
+        f"🔍 Monitoreando {len(keywords)} keywords\n\n"
+        "Usá /horarios para cambiar la frecuencia.\n"
         "Usá /desactivar_alertas para pausar."
     )
 
@@ -465,6 +515,213 @@ async def desactivar_alertas(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "• /activar_alertas — reactivar"
     )
 
+
+# ============================================================
+# /horarios — Configurar frecuencia y franja horaria
+# ============================================================
+async def horarios_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    db.create_user_if_not_exists(user.id, user.first_name or "Usuario")
+    schedule = db.get_user_schedule(user.id)
+    current = schedule.get("check_interval_hours", 6)
+    await update.message.reply_text(
+        "⏰ <b>Configurar horarios de alerta</b>\n\n"
+        f"Frecuencia actual: cada <b>{current}h</b>\n\n"
+        "<b>Paso 1/3 — ¿Cada cuántas horas querés recibir alertas?</b>\n\n"
+        "Escribí el número:\n"
+        "1️⃣ Cada 3 horas (más frecuente)\n"
+        "2️⃣ Cada 6 horas (recomendado)\n"
+        "3️⃣ Cada 8 horas (3 veces al día)\n"
+        "4️⃣ Cada 12 horas (2 veces al día)\n"
+        "5️⃣ Cada 24 horas (1 vez al día)\n\n"
+        "O escribí un número entre 3 y 24.\n"
+        "Escribí /cancelar para salir.",
+        parse_mode=ParseMode.HTML,
+    )
+    return WAITING_INTERVAL
+
+
+async def horarios_recibe_interval(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    interval_map = {"1": 3, "2": 6, "3": 8, "4": 12, "5": 24}
+    interval = interval_map.get(text)
+    if not interval:
+        try:
+            interval = int(text)
+        except ValueError:
+            await update.message.reply_text("❌ Escribí un número entre 3 y 24.")
+            return WAITING_INTERVAL
+
+    if interval < 3 or interval > 24:
+        await update.message.reply_text("❌ El intervalo debe ser entre 3 y 24 horas.")
+        return WAITING_INTERVAL
+
+    context.user_data["sched_interval"] = interval
+    await update.message.reply_text(
+        f"✅ Intervalo: cada <b>{interval} horas</b>\n\n"
+        "🌅 <b>Paso 2/3 — ¿Desde qué hora querés recibir alertas?</b>\n\n"
+        "Escribí la hora (0-23):\n"
+        "Ejemplo: <code>8</code> para las 8:00 AM\n"
+        "Ejemplo: <code>6</code> para las 6:00 AM",
+        parse_mode=ParseMode.HTML,
+    )
+    return WAITING_START_HOUR
+
+
+async def horarios_recibe_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    try:
+        start_h = int(text)
+    except ValueError:
+        await update.message.reply_text("❌ Escribí un número entre 0 y 23.")
+        return WAITING_START_HOUR
+
+    if start_h < 0 or start_h > 23:
+        await update.message.reply_text("❌ La hora debe ser entre 0 y 23.")
+        return WAITING_START_HOUR
+
+    context.user_data["sched_start"] = start_h
+    await update.message.reply_text(
+        f"✅ Alertas desde las <b>{start_h}:00</b>\n\n"
+        "🌙 <b>Paso 3/3 — ¿Hasta qué hora querés recibir alertas?</b>\n\n"
+        "Escribí la hora (0-23):\n"
+        "Ejemplo: <code>22</code> para las 10:00 PM\n"
+        "Ejemplo: <code>0</code> para medianoche",
+        parse_mode=ParseMode.HTML,
+    )
+    return WAITING_END_HOUR
+
+
+async def horarios_recibe_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    try:
+        end_h = int(text)
+    except ValueError:
+        await update.message.reply_text("❌ Escribí un número entre 0 y 23.")
+        return WAITING_END_HOUR
+
+    if end_h < 0 or end_h > 23:
+        await update.message.reply_text("❌ La hora debe ser entre 0 y 23.")
+        return WAITING_END_HOUR
+
+    interval = context.user_data.get("sched_interval", 6)
+    start_h = context.user_data.get("sched_start", 8)
+
+    db.set_user_schedule(user_id, interval, start_h, end_h)
+
+    await update.message.reply_text(
+        "✅ <b>¡Horarios configurados!</b>\n\n"
+        f"⏰ Frecuencia: cada <b>{interval} horas</b>\n"
+        f"🌅 Desde: <b>{start_h}:00</b>\n"
+        f"🌙 Hasta: <b>{end_h}:00</b>\n\n"
+        "Las alertas solo llegarán dentro de esa franja.\n"
+        "Usá /activar_alertas para activarlas.",
+        parse_mode=ParseMode.HTML,
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+# ============================================================
+# /analizar_cv — Análisis general del CV cargado
+# ============================================================
+async def analizar_cv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    db.create_user_if_not_exists(user_id, update.effective_user.first_name or "Usuario")
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data.get("cv_path"):
+        await update.message.reply_text(
+            "❌ No tenés un CV cargado.\n"
+            "Usá /cargar_cv para subir tu CV primero."
+        )
+        return
+
+    status_msg = await update.message.reply_text("🔍 Analizando tu CV...")
+
+    cv_text = parse_cv(user_data["cv_path"])
+    if not cv_text:
+        await status_msg.edit_text("❌ No pude leer tu CV. Intentá subirlo de nuevo con /cargar_cv")
+        return
+
+    # Análisis local de keywords
+    kws = extract_keywords(cv_text)
+    tech_str = ", ".join(kws["tech"]) if kws["tech"] else "Ninguna detectada"
+    soft_str = ", ".join(kws["soft"]) if kws["soft"] else "Ninguna detectada"
+
+    msg = (
+        "📋 <b>Análisis de tu CV</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🛠 <b>Keywords técnicas ({len(kws['tech'])}):</b>\n"
+        f"  {tech_str}\n\n"
+        f"🤝 <b>Skills blandas ({len(kws['soft'])}):</b>\n"
+        f"  {soft_str}\n\n"
+    )
+
+    # Si tiene Gemini key, dar tips avanzados
+    gemini_tips = await analyze_with_gemini(cv_text)
+    if gemini_tips:
+        msg += f"🤖 <b>Sugerencias de IA:</b>\n{gemini_tips}\n\n"
+    else:
+        msg += (
+            "💡 <b>Tip:</b> Usá /analizar_oferta para comparar tu CV \n"
+            "contra una oferta específica y recibir sugerencias.\n\n"
+        )
+
+    msg += (
+        "🔍 Para comparar con una oferta específica:\n"
+        "<code>/analizar_oferta [pegá la descripción de la oferta]</code>"
+    )
+
+    await status_msg.edit_text(msg, parse_mode=ParseMode.HTML)
+
+
+# ============================================================
+# /analizar_oferta — Comparar CV vs oferta específica
+# ============================================================
+async def analizar_oferta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    db.create_user_if_not_exists(user_id, update.effective_user.first_name or "Usuario")
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data.get("cv_path"):
+        await update.message.reply_text(
+            "❌ No tenés un CV cargado.\n"
+            "Usá /cargar_cv para subir tu CV primero."
+        )
+        return
+
+    # El texto de la oferta viene como argumentos del comando
+    offer_text = " ".join(context.args) if context.args else ""
+    if not offer_text or len(offer_text) < 10:
+        await update.message.reply_text(
+            "📝 <b>Analizar oferta vs tu CV</b>\n\n"
+            "Uso: Pegá la descripción de la oferta después del comando:\n\n"
+            "<code>/analizar_oferta Buscamos desarrollador Python "
+            "con experiencia en Django, PostgreSQL y Docker.</code>\n\n"
+            "También podés pegar el título + descripción completa.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    status_msg = await update.message.reply_text("🔍 Comparando tu CV con la oferta...")
+
+    cv_text = parse_cv(user_data["cv_path"])
+    if not cv_text:
+        await status_msg.edit_text("❌ No pude leer tu CV. Intentá subirlo de nuevo con /cargar_cv")
+        return
+
+    # Análisis local
+    analysis = compare_cv_with_offer(cv_text, offer_text)
+    msg = format_cv_analysis(analysis)
+
+    # Si tiene Gemini key, agregar tips avanzados
+    gemini_tips = await analyze_with_gemini(cv_text, offer_text)
+    if gemini_tips:
+        msg += f"\n\n🤖 <b>Sugerencias de IA:</b>\n{gemini_tips}"
+
+    await status_msg.edit_text(msg, parse_mode=ParseMode.HTML)
 
 # ============================================================
 # /agregar_feed
@@ -533,26 +790,214 @@ async def eliminar_feed(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# /borrar_datos — GDPR Compliance
+# ============================================================
+async def borrar_datos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not context.args or context.args[0].lower() != "confirmar":
+        await update.message.reply_text(
+            "⚠️ <b>ATENCIÓN: CUIDADO</b>\n\n"
+            "Estás por borrar TODA tu información de nuestra base de datos:\n"
+            "• Tu perfil y preferencias\n"
+            "• Tu CV (archivo físico)\n"
+            "• Tu historial de ofertas enviadas\n"
+            "• Tus feeds RSS personalizados\n\n"
+            "Esta acción no se puede deshacer.\n\n"
+            "Para proceder, escribí <code>/borrar_datos confirmar</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # 1. Obtener path del CV para borrar el archivo
+    user_data = db.get_user(user_id)
+    if user_data and user_data.get("cv_path"):
+        try:
+            cv_path = Path(user_data["cv_path"])
+            if cv_path.exists():
+                cv_path.unlink()
+                logger.info("CV borrado: %s", cv_path)
+        except Exception as e:
+            logger.error("Error borrando archivo CV: %s", e)
+
+    # 2. Borrar de la base de datos
+    db.delete_user_data(user_id)
+    
+    await update.message.reply_text(
+        "✅ <b>Tus datos han sido eliminados por completo.</b>\n\n"
+        "Esperamos verte pronto. Si querés volver a empezar, usá /start.",
+        parse_mode=ParseMode.HTML
+    )
+
+
+# ============================================================
+# /entrevista — Simulador de Entrevista con IA
+# ============================================================
+async def entrevista_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data.get("cv_path"):
+        await update.message.reply_text(
+            "❌ No tenés un CV cargado.\n"
+            "Usá /cargar_cv primero para que la IA pueda preguntarte sobre tu experiencia."
+        )
+        return ConversationHandler.END
+
+    if not config.GROQ_API_KEY:
+        await update.message.reply_text("❌ La IA no está configurada por el administrador.")
+        return ConversationHandler.END
+
+    status_msg = await update.message.reply_text("🧠 Generando preguntas de entrevista personalizadas...")
+    cv_text = parse_cv(user_data["cv_path"])
+    
+    questions_text = await generate_interview_questions(cv_text, user_data.get("role_type", "Developer"))
+    if not questions_text:
+        await status_msg.edit_text("❌ Error al contactar con la IA.")
+        return ConversationHandler.END
+
+    # Parsear las 5 preguntas
+    import re
+    questions = re.findall(r"\d[\.\)]\s*(.*)", questions_text)
+    if not questions:
+        # Fallback si el regex falla por formato
+        questions = [q.strip() for q in questions_text.split("\n") if q.strip()][:5]
+
+    if len(questions) < 3:
+        await status_msg.edit_text("❌ No pude generar suficientes preguntas. Intentá de nuevo.")
+        return ConversationHandler.END
+
+    context.user_data["interview_questions"] = questions
+    context.user_data["interview_index"] = 0
+    context.user_data["interview_cv_text"] = cv_text
+
+    await status_msg.edit_text(
+        "🎙 <b>¡Bienvenido al Simulador de Entrevistas JobBot!</b>\n\n"
+        "Voy a hacerte 5 preguntas (tecnología y soft skills) basadas en tu perfil.\n"
+        "Al final de cada una te daré feedback y una nota.\n\n"
+        "¿Estás listo? Empezamos con la primera...\n\n"
+        f"1️⃣ <b>{questions[0]}</b>",
+        parse_mode=ParseMode.HTML
+    )
+    return WAITING_INTERVIEW_ANSWER
+
+
+async def entrevista_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    answer = update.message.text.strip()
+    questions = context.user_data.get("interview_questions")
+    idx = context.user_data.get("interview_index", 0)
+    cv_text = context.user_data.get("interview_cv_text")
+
+    if not questions or idx >= len(questions):
+        return ConversationHandler.END
+
+    current_q = questions[idx]
+    
+    status_msg = await update.message.reply_text("🧐 Evaluando tu respuesta...")
+    
+    evaluation = await evaluate_interview_answer(current_q, answer, cv_text)
+    if not evaluation:
+        evaluation = "⚠️ No pude evaluar esta respuesta, pero sigamos."
+
+    await status_msg.edit_text(
+        f"📝 <b>Feedback Pregunta {idx+1}:</b>\n\n"
+        f"{evaluation}",
+        parse_mode=ParseMode.HTML
+    )
+
+    # Pasar a la siguiente o terminar
+    next_idx = idx + 1
+    if next_idx < len(questions):
+        context.user_data["interview_index"] = next_idx
+        await update.message.reply_text(
+            f"Siguiente pregunta...\n\n"
+            f"{next_idx+1}️⃣ <b>{questions[next_idx]}</b>",
+            parse_mode=ParseMode.HTML
+        )
+        return WAITING_INTERVIEW_ANSWER
+    else:
+        await update.message.reply_text(
+            "🏁 <b>¡Entrevista terminada!</b>\n\n"
+            "Espero que te haya servido para practicar. Podés volver a jugar cuando quieras con /entrevista.\n\n"
+            "¡Muchos éxitos en tus búsquedas reales! 🚀",
+            parse_mode=ParseMode.HTML
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+
+# ============================================================
+# /carta — Generador de Carta de Presentación
+# ============================================================
+async def carta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data.get("cv_path"):
+        await update.message.reply_text("❌ No tenés un CV cargado. Usá /cargar_cv primero.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "📝 <b>Generador de Carta de Presentación</b>\n\n"
+            "Uso: <code>/carta [descripción del puesto o link]</code>\n\n"
+            "Ejemplo: <code>/carta Desarrollador Python Senior en Mercado Libre</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    role_info = " ".join(context.args)
+    status_msg = await update.message.reply_text("✍️ Redactando tu carta de presentación personalizada...")
+
+    cv_text = parse_cv(user_data["cv_path"])
+    letter = await generate_cover_letter(cv_text, role_info)
+
+    if not letter:
+        await status_msg.edit_text("❌ No pude generar la carta. Verificá la configuración de la IA.")
+        return
+
+    await status_msg.edit_text(
+        "📄 <b>Tu Carta de Presentación</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"{letter}\n\n"
+        "💡 <i>Podés copiar este texto y ajustarlo a tu gusto.</i>",
+        parse_mode=ParseMode.HTML
+    )
+
+
+
+# ============================================================
 # /ayuda
 # ============================================================
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📚 Job Monitor Bot — Comandos\n\n"
-        "/start — Iniciar\n"
-        "/preferencias — Configurar tu perfil y zona\n"
-        "/cargar_cv — Subir CV (PDF o TXT)\n"
+        "📚 JobBot — Tu asistente de búsqueda laboral\n\n"
+        "⚙️ Configuración:\n"
+        "/preferencias — Perfil, nivel, tecnologías y zona\n"
+        "/horarios — Frecuencia y franja horaria de alertas\n"
+        "/cargar_cv — Subir tu CV (PDF o TXT)\n"
+        "/borrar_datos — Eliminar toda tu información (GDPR)\n\n"
+        "🔍 Búsqueda:\n"
         "/buscar — Búsqueda manual ahora\n"
-        "/activar_alertas — Monitoreo automático cada 2h\n"
-        "/desactivar_alertas — Pausar monitoreo\n"
-        "/estado — Ver tu configuración\n"
-        "/agregar_feed [URL] [Nombre] — Agregar RSS\n"
-        "/mis_feeds — Ver feeds agregados\n"
+        "/activar_alertas — Monitoreo automático personalizado\n"
+        "/desactivar_alertas — Pausar monitoreo\n\n"
+        "📄 Análisis de CV:\n"
+        "/analizar_cv — Análisis general de tu CV\n"
+        "/analizar_oferta [URL] — Comparar tu CV vs una oferta\n\n"
+        "📡 Feeds RSS:\n"
+        "/agregar_feed [URL] [Nombre] — Agregar fuente\n"
+        "/mis_feeds — Ver tus feeds\n"
         "/eliminar_feed [ID] — Eliminar feed\n"
-        "/web — Ver la landing page del bot\n"
+        "/entrevista — Practicar para una entrevista con IA\n"
+        "/carta [text] — Generar carta de presentación\n\n"
+        "📊 Info:\n"
+        "/estado — Tu configuración completa\n"
+        "/web — Landing page del bot\n"
         "/ayuda — Este mensaje\n\n"
-        "Fuentes: LinkedIn AR (Google News RSS), Remotive, Arbeitnow, Jobicy (remotos IT), "
-        "Google Jobs (con SerpAPI key), Twitter/X (con Bearer Token), "
-        "Feeds RSS personalizados."
+        "🌐 Fuentes: LinkedIn AR, Remotive, Arbeitnow, Jobicy, Himalayas, "
+        "Google Jobs, Twitter/X, RSS personalizados.",
+        parse_mode=ParseMode.HTML
     )
 
 
@@ -566,6 +1011,111 @@ async def web(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Ahí podés ver todas las funcionalidades, fuentes de empleo "
         "y cómo funciona el bot."
     )
+
+
+# ============================================================
+# JOB TRACKER (PRO — /track y /postulaciones)
+# ============================================================
+async def track_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Registra una postulación manual: /track [empresa] [puesto] [url]"""
+    tid = update.effective_user.id
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("❌ Uso: `/track [Empresa] [Puesto] [URL_opcional]`", parse_mode=ParseMode.MARKDOWN)
+        return
+    
+    company = args[0]
+    title = args[1]
+    url = args[2] if len(args) > 2 else ""
+    
+    db.add_application(tid, title, company, url)
+    await update.message.reply_text(f"✅ ¡Anotado! Suerte en **{company}**. Podés ver tus aplicaciones con /postulaciones.")
+
+async def postulaciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista las postulaciones actuales."""
+    tid = update.effective_user.id
+    apps = db.get_user_applications(tid)
+    
+    if not apps:
+        await update.message.reply_text("Aún no registraste ninguna postulación. Usá `/track Empresa Puesto` para empezar.")
+        return
+    
+    text = "📋 **Tus Postulaciones:**\n\n"
+    for a in apps[:10]: # Top 10
+        status_icon = "🔵" if a['status'] == 'aplicado' else "🟡" if a['status'] == 'entrevista' else "🔴" if a['status'] == 'rechazado' else "🟢"
+        text += f"{status_icon} **{a['company']}** - {a['job_title']}\n"
+        text += f"   └ Estado: {a['status'].capitalize()} | ID: `{a['id']}`\n\n"
+    
+    text += "\n*Cambiá el estado con:* `/estado_job [ID] [estado]`\n*(estados: aplicado, entrevista, rechazado, oferta)*"
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+async def estado_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cambia el estado de una postulación."""
+    tid = update.effective_user.id
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("❌ Uso: `/estado_job [ID] [nuevo_estado]`")
+        return
+    
+    try:
+        app_id = int(args[0])
+        new_status = args[1].lower()
+        if new_status not in ['aplicado', 'entrevista', 'rechazado', 'oferta']:
+            raise ValueError
+        
+        db.update_application_status(app_id, tid, new_status)
+        await update.message.reply_text(f"✅ Estado del job #{app_id} actualizado a **{new_status}**.")
+    except:
+        await update.message.reply_text("❌ ID inválido o estado no reconocido.")
+
+# ============================================================
+# GITHUB ANALYSIS (PRO — /github)
+# ============================================================
+async def github_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Analiza el perfil de GitHub del usuario: /github [username] [texto_oferta_opcional]"""
+    tid = update.effective_user.id
+    args = context.args
+    
+    # 1. Obtener username
+    if args:
+        username = args[0]
+        db.set_github_url(tid, username)
+    else:
+        user_data = db.get_user(tid)
+        username = user_data.get("github_url")
+        if not username:
+            await update.message.reply_text("❌ Pasame tu usuario de GitHub: `/github tu_usuario`")
+            return
+
+    msg = await update.message.reply_text(f"🔍 Analizando repositorios de `{username}`... Dame un segundo.", parse_mode=ParseMode.MARKDOWN)
+    
+    repos = await fetch_github_repos(username)
+    if not repos:
+        await msg.edit_text("❌ No encontré repositorios públicos para ese usuario.")
+        return
+
+    # 2. Si hay texto de oferta (pegado después del username), hacemos match
+    job_desc = " ".join(args[1:]) if len(args) > 1 else ""
+    
+    if job_desc:
+        await msg.edit_text("🤖 Comparando tu código con la oferta...")
+        analysis = await analyze_github_match(repos, job_desc)
+    else:
+        # Resumen general si no hay oferta
+        summary = f"✅ Encontré {len(repos)} repositorios.\n\n"
+        techs = {}
+        for r in repos:
+            lang = r['language'] or "Otros"
+            techs[lang] = techs.get(lang, 0) + 1
+        
+        summary += "**Stack detectado:**\n"
+        for lang, count in sorted(techs.items(), key=lambda x: x[1], reverse=True):
+            summary += f"- {lang}: {count} proyectos\n"
+        
+        summary += "\n*Tip:* Pegá la descripción de un puesto después de tu usuario para ver si hacés match!"
+        analysis = summary
+
+    await update.message.reply_text(analysis, parse_mode=ParseMode.MARKDOWN)
 
 
 # ============================================================
@@ -598,7 +1148,30 @@ def main():
             WAITING_ROLE:     [MessageHandler(filters.TEXT & ~filters.COMMAND, preferencias_recibe_role)],
             WAITING_TECHS:    [MessageHandler(filters.TEXT & ~filters.COMMAND, preferencias_recibe_techs)],
             WAITING_LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, preferencias_recibe_location)],
+            WAITING_MODALITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, preferencias_recibe_modality)],
             WAITING_MAX_AGE:  [MessageHandler(filters.TEXT & ~filters.COMMAND, preferencias_recibe_max_age)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+        allow_reentry=True,
+    )
+
+    # ---- ConversationHandler para /horarios ----
+    conv_horarios = ConversationHandler(
+        entry_points=[CommandHandler("horarios", horarios_start)],
+        states={
+            WAITING_INTERVAL:   [MessageHandler(filters.TEXT & ~filters.COMMAND, horarios_recibe_interval)],
+            WAITING_START_HOUR: [MessageHandler(filters.TEXT & ~filters.COMMAND, horarios_recibe_start)],
+            WAITING_END_HOUR:   [MessageHandler(filters.TEXT & ~filters.COMMAND, horarios_recibe_end)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+        allow_reentry=True,
+    )
+
+    # ---- ConversationHandler para /entrevista ----
+    conv_entrevista = ConversationHandler(
+        entry_points=[CommandHandler("entrevista", entrevista_start)],
+        states={
+            WAITING_INTERVIEW_ANSWER: [MessageHandler(filters.TEXT & ~filters.COMMAND, entrevista_logic)],
         },
         fallbacks=[CommandHandler("cancelar", cancelar)],
         allow_reentry=True,
@@ -610,14 +1183,24 @@ def main():
     app.add_handler(CommandHandler("help",               ayuda))
     app.add_handler(CommandHandler("estado",             estado))
     app.add_handler(conv_preferencias)
+    app.add_handler(conv_horarios)
+    app.add_handler(conv_entrevista)
     app.add_handler(CommandHandler("cargar_cv",          cargar_cv_start))
+    app.add_handler(CommandHandler("analizar_oferta",    analizar_oferta))
+    app.add_handler(CommandHandler("carta",              carta))
+    app.add_handler(CommandHandler("entrevista",         entrevista_start))
     app.add_handler(CommandHandler("buscar",             buscar))
     app.add_handler(CommandHandler("activar_alertas",    activar_alertas))
     app.add_handler(CommandHandler("desactivar_alertas", desactivar_alertas))
     app.add_handler(CommandHandler("agregar_feed",       agregar_feed))
     app.add_handler(CommandHandler("mis_feeds",          mis_feeds))
     app.add_handler(CommandHandler("eliminar_feed",      eliminar_feed))
+    app.add_handler(CommandHandler("track",              track_job))
+    app.add_handler(CommandHandler("postulaciones",      postulaciones))
+    app.add_handler(CommandHandler("estado_job",         estado_job))
+    app.add_handler(CommandHandler("github",             github_analysis))
     app.add_handler(CommandHandler("web",                 web))
+    app.add_handler(CommandHandler("borrar_datos",       borrar_datos))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     # ---- Crear y setear el event loop ANTES de lanzar el thread (Python 3.14+) ----
@@ -637,7 +1220,7 @@ def main():
     if config.STATS_API_ENABLED:
         run_stats_api(db, port=config.STATS_API_PORT)
 
-    logger.info("✅ Bot listo. Scheduler en background (primer chequeo en 5 min).")
+    logger.info("✅ Bot listo. Scheduler inteligente en background (polling cada %d min).", config.SCHEDULER_POLL_MINUTES)
     logger.info("📡 Esperando mensajes... Presioná Ctrl+C para detener.")
 
     # ---- Iniciar polling (maneja su propio event loop internamente) ----
