@@ -97,6 +97,14 @@ WAITING_LEVEL, WAITING_ROLE, WAITING_TECHS, WAITING_LOCATION, WAITING_MAX_AGE, W
 WAITING_INTERVAL, WAITING_START_HOUR, WAITING_END_HOUR = range(10, 13)
 WAITING_INTERVIEW_START, WAITING_INTERVIEW_ANSWER = range(20, 22)
 
+
+def _get_user_plan(telegram_id: int) -> str:
+    """Devuelve el plan del usuario (free/pro/premium)."""
+    try:
+        return db.get_user_plan(telegram_id)
+    except Exception:
+        return "free"
+
 # ============================================================
 # SCHEDULER EN THREAD SEPARADO (reemplaza JobQueue)
 # Funciona con cualquier versión de Python incluyendo 3.14
@@ -533,6 +541,16 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db.create_user_if_not_exists(user_id, update.effective_user.first_name or "Usuario")
+
+    # Límite de búsquedas manuales según plan (usa web_users.searches_limit)
+    plan = _get_user_plan(user_id)
+    if not db.check_usage_limit(user_id, "searches"):
+        await update.message.reply_text(
+            "🔒 Alcanzaste el límite de búsquedas manuales para tu plan actual.\n"
+            "Actualizá tu suscripción para seguir usando /buscar sin límites.",
+        )
+        return
+
     keywords = db.get_user_keywords(user_id)
     if not keywords:
         await update.message.reply_text("⚠️ No tenés keywords. Usá /preferencias primero.")
@@ -553,6 +571,8 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             notify_if_empty=True,
             respect_channel=False,
         )
+        # Contabilizar el uso de búsqueda manual
+        db.increment_usage(user_id, "searches")
         await status_msg.delete()
     except Exception as e:
         logger.error("Error en búsqueda manual: %s", e)
@@ -762,6 +782,23 @@ async def analizar_oferta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.create_user_if_not_exists(user_id, update.effective_user.first_name or "Usuario")
     user_data = db.get_user(user_id)
 
+     # Gating básico por plan + límite de uso de IA
+    plan = _get_user_plan(user_id)
+    if plan == "free":
+        await update.message.reply_text(
+            "⚠️ Esta función forma parte de JobBot Pro.\n"
+            "Podés seguir usando las alertas y la búsqueda básica, "
+            "y actualizarte a Pro para comparar tu CV contra ofertas específicas.",
+        )
+        return
+
+    if not db.check_usage_limit(user_id, "ai_analyses"):
+        await update.message.reply_text(
+            "🔒 Alcanzaste el límite de análisis de IA para tu plan actual.\n"
+            "Actualizá tu suscripción para seguir usando /analizar_oferta.",
+        )
+        return
+
     if not user_data or not user_data.get("cv_path"):
         await update.message.reply_text(
             "❌ No tenés un CV cargado.\n"
@@ -797,6 +834,12 @@ async def analizar_oferta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gemini_tips = await analyze_with_gemini(cv_text, offer_text)
     if gemini_tips:
         msg += f"\n\n🤖 <b>Sugerencias de IA:</b>\n{gemini_tips}"
+
+    # Contabilizar uso de análisis IA para el plan del usuario
+    try:
+        db.increment_usage(user_id, "ai_analyses")
+    except Exception as e:
+        logger.error("Error incrementando uso de ai_analyses para %s: %s", user_id, e)
 
     await status_msg.edit_text(msg, parse_mode=ParseMode.HTML)
 
@@ -912,6 +955,15 @@ async def borrar_datos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 async def entrevista_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    plan = _get_user_plan(user_id)
+    if plan != "premium":
+        await update.message.reply_text(
+            "🔒 El simulador de entrevistas con IA es parte del plan Premium.\n"
+            "Podés seguir usando el bot para buscar trabajos y analizar tu CV, "
+            "y actualizarte a Premium para practicar entrevistas.",
+        )
+        return
+
     user_data = db.get_user(user_id)
 
     if not user_data or not user_data.get("cv_path"):
@@ -1096,6 +1148,13 @@ async def web(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def track_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Registra una postulación manual: /track [empresa] [puesto] [url]"""
     tid = update.effective_user.id
+    plan = _get_user_plan(tid)
+    if plan == "free":
+        await update.message.reply_text(
+            "🔒 El Job Tracker es parte de JobBot Pro.\n"
+            "Actualizá tu plan para habilitar el pipeline de postulaciones.",
+        )
+        return
     args = context.args
     if len(args) < 2:
         await update.message.reply_text("❌ Uso: `/track [Empresa] [Puesto] [URL_opcional]`", parse_mode=ParseMode.MARKDOWN)
@@ -1111,6 +1170,13 @@ async def track_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def postulaciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Lista las postulaciones actuales."""
     tid = update.effective_user.id
+    plan = _get_user_plan(tid)
+    if plan == "free":
+        await update.message.reply_text(
+            "🔒 El pipeline de postulaciones es parte de JobBot Pro.\n"
+            "Actualizá tu plan para ver y gestionar tus aplicaciones desde JobBot.",
+        )
+        return
     apps = db.get_user_applications(tid)
     
     if not apps:

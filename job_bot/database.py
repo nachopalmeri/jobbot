@@ -899,6 +899,7 @@ class Database:
 
     def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
         """Actualiza el plan del usuario."""
+        # Actualizar plan + metadatos de suscripción
         if expires_at:
             self._execute(
                 """UPDATE web_users SET plan = ?, subscription_status = 'active', 
@@ -910,6 +911,50 @@ class Database:
                 "UPDATE web_users SET plan = ? WHERE telegram_id = ?",
                 (plan, telegram_id),
             )
+
+        # Ajustar límites según el plan elegido
+        plan = (plan or "free").lower()
+        if plan == "free":
+            # Valores conservadores para el tier gratuito
+            self._execute(
+                """UPDATE web_users SET 
+                        ai_analyses_limit = 2,
+                        searches_limit    = 5,
+                        job_tracker_enabled = 0
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+        elif plan == "pro":
+            # Pro: búsquedas y análisis prácticamente ilimitados + tracker
+            self._execute(
+                """UPDATE web_users SET 
+                        ai_analyses_limit = 0,
+                        searches_limit    = 0,
+                        job_tracker_enabled = 1
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+        elif plan == "premium":
+            # Premium: igual que Pro pero lo usamos para gatear features extra
+            self._execute(
+                """UPDATE web_users SET 
+                        ai_analyses_limit = 0,
+                        searches_limit    = 0,
+                        job_tracker_enabled = 1
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+
+    def get_user_plan(self, telegram_id: int) -> str:
+        """Retorna el plan actual del usuario web vinculado.
+
+        Si no existe entrada en web_users, asumimos 'free'. Esto permite
+        usar planes sin obligar a que todos los usuarios pasen por el flujo web.
+        """
+        user = self.get_web_user(telegram_id)
+        if not user:
+            return "free"
+        return (user.get("plan") or "free").lower()
 
     def increment_usage(self, telegram_id: int, usage_type: str):
         """Incrementa el uso de un tipo específico."""

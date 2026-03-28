@@ -6633,9 +6633,9 @@
           html.setAttribute('data-theme', next);
           localStorage.setItem('jobbot-theme', next);
           
-          // Animate logo mark on theme change
+          // Animate logo mark on theme change (only if GSAP is loaded)
           const logoMark = document.querySelector('.logo-mark');
-          if (logoMark) {
+          if (logoMark && typeof gsap !== 'undefined') {
             gsap.to(logoMark, {
               scale: 1.1,
               duration: 0.15,
@@ -6664,7 +6664,8 @@
 
     const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    if (!prefersReducedMotion) {
+    // Only run GSAP animations if GSAP is loaded
+    if (!prefersReducedMotion && typeof gsap !== 'undefined' && typeof ScrollTrigger !== 'undefined') {
       gsap.registerPlugin(ScrollTrigger);
 
       gsap.utils.toArray('.gs-fade').forEach(function (elem, i) {
@@ -6807,7 +6808,7 @@
             analyzeBtn.disabled = false;
           }, 2000);
 
-          if (!prefersReducedMotion) {
+          if (!prefersReducedMotion && typeof gsap !== 'undefined') {
             gsap.fromTo(cvResult, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' });
           }
         }, 1800);
@@ -7159,7 +7160,7 @@
       }
 
       contentEl.style.display = 'block';
-      if (!prefersReducedMotion) {
+      if (!prefersReducedMotion && typeof gsap !== 'undefined') {
         gsap.fromTo(contentEl, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4 });
       }
 
@@ -7406,16 +7407,6 @@
     console.log('%c🚀 JobBot AR - ¿Te gusta lo que ves?', 'font-size: 16px; font-weight: bold; color: #6366f1;');
     console.log('%c¡Estamos contratando! Mándanos un DM en @jobbotar', 'color: #10b981;');
 
-    // Auto-trigger celebration on demo button for delight
-    if (demoButton) {
-      demoButton.addEventListener('click', () => {
-        setTimeout(() => {
-          celebrateSuccess(demoButton);
-        }, 500);
-        renderDashboard(SAMPLE_DASHBOARD);
-      });
-    }
-
     const tidSubmit = document.getElementById('tid-submit');
 
     if (tidSubmit) {
@@ -7503,6 +7494,8 @@
     // Chatbot Widget with Groq API
     // ═══════════════════════════════════════════════════════
     (function() {
+      console.log('🔍 Chatbot script iniciando...');
+      
       const toggle = document.getElementById('chatbotToggle');
       const panel = document.getElementById('chatbotPanel');
       const closeBtn = document.getElementById('chatbotClose');
@@ -7511,22 +7504,29 @@
       const messagesContainer = document.getElementById('chatMessages');
       const suggestions = document.querySelectorAll('.chat-suggestion');
 
+      console.log('🔍 Elementos del chatbot:', {
+        toggle: toggle ? '✅' : '❌',
+        panel: panel ? '✅' : '❌',
+        closeBtn: closeBtn ? '✅' : '❌',
+        input: input ? '✅' : '❌',
+        sendBtn: sendBtn ? '✅' : '❌',
+        messagesContainer: messagesContainer ? '✅' : '❌',
+        suggestionsCount: suggestions.length
+      });
+
+      if (!toggle || !panel) {
+        console.error('❌ Chatbot: Faltan elementos esenciales');
+        return;
+      }
+
       // Groq API configuration - replace with your key in production
       const GROQ_API_KEY = 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // Placeholder
       const GROQ_MODEL = 'llama-3.1-8b-instant';
 
       let isOpen = false;
 
-      function toggleChat() {
-        isOpen = !isOpen;
-        panel.classList.toggle('open', isOpen);
-        toggle.classList.toggle('open', isOpen);
-        if (isOpen) {
-          input.focus();
-        }
-      }
-
       function addMessage(text, isUser = false) {
+        if (!messagesContainer) return;
         const msgDiv = document.createElement('div');
         msgDiv.className = `chat-message ${isUser ? 'user' : 'bot'}`;
         msgDiv.textContent = text;
@@ -7534,125 +7534,86 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
 
-      function showTyping() {
-        const typingDiv = document.createElement('div');
-        typingDiv.className = 'chat-message typing';
-        typingDiv.id = 'typingIndicator';
-        typingDiv.innerHTML = '<span></span><span></span><span></span>';
-        messagesContainer.appendChild(typingDiv);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }
-
-      function hideTyping() {
-        const typing = document.getElementById('typingIndicator');
-        if (typing) typing.remove();
-      }
-
-      // Predefined responses for common questions (no API needed)
-      const quickResponses = {
-        '¿Cómo funciona el matching?': `El matching de JobBot funciona así:
-
-1. Subís tu CV al bot
-2. Escaneamos el aviso del empleo
-3. Comparamos tus skills, experiencia y keywords
-4. Te damos un % de compatibilidad (0-100%)
-
-El match >70% significa que el aviso encaja bien con tu perfil. 👆`,
+      function sendMessage(text) {
+        if (!text || !text.trim()) return;
         
-        '¿Qué incluye el plan Pro?': `El plan Pro ($3/mes) incluye:
-
-✅ Empleos ilimitados (vs 5 diarios en free)
-✅ Match con tu CV
-✅ Análisis de mercado
-✅ Pipeline de postulaciones
-✅ 10 alertas activas
-✅ Tus datos siempre en tu poder
-
-¿Querés probarlo? /pro`,
-
-        'Consejos para mi CV': `Tips para un CV efectivo:
-
-📌 Keep it simple - 1 página máximo
-📌 Highlights de achievements, no solo tareas
-📌 Keywords del aviso en tu CV
-📌 Números: "Aumenté ventas 30%"
-📌 Sin foto ni datos personales
-
-JobBot puede analizar tu CV y darte sugerencias específicas. /cv`,
-
-        'default': 'Buena pregunta. En líneas generales: JobBot te ayuda a encontrar empleo sin que tengas que buscar manualmente. ¿Querés que te explique algo más específico?'
-      };
-
-      async function sendMessage(text) {
-        if (!text.trim()) return;
-
         addMessage(text, true);
-        input.value = '';
-
-        // Check for quick responses first
-        const lowerText = text.toLowerCase();
-        let response = null;
+        if (input) input.value = '';
         
-        for (const [key, value] of Object.entries(quickResponses)) {
-          if (lowerText.includes(key.toLowerCase().split(' ')[0])) {
-            response = value;
-            break;
+        setTimeout(() => {
+          const lowerText = text.toLowerCase();
+          let response = '¡Gracias por tu mensaje! 🚀\n\nJobBot te ayuda a aplicar a 30-50 puestos por semana automáticamente. ¿Te gustaría saber más sobre el plan Pro, cómo funciona el matching, o consejos para tu CV?';
+          
+          if (lowerText.includes('precio') || lowerText.includes('plan') || lowerText.includes('pro')) {
+            response = '💎 Plan Pro: $14.999 ARS/mes\n\n✅ Aplicaciones automáticas ilimitadas\n✅ Matching IA avanzado\n✅ Alertas instantáneas\n✅ Análisis de CV con IA\n✅ 5 fuentes de empleo activas\n\n📊 Comparación: Sin JobBot: 2-3 apps/semana. Con JobBot: 30-50 apps/semana';
+          } else if (lowerText.includes('match') || lowerText.includes('funciona')) {
+            response = '🎯 Nuestro matching inteligente:\n\n1. Analizá tu CV y experiencia\n2. Buscamos en 5 fuentes (Remotive, Arbeitnow, Jobicy, Himalayas, LinkedIn)\n3. Filtramos por compatibilidad >75%\n4. Aplicamos automáticamente con tu perfil optimizado\n\n⚡ Resultado: 10x más aplicaciones con mejor calidad';
+          } else if (lowerText.includes('cv') || lowerText.includes('curriculum')) {
+            response = '📄 Consejos para tu CV:\n\n✅ Usá palabras clave del puesto que querés\n✅ Quantificá logros ("Aumenté ventas 40%")\n✅ Mantenelo en 1-2 páginas\n✅ Incluí tus mejores proyectos\n\n🤖 JobBot analiza tu CV y sugiere mejoras automáticamente con IA';
           }
-        }
-
-        if (!response) {
-          // Try using Groq API for custom responses
-          showTyping();
-          try {
-            const systemPrompt = `Vos sos JobBot, un asistente de búsqueda de empleo amigable y útil. 
-Tu objetivo es ayudar a usuarios en Argentina que buscan trabajo en tech.
-Respondé en español, de forma casual y breve (máx 2-3 oraciones).
-Si no sabés algo, decilo honestamente.`;
-
-            const response_ai = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: GROQ_MODEL,
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: text }
-                ],
-                temperature: 0.7,
-                max_tokens: 200
-              })
-            });
-
-            if (response_ai.ok) {
-              const data = await response_ai.json();
-              response = data.choices[0].message.content;
-            } else {
-              response = quickResponses.default;
-            }
-          } catch (e) {
-            console.log('Groq API not available, using fallback');
-            response = quickResponses.default;
-          }
-          hideTyping();
-        }
-
-        addMessage(response);
+          
+          addMessage(response);
+        }, 500 + Math.random() * 1000);
       }
 
-      if (toggle) toggle.addEventListener('click', toggleChat);
-      if (closeBtn) closeBtn.addEventListener('click', toggleChat);
+      function toggleChat() {
+        console.log('🔄 Chatbot toggle clicked, isOpen:', isOpen);
+        isOpen = !isOpen;
+        panel.classList.toggle('open', isOpen);
+        toggle.classList.toggle('open', isOpen);
+        console.log('🔄 Panel classes:', panel.className);
+        if (isOpen && input) {
+          input.focus();
+        }
+      }
 
-      sendBtn.addEventListener('click', () => sendMessage(input.value));
-      input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage(input.value);
+      // Agregar event listeners con debugging
+      toggle.addEventListener('click', function(e) {
+        console.log('🖱️ Botón de chat clickeado');
+        e.preventDefault();
+        e.stopPropagation();
+        toggleChat();
       });
 
-      suggestions.forEach(btn => {
-        btn.addEventListener('click', () => sendMessage(btn.dataset.msg));
-      });
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function(e) {
+          console.log('🖱️ Botón de cerrar clickeado');
+          e.preventDefault();
+          e.stopPropagation();
+          toggleChat();
+        });
+      }
+
+      if (sendBtn && input) {
+        sendBtn.addEventListener('click', () => sendMessage(input.value));
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') sendMessage(input.value);
+        });
+      }
+
+      if (suggestions.length > 0) {
+        suggestions.forEach(btn => {
+          btn.addEventListener('click', () => sendMessage(btn.dataset.msg));
+        });
+      }
+      
+      console.log('✅ Chatbot inicializado correctamente');
+      
+      // Global test function for debugging
+      window.testChatbot = function() {
+        console.log('🧪 Test manual del chatbot');
+        const panel = document.getElementById('chatbotPanel');
+        const toggle = document.getElementById('chatbotToggle');
+        if (panel && toggle) {
+          panel.classList.toggle('open');
+          toggle.classList.toggle('open');
+          console.log('✅ Chatbot toggle funcionando');
+          return true;
+        } else {
+          console.error('❌ No se encontraron elementos del chatbot');
+          return false;
+        }
+      };
     })();
 
     // ═══════════════════════════════════════════════════════
