@@ -11,6 +11,7 @@ import logging
 import os
 import threading
 import time
+import html
 from pathlib import Path
 
 from telegram import Update
@@ -24,18 +25,51 @@ from telegram.ext import (
     filters,
 )
 
-import config
-from database import Database
-from job_scraper import JobScraper
-from scheduler import check_jobs_for_user
-from stats_api import run_stats_api
-from cv_analyzer import (
-    parse_cv, extract_keywords, compare_cv_with_offer,
-    format_cv_analysis, analyze_with_gemini,
-    generate_interview_questions, evaluate_interview_answer,
-    generate_cover_letter,
-)
-from github_analyzer import fetch_github_repos, analyze_github_match
+# Imports tolerantes al contexto de ejecución (script vs paquete)
+try:
+    import config  # Ejecutando dentro de job_bot/
+except ImportError:  # Ejecutando como paquete: python -m job_bot.bot
+    from job_bot import config
+
+try:
+    from database import Database
+except ImportError:
+    from job_bot.database import Database
+
+try:
+    from job_scraper import JobScraper
+except ImportError:
+    from job_bot.job_scraper import JobScraper
+
+try:
+    from scheduler import check_jobs_for_user
+except ImportError:
+    from job_bot.scheduler import check_jobs_for_user
+
+try:
+    from stats_api import run_stats_api
+except ImportError:
+    from job_bot.stats_api import run_stats_api
+
+try:
+    from cv_analyzer import (
+        parse_cv, extract_keywords, compare_cv_with_offer,
+        format_cv_analysis, analyze_with_gemini,
+        generate_interview_questions, evaluate_interview_answer,
+        generate_cover_letter,
+    )
+except ImportError:
+    from job_bot.cv_analyzer import (
+        parse_cv, extract_keywords, compare_cv_with_offer,
+        format_cv_analysis, analyze_with_gemini,
+        generate_interview_questions, evaluate_interview_answer,
+        generate_cover_letter,
+    )
+
+try:
+    from github_analyzer import fetch_github_repos, analyze_github_match
+except ImportError:
+    from job_bot.github_analyzer import fetch_github_repos, analyze_github_match
 
 # ============================================================
 # LOGGING
@@ -101,6 +135,15 @@ def run_scheduler(app: Application, loop: asyncio.AbstractEventLoop):
             logger.error("Error en ciclo del scheduler: %s", e)
 
         time.sleep(poll_minutes * 60)
+
+
+# ============================================================
+# ERROR HANDLER GLOBAL
+# ============================================================
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler global para capturar excepciones de Telegram y loguearlas bien."""
+    logger.error("Excepción en handler de Telegram", exc_info=context.error)
 
 
 # ============================================================
@@ -295,7 +338,8 @@ async def preferencias_recibe_techs(update: Update, context: ContextTypes.DEFAUL
     context.user_data["technologies"] = text
 
     user_data = db.get_user(update.effective_user.id)
-    curr_location = user_data.get("location", config.DEFAULT_LOCATION) if user_data else config.DEFAULT_LOCATION
+    curr_location_raw = user_data.get("location", config.DEFAULT_LOCATION) if user_data else config.DEFAULT_LOCATION
+    curr_location = html.escape(str(curr_location_raw))
 
     await update.message.reply_text(
         f"✅ Tecnologías: <b>{text}</b>\n\n"
@@ -320,8 +364,10 @@ async def preferencias_recibe_location(update: Update, context: ContextTypes.DEF
 
     context.user_data["location"] = location
 
+    safe_location = html.escape(str(location))
+
     await update.message.reply_text(
-        f"✅ Ubicación: <b>{location}</b>\n\n"
+        f"✅ Ubicación: <b>{safe_location}</b>\n\n"
         "🏠 <b>Paso 5/6 — ¿Qué modalidad de trabajo buscás?</b>\n\n"
         "Escribí una opción:\n"
         "1️⃣ Remoto\n"
@@ -1170,6 +1216,9 @@ def main():
 
     # ---- Construir la app SIN job-queue ----
     app = Application.builder().token(config.TELEGRAM_TOKEN).build()
+
+    # ---- Registrar handler global de errores ----
+    app.add_error_handler(error_handler)
 
     # ---- ConversationHandler para /preferencias ----
     conv_preferencias = ConversationHandler(

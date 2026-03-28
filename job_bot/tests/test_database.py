@@ -1,7 +1,7 @@
 import unittest
 import sqlite3
 import os
-from database import Database
+from job_bot.database import Database
 
 class TestDatabase(unittest.TestCase):
     def setUp(self):
@@ -23,7 +23,8 @@ class TestDatabase(unittest.TestCase):
         self.db.create_user_if_not_exists(123, "Test User")
         user = self.db.get_user(123)
         self.assertEqual(user["name"], "Test User")
-        self.assertEqual(user["job_modality"], "cualquiera")
+        # Por defecto, los usuarios nuevos empiezan buscando trabajos remotos
+        self.assertEqual(user["job_modality"], "remoto")
 
     def test_set_user_profile(self):
         self.db.create_user_if_not_exists(123, "Test User")

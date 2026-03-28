@@ -25,7 +25,10 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from typing import List, Dict
 
-import config
+try:
+    import config
+except ImportError:  # Permite uso como paquete: job_bot.job_scraper
+    from job_bot import config
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +227,9 @@ class JobScraper:
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as e:
-            logger.error("Jobicy API error: %s", e)
+            # Esta API a veces devuelve 400 para ciertos tags; lo consideramos un warning
+            # porque el bot sigue funcionando con el resto de las fuentes.
+            logger.warning("Jobicy API error: %s", e)
             return []
 
         jobs: List[Dict] = []
@@ -663,21 +668,35 @@ class JobScraper:
         negatives = list(set([n.lower() for n in base_negatives]))
 
         filtered = []
+        level = (experience_level or "").lower()
+
         for job in jobs:
-            text = f"{job.get('title','')} {job.get('description','')} {job.get('company','')} {job.get('location','')}".lower()
-            
+            title = job.get("title", "")
+            text = f"{title} {job.get('description','')} {job.get('company','')} {job.get('location','')}".lower()
+
             has_negative = False
-            for neg in negatives:
-                # Buscamos con bordes de palabra para evitar falsos positivos (ej: "SRE" conteniendo "sr")
-                import re
-                if re.search(r'\b' + re.escape(neg) + r'\b', text):
+
+            # Regla explícita y simple para juniors/sin experiencia:
+            # nunca mostrar avisos que mencionen Senior/Sr en el título.
+            if level in {"junior", "sin_experiencia"}:
+                title_l = title.lower()
+                if "senior" in title_l or " sr" in title_l or title_l.startswith("sr "):
+                    logger.debug("Filtrado negativo (regla junior): '%s'", title)
                     has_negative = True
-                    logger.debug("Filtrado negativo: '%s' por keyword '%s'", job.get("title", ""), neg)
-                    break
-                    
+
+            # Si aún no se marcó como negativo, aplicar el filtro general
+            if not has_negative:
+                for neg in negatives:
+                    # Buscamos con bordes de palabra para evitar falsos positivos (ej: "SRE" conteniendo "sr")
+                    import re
+                    if re.search(r'\b' + re.escape(neg) + r'\b', text):
+                        has_negative = True
+                        logger.debug("Filtrado negativo: '%s' por keyword '%s'", job.get("title", ""), neg)
+                        break
+
             if not has_negative:
                 filtered.append(job)
-                
+
         return filtered
 
     # ----------------------------------------------------------

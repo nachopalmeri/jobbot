@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from collections import Counter
 
-import config
+try:
+    import config
+except ImportError:
+    from job_bot import config
 
 logger = logging.getLogger(__name__)
 

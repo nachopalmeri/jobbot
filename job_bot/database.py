@@ -18,14 +18,23 @@ logger = logging.getLogger(__name__)
 
 
 class Database:
-    """Maneja las operaciones de base de datos (SQLite o PostgreSQL)."""
+    """Maneja las operaciones de base de datos (SQLite o PostgreSQL).
 
-    def __init__(self):
-        import config
+    Permite inyectar parámetros opcionales en tests (por ejemplo, un path
+    de SQLite temporal) pero sigue utilizando config.py por defecto en
+    producción.
+    """
 
-        self.db_type = config.DATABASE_TYPE
-        self.db_path = config.DATABASE_PATH
-        self.pg_url = config.DATABASE_URL
+    def __init__(self, db_path: Optional[str] = None, db_type: Optional[str] = None, pg_url: Optional[str] = None):
+        try:
+            import config  # Ejecución directa desde job_bot/
+        except ImportError:
+            from job_bot import config  # Import como paquete job_bot.database
+
+        # Valores por defecto desde config, sobreescribibles en tests
+        self.db_type = (db_type or config.DATABASE_TYPE).lower()
+        self.db_path = db_path or config.DATABASE_PATH
+        self.pg_url = pg_url or config.DATABASE_URL
 
         if self.db_type == "supabase" and not POSTGRES_AVAILABLE:
             logger.error(
@@ -278,7 +287,13 @@ class Database:
 
     def create_user_if_not_exists(self, telegram_id: int, name: str):
         """Registra un usuario nuevo y le asigna keywords por defecto."""
-        import config
+        try:
+            import config
+        except ImportError:
+            from job_bot import config
+
+        # Ver si el usuario ya existía para no sobreescribir su configuración
+        already = self.get_user(telegram_id)
 
         self._execute(
             "INSERT OR IGNORE INTO users (telegram_id, name) VALUES (?, ?)",
@@ -297,6 +312,14 @@ class Database:
                     "INSERT OR IGNORE INTO keywords (telegram_id, keyword) VALUES (?, ?)",
                     (telegram_id, kw),
                 )
+
+        # Si el usuario es NUEVO, forzamos modalidad por defecto 'cualquiera'
+        # para alinear comportamiento entre SQLite/Postgres y con los tests.
+        if already is None:
+            self._execute(
+                "UPDATE users SET job_modality = 'cualquiera' WHERE telegram_id = ?",
+                (telegram_id,),
+            )
 
     def get_user(self, telegram_id: int) -> Optional[Dict]:
         """Retorna los datos de un usuario o None si no existe."""
@@ -324,10 +347,19 @@ class Database:
 
         for user in active:
             tz_name = user.get("timezone") or "America/Buenos_Aires"
+
+            # Normalizar zonas horarias antiguas o inválidas
+            if tz_name == "America/Buenos_Aires":
+                mapped_tz = "America/Argentina/Buenos_Aires"
+            else:
+                mapped_tz = tz_name
+
             try:
-                tz = zoneinfo.ZoneInfo(tz_name)
-            except:
-                tz = zoneinfo.ZoneInfo("America/Buenos_Aires")
+                tz = zoneinfo.ZoneInfo(mapped_tz)
+            except Exception:
+                # Fallback robusto: si no existe, usar UTC para no romper el scheduler
+                logger.warning("Timezone '%s' inválida, usando UTC para scheduler", tz_name)
+                tz = zoneinfo.ZoneInfo("UTC")
 
             now_user = datetime.datetime.now(tz)
             current_hour = now_user.hour

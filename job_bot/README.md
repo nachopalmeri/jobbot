@@ -108,4 +108,30 @@ Para que el bot corra solo:
 
 ---
 
+## ✅ Tests automatizados
+
+Este repo incluye tests unitarios básicos para la base de datos y los filtros de scrapers.
+
+Desde la carpeta raíz del proyecto (`jobbot/`):
+
+```bash
+python -m pytest -q
+```
+
+Si usás un entorno virtual:
+
+```bash
+.\.venv\Scripts\activate
+python -m pytest -q
+```
+
+Los tests actuales cubren:
+- Creación y gestión básica de usuarios en la base de datos.
+- Filtro por modalidad (remoto/presencial) en el scraper.
+- Filtro negativo para ocultar ofertas senior a perfiles junior.
+
+La idea es ir ampliando esta suite a medida que el bot crece.
+
+---
+
 *Creado para Nacho (PISCU) — Optimizando la búsqueda laboral con tecnología y IA.*

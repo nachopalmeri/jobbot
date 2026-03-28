@@ -14,10 +14,26 @@ from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
-import config
-from database import Database
-from job_scraper import JobScraper
-from cv_analyzer import parse_cv, format_job_with_score
+# Imports tolerantes al contexto de ejecución
+try:
+    import config
+except ImportError:
+    from job_bot import config
+
+try:
+    from database import Database
+except ImportError:
+    from job_bot.database import Database
+
+try:
+    from job_scraper import JobScraper
+except ImportError:
+    from job_bot.job_scraper import JobScraper
+
+try:
+    from cv_analyzer import parse_cv, format_job_with_score
+except ImportError:
+    from job_bot.cv_analyzer import parse_cv, format_job_with_score
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +135,18 @@ async def check_jobs_for_user(
 
     keywords = db.get_user_keywords(telegram_id)
     if not keywords:
-        keywords = config.DEFAULT_KEYWORDS
-        logger.info("Usuario %s sin keywords, usando defaults", telegram_id)
+        # Intentar generar keywords inteligentes basadas en el perfil
+        smart_keywords = db.generate_smart_keywords(telegram_id)
+        if smart_keywords:
+            keywords = smart_keywords
+            logger.info(
+                "Usuario %s sin keywords manuales, usando smart keywords: %s",
+                telegram_id,
+                ", ".join(smart_keywords),
+            )
+        else:
+            keywords = config.DEFAULT_KEYWORDS
+            logger.info("Usuario %s sin keywords ni perfil, usando defaults", telegram_id)
 
     location = user.get("location") or config.DEFAULT_LOCATION
     logger.info(

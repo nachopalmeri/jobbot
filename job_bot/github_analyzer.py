@@ -7,7 +7,11 @@ import httpx
 import logging
 import asyncio
 from typing import List, Dict, Optional
-import config
+
+try:
+    import config
+except ImportError:
+    from job_bot import config
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 import unittest
-from job_scraper import JobScraper
+from job_bot.job_scraper import JobScraper
 
 class TestJobScraper(unittest.TestCase):
     def test_apply_modality_filter(self):

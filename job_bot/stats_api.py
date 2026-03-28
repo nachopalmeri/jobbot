@@ -13,8 +13,16 @@ import hmac
 from urllib.parse import urlparse, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-import config
-from database import Database
+# Imports tolerantes al contexto de ejecución
+try:
+    import config
+except ImportError:
+    from job_bot import config
+
+try:
+    from database import Database
+except ImportError:
+    from job_bot.database import Database
 
 logger = logging.getLogger(__name__)
 
