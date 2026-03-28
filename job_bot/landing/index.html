@@ -1,1345 +1,2623 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="scroll-smooth">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JobBot AR — Tu cazador de empleos IT en Buenos Aires</title>
-  <meta name="description"
-    content="Bot de Telegram que monitorea automáticamente ofertas laborales IT cada 2 horas. LinkedIn AR, Remotive, Arbeitnow, Jobicy — sin perderte ninguna oportunidad.">
+  <title>JobBot AR — Tu asistente para conseguir trabajo sin quemarte</title>
+  <meta name="description" content="JobBot escanea portales de empleo por vos, filtra con IA según tu perfil y te avisa solo las oportunidades que valen la pena." />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Syne:wght@400;500;700;800&display=swap"
-    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
   <style>
     :root {
-      --bg: #080b0f;
-      --surface: #0d1117;
-      --border: #1c2733;
-      --green: #00ff88;
-      --green-dim: #00cc66;
-      --green-glow: #00ff8844;
-      --cyan: #00d4ff;
-      --amber: #ffb300;
-      --red: #ff4757;
-      --text: #c9d1d9;
-      --text-muted: #6e7681;
-      --white: #f0f6fc;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-soft: #eff3fb;
+      --border: #d0d7e2;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #4f46e5;
+      --primary-soft: #e0e7ff;
+      --primary-strong: #4338ca;
+      --success: #10b981;
+      --success-soft: #d1fae5;
+      --warning: #f59e0b;
+      --warning-soft: #fef3c7;
+      --danger: #ef4444;
+      --danger-soft: #fee2e2;
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    *,
-    *::before,
-    *::after {
+    *, *::before, *::after {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
     }
 
-    html {
-      scroll-behavior: smooth;
-    }
-
     body {
-      background: var(--bg);
+      background-color: var(--bg);
       color: var(--text);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      line-height: 1.6;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
       overflow-x: hidden;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* ── NOISE OVERLAY ── */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-      pointer-events: none;
-      opacity: 0.4;
-    }
-
-    /* ── GRID BACKGROUND ── */
-    body::after {
-      content: '';
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      background-image:
-        linear-gradient(var(--border) 1px, transparent 1px),
-        linear-gradient(90deg, var(--border) 1px, transparent 1px);
-      background-size: 40px 40px;
-      opacity: 0.25;
-      pointer-events: none;
+    a {
+      color: inherit;
+      text-decoration: none;
     }
 
     .container {
-      max-width: 1100px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 0 24px;
-      position: relative;
-      z-index: 1;
+      padding: 0 1.5rem;
     }
 
-    /* ── NAV ── */
+    /* NAVBAR */
     nav {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      z-index: 100;
-      background: rgba(8, 11, 15, 0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border);
+      z-index: 40;
+      background: rgba(248, 250, 252, 0.98);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(226, 232, 240, 0.8);
     }
 
     .nav-inner {
+      height: 70px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 24px;
-      max-width: 1100px;
-      margin: 0 auto;
+      gap: 1.5rem;
     }
 
-    .nav-logo {
-      font-family: 'Syne', sans-serif;
-      font-weight: 800;
-      font-size: 18px;
-      color: var(--white);
-      letter-spacing: -0.5px;
-    }
-
-    .nav-logo span {
-      color: var(--green);
-    }
-
-    .nav-cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--green);
-      color: #000;
-      padding: 8px 20px;
-      border-radius: 4px;
-      font-weight: 700;
-      font-size: 13px;
-      text-decoration: none;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-
-    .nav-cta:hover {
-      background: var(--green-dim);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 20px var(--green-glow);
-    }
-
-    /* ── HERO ── */
-    .hero {
-      min-height: 100vh;
+    .logo {
       display: flex;
       align-items: center;
-      padding: 120px 0 80px;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.04em;
     }
 
-    .hero-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 60px;
+    .logo-mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 30%;
+      background: radial-gradient(circle at 30% 30%, #6366f1, #4f46e5);
+      display: flex;
       align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      box-shadow: 0 8px 22px rgba(79, 70, 229, 0.45);
     }
 
-    .hero-badge {
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      font-weight: 500;
+      position: relative;
+      padding-bottom: 2px;
+    }
+
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 0;
+      height: 2px;
+      border-radius: 999px;
+      background-color: var(--primary);
+      transition: width 0.18s var(--ease-smooth);
+    }
+
+    .nav-link:hover {
+      color: var(--text);
+    }
+
+    .nav-link:hover::after {
+      width: 100%;
+    }
+
+    .btn {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: rgba(0, 255, 136, 0.08);
-      border: 1px solid rgba(0, 255, 136, 0.25);
-      border-radius: 2px;
-      padding: 6px 14px;
-      font-size: 12px;
-      color: var(--green);
-      margin-bottom: 24px;
-      animation: fadeInUp 0.6s ease both;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.7rem 1.4rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s var(--ease-smooth), box-shadow 0.15s var(--ease-smooth), background-color 0.15s ease, border-color 0.15s ease;
+      white-space: nowrap;
     }
 
-    .badge-dot {
-      width: 6px;
-      height: 6px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s infinite;
+    .btn-primary {
+      background-color: var(--primary);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(79, 70, 229, 0.35);
     }
 
-    @keyframes pulse {
+    .btn-primary:hover {
+      background-color: var(--primary-strong);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(79, 70, 229, 0.45);
+    }
 
-      0%,
-      100% {
-        opacity: 1;
-        transform: scale(1);
-      }
+    .btn-ghost {
+      background-color: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
 
-      50% {
-        opacity: 0.5;
-        transform: scale(0.8);
-      }
+    .btn-ghost:hover {
+      background-color: var(--surface-soft);
+    }
+
+    .btn-sm {
+      padding: 0.4rem 0.9rem;
+      font-size: 0.8rem;
+    }
+
+    /* HERO */
+    .hero {
+      padding: 130px 0 90px;
+    }
+
+    .hero-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr);
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      background-color: var(--primary-soft);
+      color: var(--primary-strong);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 1.5rem;
     }
 
     .hero h1 {
-      font-family: 'Syne', sans-serif;
-      font-size: clamp(36px, 5vw, 58px);
-      font-weight: 800;
-      color: var(--white);
+      font-size: clamp(2.4rem, 4vw, 3.4rem);
       line-height: 1.1;
-      letter-spacing: -1.5px;
-      margin-bottom: 24px;
-      animation: fadeInUp 0.6s 0.1s ease both;
+      letter-spacing: -0.04em;
+      margin-bottom: 1rem;
     }
 
-    .hero h1 .accent {
-      color: var(--green);
-    }
-
-    .hero h1 .version {
-      font-size: 0.4em;
-      background: var(--green);
-      color: #000;
-      padding: 2px 8px;
-      border-radius: 4px;
-      vertical-align: middle;
-      margin-left: 10px;
-    }
-
-    .hero h1 .line2 {
-      display: block;
+    .hero p {
+      font-size: 1.05rem;
       color: var(--text-muted);
-      font-size: 0.7em;
-      font-weight: 500;
-      letter-spacing: -0.5px;
-      margin-top: 4px;
-    }
-
-    .hero-desc {
-      color: var(--text-muted);
-      font-size: 15px;
-      line-height: 1.7;
-      margin-bottom: 36px;
-      max-width: 440px;
-      animation: fadeInUp 0.6s 0.2s ease both;
+      max-width: 520px;
+      margin-bottom: 2rem;
     }
 
     .hero-actions {
       display: flex;
-      gap: 12px;
       flex-wrap: wrap;
-      animation: fadeInUp 0.6s 0.3s ease both;
-    }
-
-    .btn-primary {
-      display: inline-flex;
+      gap: 0.75rem;
       align-items: center;
-      gap: 10px;
-      background: var(--green);
-      color: #000;
-      padding: 14px 28px;
-      border-radius: 4px;
-      font-weight: 700;
-      font-size: 14px;
-      text-decoration: none;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
     }
 
-    .btn-primary:hover {
-      background: var(--green-dim);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 30px var(--green-glow);
-    }
-
-    .btn-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      background: transparent;
-      color: var(--text);
-      padding: 14px 28px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      font-weight: 500;
-      font-size: 14px;
-      text-decoration: none;
-      transition: all 0.2s;
-    }
-
-    .btn-secondary:hover {
-      border-color: var(--text-muted);
-      color: var(--white);
-      transform: translateY(-2px);
-    }
-
-    @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    /* ── TERMINAL WINDOW ── */
-    .terminal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      animation: fadeInUp 0.6s 0.4s ease both;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 255, 136, 0.05);
-    }
-
-    .terminal-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: #161b22;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-
-    .dot-red {
-      background: #ff5f56;
-    }
-
-    .dot-amber {
-      background: #ffbd2e;
-    }
-
-    .dot-green {
-      background: #27c93f;
-    }
-
-    .terminal-title {
-      margin-left: 8px;
-      font-size: 12px;
+    .hero-note {
+      font-size: 0.9rem;
       color: var(--text-muted);
+      margin-top: 0.6rem;
     }
 
-    .terminal-body {
-      padding: 20px;
-      font-size: 13px;
-      line-height: 1.8;
-      min-height: 300px;
+    .hero-card {
+      background: radial-gradient(circle at top left, #e0e7ff, #ffffff);
+      border-radius: var(--radius-lg);
+      padding: 1.75rem 1.5rem;
+      box-shadow: 0 26px 55px rgba(15, 23, 42, 0.16);
+      border: 1px solid #e2e8f0;
     }
 
-    .t-line {
-      display: flex;
-      gap: 10px;
-    }
-
-    .t-prompt {
-      color: var(--green);
-      white-space: nowrap;
-    }
-
-    .t-cmd {
-      color: var(--white);
-    }
-
-    .t-out {
-      color: var(--text-muted);
-      padding-left: 20px;
-    }
-
-    .t-ok {
-      color: var(--green);
-      padding-left: 20px;
-    }
-
-    .t-warn {
-      color: var(--amber);
-      padding-left: 20px;
-    }
-
-    .t-err {
-      color: var(--red);
-      padding-left: 20px;
-    }
-
-    .t-info {
-      color: var(--cyan);
-      padding-left: 20px;
-    }
-
-    .t-blank {
-      height: 8px;
-    }
-
-    .t-cursor {
-      display: inline-block;
-      width: 8px;
-      height: 14px;
-      background: var(--green);
-      vertical-align: middle;
-      animation: blink 1.1s step-end infinite;
-    }
-
-    @keyframes blink {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0;
-      }
-    }
-
-    /* Typing animation */
-    .typed {
-      overflow: hidden;
-      white-space: nowrap;
-    }
-
-    .t1 {
-      animation: typing 0.6s 0.5s steps(40) both;
-    }
-
-    .t2 {
-      animation: typing 0.4s 1.3s steps(40) both;
-    }
-
-    .t3 {
-      animation: typing 0.5s 1.9s steps(40) both;
-    }
-
-    .t4 {
-      animation: typing 0.3s 2.6s steps(40) both;
-    }
-
-    .t5 {
-      animation: typing 0.5s 3.0s steps(40) both;
-    }
-
-    .t6 {
-      animation: typing 0.4s 3.7s steps(40) both;
-    }
-
-    .t7 {
-      animation: typing 0.5s 4.2s steps(40) both;
-    }
-
-    .t8 {
-      animation: typing 0.6s 4.9s steps(40) both;
-    }
-
-    .t9 {
-      animation: typing 0.4s 5.6s steps(40) both;
-    }
-
-    .t10 {
-      animation: typing 0.5s 6.1s steps(40) both;
-    }
-
-    @keyframes typing {
-      from {
-        max-width: 0;
-      }
-
-      to {
-        max-width: 100%;
-      }
-    }
-
-    .fade-in {
-      animation: fadeIn 0.4s ease both;
-    }
-
-    .d1 {
-      animation-delay: 0.5s;
-    }
-
-    .d2 {
-      animation-delay: 1.3s;
-    }
-
-    .d3 {
-      animation-delay: 2.6s;
-    }
-
-    .d4 {
-      animation-delay: 3.7s;
-    }
-
-    .d5 {
-      animation-delay: 4.9s;
-    }
-
-    .d6 {
-      animation-delay: 5.6s;
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0
-      }
-
-      to {
-        opacity: 1
-      }
-    }
-
-    /* ── STATS BAR ── */
-    .stats-bar {
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      padding: 28px 0;
-      margin: 0;
-    }
-
-    .stats-inner {
-      display: flex;
-      justify-content: space-around;
-      flex-wrap: wrap;
-      gap: 24px;
-    }
-
-    .stat {
-      text-align: center;
-    }
-
-    .stat-num {
-      display: block;
-      font-family: 'Syne', sans-serif;
-      font-size: 36px;
-      font-weight: 800;
-      color: var(--green);
-      letter-spacing: -1px;
-      line-height: 1;
-    }
-
-    .stat-label {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 4px;
-      letter-spacing: 0.5px;
-    }
-
-    /* ── SECTION ── */
-    section {
-      padding: 80px 0;
-    }
-
-    .section-tag {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 2px;
+    .hero-card-title {
+      font-size: 0.9rem;
       text-transform: uppercase;
-      color: var(--green);
-      margin-bottom: 16px;
-    }
-
-    .section-title {
-      font-family: 'Syne', sans-serif;
-      font-size: clamp(28px, 4vw, 42px);
-      font-weight: 800;
-      color: var(--white);
-      letter-spacing: -1px;
-      margin-bottom: 16px;
-    }
-
-    .section-desc {
+      letter-spacing: 0.18em;
       color: var(--text-muted);
+      margin-bottom: 0.8rem;
+      font-weight: 600;
+    }
+
+    .hero-card-metric {
+      display: flex;
+      align-items: baseline;
+      gap: 0.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero-card-metric span:first-child {
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: var(--primary-strong);
+    }
+
+    .hero-card-metric span:last-child {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .hero-card-footnote {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+
+    /* FEATURES */
+    .features {
+      padding: 80px 0 90px;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .section-header h2 {
+      font-size: clamp(2rem, 3vw, 2.5rem);
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.03em;
+    }
+
+    .section-header p {
       max-width: 520px;
-      line-height: 1.7;
-      margin-bottom: 48px;
-    }
-
-    /* ── HOW IT WORKS ── */
-    .steps {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 2px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    .step {
-      background: var(--surface);
-      padding: 32px 28px;
-      position: relative;
-      transition: background 0.2s;
-    }
-
-    .step:hover {
-      background: #13181f;
-    }
-
-    .step-num {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--green);
-      letter-spacing: 1px;
-      margin-bottom: 16px;
-    }
-
-    .step-icon {
-      font-size: 28px;
-      margin-bottom: 16px;
-    }
-
-    .step h3 {
-      font-family: 'Syne', sans-serif;
-      font-size: 16px;
-      font-weight: 700;
-      color: var(--white);
-      margin-bottom: 8px;
-    }
-
-    .step p {
-      font-size: 13px;
+      margin: 0 auto;
       color: var(--text-muted);
-      line-height: 1.6;
     }
 
-    /* ── FEATURES ── */
-    .features-grid {
+    .grid-3 {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.75rem;
     }
 
     .feature-card {
-      background: var(--surface);
+      background-color: var(--surface);
+      border-radius: var(--radius-md);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 28px;
-      transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .feature-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--green), transparent);
-      opacity: 0;
-      transition: opacity 0.3s;
+      padding: 1.75rem 1.5rem;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.03);
+      transition: transform 0.15s var(--ease-smooth), box-shadow 0.15s var(--ease-smooth), border-color 0.15s ease;
     }
 
     .feature-card:hover {
-      border-color: rgba(0, 255, 136, 0.3);
-      transform: translateY(-3px);
-    }
-
-    .feature-card:hover::before {
-      opacity: 1;
+      transform: translateY(-4px);
+      box-shadow: 0 24px 45px rgba(15, 23, 42, 0.08);
+      border-color: #cbd5f5;
     }
 
     .feature-icon {
       width: 40px;
       height: 40px;
-      background: rgba(0, 255, 136, 0.1);
-      border-radius: 6px;
+      border-radius: 12px;
+      background-color: var(--primary-soft);
+      color: var(--primary-strong);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
-      margin-bottom: 16px;
+      margin-bottom: 1rem;
     }
 
     .feature-card h3 {
-      font-family: 'Syne', sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--white);
-      margin-bottom: 8px;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
     }
 
     .feature-card p {
-      font-size: 13px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    /* DASHBOARD SECTION */
+    .dashboard-section {
+      padding: 90px 0 100px;
+      background-color: var(--surface);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dash-input-row {
+      max-width: 640px;
+      margin: 0 auto 2rem;
+      display: flex;
+      gap: 0.9rem;
+      flex-wrap: wrap;
+    }
+
+    .dash-input-row input {
+      flex: 1 1 220px;
+      padding: 0.85rem 1rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .dash-input-row input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.35);
+    }
+
+    .dash-note {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .alert-prefs {
+      max-width: 860px;
+      margin: 0 auto 1.75rem;
+      padding: 1.2rem 1.4rem;
+      border-radius: 16px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+
+    .alert-prefs-header h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .alert-prefs-header p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      max-width: 540px;
+    }
+
+    .channel-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+
+    .channel-pill {
+      flex: 1 1 180px;
+      padding: 0.7rem 0.95rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.15rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      text-align: left;
+      transition: background 0.16s var(--ease-smooth),
+                  border-color 0.16s var(--ease-smooth),
+                  box-shadow 0.16s var(--ease-smooth),
+                  transform 0.12s var(--ease-smooth);
+    }
+
+    .channel-pill-main {
+      font-weight: 600;
+    }
+
+    .channel-pill-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .channel-pill.selected {
+      background: var(--primary-soft);
+      border-color: rgba(79, 70, 229, 0.6);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .channel-pill:active {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    .alert-summary {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .digest-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 0.4rem;
+    }
+
+    .digest-pill {
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: background 0.16s var(--ease-smooth), border-color 0.16s var(--ease-smooth), transform 0.12s var(--ease-smooth);
+    }
+
+    .digest-pill.selected {
+      background: var(--primary-soft);
+      border-color: rgba(79, 70, 229, 0.6);
+      transform: translateY(-1px);
+    }
+
+    .prefs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.9rem;
+      margin-top: 0.6rem;
+    }
+
+    .prefs-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+    }
+
+    .prefs-field label {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .prefs-field small {
+      color: var(--text-muted);
+    }
+
+    .prefs-field input[type="number"] {
+      padding: 0.55rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .prefs-field input[type="number"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.35);
+    }
+
+    .prefs-field textarea {
+      min-height: 52px;
+      padding: 0.55rem 0.7rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      resize: vertical;
+      font-family: inherit;
+      font-size: 0.8rem;
+      outline: none;
+    }
+
+    .prefs-field textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25);
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .stat-card {
+      background-color: var(--surface-soft);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 1.4rem 1.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 0.65rem;
+      font-weight: 600;
+    }
+
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+    }
+
+    .goal-bar {
+      margin-top: 0.4rem;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.25);
+      overflow: hidden;
+    }
+
+    .goal-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      width: 0%;
+      transition: width 0.25s var(--ease-smooth);
+    }
+
+    .goal-label {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .dash-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.1fr);
+      gap: 1.5rem;
+    }
+
+    .dash-box {
+      background-color: var(--surface-soft);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 1.5rem 1.5rem 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .dash-box h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      height: 280px;
+    }
+
+    /* MARKET ANALYSIS SECTION */
+    .market-section {
+      padding: 90px 0;
+      background: linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+    }
+
+    .market-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .market-card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
+    }
+
+    .market-card h4 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .donut-wrapper {
+      position: relative;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .donut-center {
+      position: absolute;
+      text-align: center;
+    }
+
+    .donut-center .big-number {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--primary-strong);
+    }
+
+    .donut-center .label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .skills-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .skill-tag {
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: var(--primary-soft);
+      color: var(--primary-strong);
+    }
+
+    .trend-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .trend-item:last-child {
+      border-bottom: none;
+    }
+
+    .trend-name {
+      font-weight: 500;
+    }
+
+    .trend-value {
+      font-weight: 600;
+      color: var(--success);
+    }
+
+    .trend-value.negative {
+      color: var(--danger);
+    }
+
+    /* JOBS THIS WEEK */
+    .jobs-section {
+      padding: 90px 0;
+      background-color: var(--bg);
+    }
+
+    .jobs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.25rem;
+      margin-top: 2rem;
+    }
+
+    .job-card {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      padding: 1.25rem;
+      transition: transform 0.15s var(--ease-smooth), box-shadow 0.15s var(--ease-smooth);
+    }
+
+    .job-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+    }
+
+    .job-title {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .job-company {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .match-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .match-high {
+      background: var(--success-soft);
+      color: #047857;
+    }
+
+    .match-medium {
+      background: var(--warning-soft);
+      color: #92400e;
+    }
+
+    .match-low {
+      background: var(--surface-soft);
+      color: var(--text-muted);
+    }
+
+    .job-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .job-tag {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      background: var(--surface-soft);
+      color: var(--text-muted);
+    }
+
+    .job-salary {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--success);
+    }
+
+    /* CV PERSONALIZATION */
+    .cv-section {
+      padding: 90px 0;
+      background: linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
+    }
+
+    .cv-tool {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 2rem;
+      margin-top: 2rem;
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    .cv-input-group {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .cv-input-group input {
+      flex: 1;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .cv-input-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.35);
+    }
+
+    .cv-result {
+      display: none;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .cv-result.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cv-summary {
+      background: var(--surface-soft);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .cv-summary h5 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .cv-match-items {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .cv-match-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .cv-match-item .match {
+      color: var(--success);
+      font-weight: 500;
+    }
+
+    .cv-match-item .no-match {
+      color: var(--danger);
+      font-weight: 500;
+    }
+
+    .cv-suggestion {
+      background: linear-gradient(135deg, var(--primary-soft) 0%, #f0f5ff 100%);
+      border-radius: var(--radius-md);
+      padding: 1.25rem;
+      border: 1px solid rgba(79, 70, 229, 0.2);
+    }
+
+    .cv-suggestion h5 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--primary-strong);
+    }
+
+    .cv-suggestion p {
+      font-size: 0.9rem;
       color: var(--text-muted);
       line-height: 1.6;
     }
 
-    /* ── SOURCES ── */
-    .sources-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+    /* TRACKER NOTION STYLE */
+    .tracker-section {
+      padding: 90px 0;
+      background-color: var(--surface);
     }
 
-    .source-pill {
-      display: inline-flex;
+    .tracker-container {
+      margin-top: 2rem;
+    }
+
+    .tracker-header {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .tracker-tabs {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .tracker-tab {
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      background: transparent;
+      border: 1px solid transparent;
+    }
+
+    .tracker-tab.active {
+      background: var(--primary-soft);
+      color: var(--primary-strong);
+      border-color: rgba(79, 70, 229, 0.3);
+    }
+
+    .tracker-tab:hover:not(.active) {
+      background: var(--surface-soft);
+    }
+
+    .notion-table {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 4px;
-      padding: 10px 16px;
-      font-size: 13px;
-      color: var(--text);
-      transition: all 0.2s;
-    }
-
-    .source-pill:hover {
-      border-color: rgba(0, 255, 136, 0.3);
-      color: var(--white);
-    }
-
-    .source-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--green);
-    }
-
-    .source-dot.dim {
-      background: var(--text-muted);
-    }
-
-    /* ── COMMANDS ── */
-    .commands-list {
-      display: grid;
-      gap: 2px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       overflow: hidden;
     }
 
-    .cmd-row {
+    .notion-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .notion-table th {
+      background: var(--surface-soft);
+      padding: 0.85rem 1rem;
+      text-align: left;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .notion-table td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .notion-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .notion-table tr:hover td {
+      background: rgba(79, 70, 229, 0.02);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status-applied {
+      background: #e0e7ff;
+      color: #4338ca;
+    }
+
+    .status-interview {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-offer {
+      background: #d1fae5;
+      color: #047857;
+    }
+
+    .status-rejected {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+
+    .calendar-mini {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 4px;
+      padding: 1rem;
+      background: var(--surface-soft);
+      border-radius: var(--radius-md);
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
       display: flex;
-      align-items: flex-start;
-      gap: 20px;
-      background: var(--surface);
-      padding: 18px 24px;
-      transition: background 0.15s;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
 
-    .cmd-row:hover {
-      background: #13181f;
+    .calendar-day:hover {
+      background: var(--primary-soft);
     }
 
-    .cmd-name {
-      font-weight: 700;
-      color: var(--cyan);
-      white-space: nowrap;
-      min-width: 180px;
+    .calendar-day.has-event {
+      background: var(--primary);
+      color: white;
+      font-weight: 600;
     }
 
-    .cmd-desc {
+    .calendar-day.today {
+      border: 2px solid var(--primary);
+    }
+
+    .calendar-day.other-month {
       color: var(--text-muted);
-      font-size: 13px;
+      opacity: 0.5;
     }
 
-    /* ── CTA FINAL ── */
-    .cta-section {
-      text-align: center;
-      padding: 100px 0;
-      position: relative;
-    }
-
-    .cta-glow {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 500px;
-      height: 300px;
-      background: radial-gradient(ellipse, rgba(0, 255, 136, 0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .cta-section h2 {
-      font-family: 'Syne', sans-serif;
-      font-size: clamp(32px, 5vw, 54px);
-      font-weight: 800;
-      color: var(--white);
-      letter-spacing: -1.5px;
-      margin-bottom: 20px;
-    }
-
-    .cta-section h2 span {
-      color: var(--green);
-    }
-
-    .cta-section p {
+    .calendar-legend {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
       color: var(--text-muted);
-      font-size: 15px;
-      margin-bottom: 40px;
-      max-width: 440px;
+    }
+
+    .calendar-legend span {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .calendar-legend .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
+    /* PRICING SECTION */
+    .pricing-section {
+      padding: 90px 0;
+      background: linear-gradient(180deg, var(--bg) 0%, var(--surface) 100%);
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+      max-width: 900px;
       margin-left: auto;
       margin-right: auto;
     }
 
-    .telegram-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      background: #229ED9;
-      color: #fff;
-      padding: 16px 36px;
-      border-radius: 6px;
-      font-weight: 700;
-      font-size: 16px;
-      text-decoration: none;
-      transition: all 0.2s;
-      letter-spacing: 0.3px;
-    }
-
-    .telegram-btn:hover {
-      background: #1a8fc4;
-      transform: translateY(-2px);
-      box-shadow: 0 10px 40px rgba(34, 158, 217, 0.3);
-    }
-
-    .telegram-btn svg {
-      width: 22px;
-      height: 22px;
-      fill: white;
-    }
-
-    /* ── FOOTER ── */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 32px 0;
+    .pricing-card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 2px solid var(--border);
+      padding: 2rem 1.5rem;
       text-align: center;
+      transition: transform 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth);
+      position: relative;
     }
 
-    .footer-inner {
+    .pricing-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.1);
+    }
+
+    .pricing-card.popular {
+      border-color: var(--primary);
+      box-shadow: 0 12px 32px rgba(79, 70, 229, 0.2);
+    }
+
+    .plan-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.35rem 1rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .plan-badge.free {
+      background: var(--surface-soft);
+      color: var(--text-muted);
+    }
+
+    .plan-badge.pro {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .plan-badge.premium {
+      background: linear-gradient(135deg, #f59e0b, #ef4444);
+      color: #fff;
+    }
+
+    .plan-price {
+      margin: 1.5rem 0 0.5rem;
+    }
+
+    .plan-price .currency {
+      font-size: 1.5rem;
+      font-weight: 600;
+      vertical-align: top;
+    }
+
+    .plan-price .amount {
+      font-size: 3.5rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .plan-price .period {
+      font-size: 1rem;
+      color: var(--text-muted);
+    }
+
+    .plan-desc {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .plan-features {
+      list-style: none;
+      text-align: left;
+      margin-bottom: 1.5rem;
+    }
+
+    .plan-features li {
+      padding: 0.5rem 0;
+      font-size: 0.9rem;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
+      gap: 0.75rem;
     }
 
-    .footer-logo {
-      font-family: 'Syne', sans-serif;
-      font-weight: 800;
-      color: var(--white);
+    .plan-features li i.fa-check {
+      color: var(--success);
     }
 
-    .footer-logo span {
-      color: var(--green);
+    .plan-features li i.fa-times {
+      color: var(--border);
     }
 
-    .footer-text {
-      font-size: 12px;
+    .plan-features li strong {
+      color: var(--text);
+    }
+
+    .btn-full {
+      width: 100%;
+    }
+
+    .pricing-card.popular .btn-primary {
+      background: var(--primary);
+    }
+
+    .plan-note {
+      font-size: 0.75rem;
       color: var(--text-muted);
+      margin-top: 1rem;
     }
 
-    .footer-links {
+    .payment-methods {
+      text-align: center;
+      margin-top: 2.5rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .payment-methods p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .methods-icons {
       display: flex;
-      gap: 20px;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
     }
 
-    .footer-links a {
-      font-size: 12px;
-      color: var(--text-muted);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-
-    .footer-links a:hover {
-      color: var(--green);
-    }
-
-    /* ── LIVE INDICATOR ── */
-    .stat-live {
+    .method-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      font-size: 10px;
-      color: var(--green);
-      margin-top: 6px;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    /* TIPS SECTION */
+    .tips-section {
+      padding: 90px 0;
+      background: var(--bg);
+    }
+
+    .tips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-top: 2rem;
+    }
+
+    .tip-card {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      transition: transform 0.15s var(--ease-smooth);
+    }
+
+    .tip-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .tip-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+    }
+
+    .tip-icon.blue {
+      background: #e0e7ff;
+      color: #4338ca;
+    }
+
+    .tip-icon.green {
+      background: #d1fae5;
+      color: #047857;
+    }
+
+    .tip-icon.yellow {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .tip-icon.red {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .tip-card h4 {
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .tip-card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* ERROR & UTILS */
+    .error-box {
+      display: none;
+      max-width: 640px;
+      margin: 0 auto 1.5rem;
+      padding: 0.8rem 1rem;
+      border-radius: 12px;
+      background-color: var(--danger-soft);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      font-size: 0.9rem;
+    }
+
+    footer {
+      padding: 2.5rem 0 3rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+      animation: fadeIn 0.3s ease;
+    }
+
+    /* Animaciones base */
+    .gs-fade {
       opacity: 0;
-      transition: opacity 0.5s;
+      transform: translateY(18px);
     }
 
-    .stat-live.visible {
-      opacity: 1;
-    }
-
-    .stat-live .live-dot {
-      width: 5px;
-      height: 5px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-    }
-
-    /* ── RESPONSIVE ── */
-    @media (max-width: 768px) {
-      .hero-grid {
-        grid-template-columns: 1fr;
-        gap: 40px;
+    @media (max-width: 900px) {
+      .hero-layout {
+        grid-template-columns: minmax(0, 1fr);
       }
 
-      .nav-cta span {
+      .hero-card {
+        margin-top: 2.5rem;
+      }
+
+      .dash-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .nav-links {
         display: none;
       }
 
-      .cmd-name {
-        min-width: 130px;
+      .dash-input-row {
+        flex-direction: column;
       }
 
-      .footer-inner {
-        justify-content: center;
-        text-align: center;
+      .dash-input-row .btn {
+        width: 100%;
+      }
+
+      .channel-pills {
+        flex-direction: column;
       }
     }
   </style>
 </head>
 
 <body>
-
-  <!-- NAV -->
   <nav>
-    <div class="nav-inner">
-      <div class="nav-logo">Job<span>Bot</span>.ar</div>
-      <a href="https://t.me/jobs912bot" class="nav-cta">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path
-            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
-        </svg>
-        <span>Abrir en Telegram</span>
+    <div class="container nav-inner">
+      <a href="#" class="logo">
+        <div class="logo-mark">J</div>
+        <span>JobBot AR</span>
       </a>
+      <div class="nav-links">
+        <a href="#como-funciona" class="nav-link">Cómo funciona</a>
+        <a href="#dash" class="nav-link">Tu panel</a>
+        <a href="#demo" class="nav-link">Demo</a>
+        <a href="https://t.me/jobs912bot" class="btn btn-primary">Probar gratis</a>
+      </div>
     </div>
   </nav>
 
-  <!-- HERO -->
-  <section class="hero">
-    <div class="container">
-      <div class="hero-grid">
-        <div class="hero-content">
-          <div class="hero-badge">
-            <div class="badge-dot"></div>
-            SISTEMA OPERATIVO v2.0 INSTALADO
+  <main>
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container hero-layout">
+        <div>
+          <div class="hero-eyebrow gs-fade">
+            <span>Nuevo</span>
+            <span>Bot que busca trabajo por vos</span>
           </div>
-          <h1>Cazador de empleos <span class="accent">IT</span> <span class="version">PRO</span>
-            <span class="line2">Buenos Aires & Latam</span>
-          </h1>
-          <p class="hero-desc">
-            El bot de Telegram más avanzado para programadores. Monitoreo 24/7, <span style="color:var(--green)">Análisis de GitHub con IA</span>,
-            simulador de entrevistas y tracker de postulaciones.
+          <h1 class="gs-fade">Encontrá tu próximo trabajo sin vivir pegado a los portales.</h1>
+          <p class="gs-fade">
+            JobBot monitorea las mejores bolsas de empleo, compara cada aviso con tu perfil usando IA
+            y te avisa solo cuando hay una oportunidad que realmente encaja con vos.
           </p>
-          <div class="hero-actions">
-            <a href="https://t.me/jobs912bot" class="btn-primary">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
-              </svg>
-              Activar bot gratis
+          <div class="hero-actions gs-fade">
+            <a href="https://t.me/jobs912bot" class="btn btn-primary">
+              <span>Empezar en Telegram</span>
             </a>
-            <a href="https://github.com/nachopalmeri/-jobbot-landing" class="btn-secondary">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
-              </svg>
-              Ver código
-            </a>
+            <a href="#demo" class="btn btn-ghost">Ver demo</a>
           </div>
+          <p class="hero-note gs-fade">Ideal si estás trabajando, estudiando o simplemente no querés vivir pendiente de LinkedIn.</p>
         </div>
 
-        <!-- TERMINAL -->
-        <div class="terminal">
-          <div class="terminal-bar">
-            <span class="dot dot-red"></span>
-            <span class="dot dot-amber"></span>
-            <span class="dot dot-green"></span>
-            <span class="terminal-title">job_bot — python bot.py</span>
+        <aside class="hero-card gs-fade" aria-label="Resumen de cómo te ayuda JobBot">
+          <div class="hero-card-title">Mientras vos seguís con tu vida...</div>
+          <div class="hero-card-metric">
+            <span>24/7</span>
+            <span>monitoreando empleos por vos</span>
           </div>
-          <div class="terminal-body">
-            <div class="t-line fade-in d1">
-              <span class="t-prompt">$</span>
-              <span class="t-cmd typed t1">python bot.py</span>
+          <p style="font-size:0.95rem; color:var(--text-muted);">
+            JobBot mira las ofertas nuevas, filtra por tu perfil y arma un listado limpio para que solo tengas que decidir dónde aplicar.
+          </p>
+          <p class="hero-card-footnote">Así llegás más fresco y preparado a las entrevistas, sin quemarte haciendo scroll infinito.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section id="precios" class="pricing-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Elegí tu plan</h2>
+          <p>Empezá gratis y escalá cuando quieras. Sin compromisos.</p>
+        </div>
+
+        <div class="pricing-grid">
+          <div class="pricing-card free gs-fade">
+            <div class="plan-badge free">Free</div>
+            <div class="plan-price">
+              <span class="currency">$</span><span class="amount">0</span><span class="period">/mes</span>
             </div>
-            <div class="t-ok fade-in d2 typed t2">✅ Bot listo · scheduler 2h activo</div>
-            <div class="t-blank"></div>
-            <div class="t-info fade-in d3 typed t3">⏰ Iniciando ciclo automático...</div>
-            <div class="t-ok fade-in d3 typed t4">&nbsp;&nbsp;✅ LinkedIn AR: 4 resultado(s)</div>
-            <div class="t-ok fade-in d3 typed t5">&nbsp;&nbsp;✅ Remotive: 3 resultado(s)</div>
-            <div class="t-ok fade-in d3 typed t6">&nbsp;&nbsp;✅ Arbeitnow: 2 resultado(s)</div>
-            <div class="t-ok fade-in d3 typed t7">&nbsp;&nbsp;✅ Jobicy: 5 resultado(s)</div>
-            <div class="t-blank"></div>
-            <div class="t-info fade-in d4 typed t8">📊 14 jobs únicos encontrados</div>
-            <div class="t-ok fade-in d5 typed t9">🔔 Enviando 9 ofertas nuevas...</div>
-            <div class="t-blank"></div>
-            <div class="t-line fade-in d6">
-              <span class="t-prompt">$</span>
-              <span class="t-cursor"></span>
+            <p class="plan-desc">Para probar y empezar</p>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> 5 empleos diarios</li>
+              <li><i class="fas fa-check"></i> Búsqueda básica</li>
+              <li><i class="fas fa-check"></i> 1 alerta activa</li>
+              <li><i class="fas fa-times"></i> Match con tu CV</li>
+              <li><i class="fas fa-times"></i> Análisis de mercado</li>
+              <li><i class="fas fa-times"></i> CV tailoring</li>
+            </ul>
+            <a href="https://t.me/jobs912bot" class="btn btn-ghost btn-full">Empezar gratis</a>
+          </div>
+
+          <div class="pricing-card pro popular gs-fade">
+            <div class="plan-badge pro">Más popular</div>
+            <div class="plan-price">
+              <span class="currency">$</span><span class="amount">3</span><span class="period">/mes</span>
+            </div>
+            <p class="plan-desc">Para profesionales serios</p>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> <strong>Empleos ilimitados</strong></li>
+              <li><i class="fas fa-check"></i> <strong>Match con tu CV</strong></li>
+              <li><i class="fas fa-check"></i> <strong>Análisis de mercado</strong></li>
+              <li><i class="fas fa-check"></i> Pipeline de postulaciones</li>
+              <li><i class="fas fa-check"></i> 10 alertas activas</li>
+              <li><i class="fas fa-times"></i> CV tailoring</li>
+            </ul>
+            <a href="#demo" class="btn btn-primary btn-full">Obtener Pro</a>
+            <p class="plan-note">Aceptamos Stripe, MercadoPago y Crypto</p>
+          </div>
+
+          <div class="pricing-card premium gs-fade">
+            <div class="plan-badge premium">Premium</div>
+            <div class="plan-price">
+              <span class="currency">$</span><span class="amount">5</span><span class="period">/mes</span>
+            </div>
+            <p class="plan-desc">Todo incluido + extras</p>
+            <ul class="plan-features">
+              <li><i class="fas fa-check"></i> Todo de Pro</li>
+              <li><i class="fas fa-check"></i> <strong>CV Tailoring (render.cv)</strong></li>
+              <li><i class="fas fa-check"></i> <strong>Entrevistas mock con IA</strong></li>
+              <li><i class="fas fa-check"></i> Priority support</li>
+              <li><i class="fas fa-check"></i> Exportar CVs</li>
+              <li><i class="fas fa-check"></i> Alertas ilimitadas</li>
+            </ul>
+            <a href="#demo" class="btn btn-ghost btn-full">Obtener Premium</a>
+          </div>
+        </div>
+
+        <div class="payment-methods gs-fade">
+          <p>Métodos de pago aceptados:</p>
+          <div class="methods-icons">
+            <span class="method-badge"><i class="fab fa-stripe"></i> Stripe</span>
+            <span class="method-badge"><i class="fas fa-credit-card"></i> MercadoPago</span>
+            <span class="method-badge"><i class="fab fa-bitcoin"></i> Crypto</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section id="como-funciona" class="features">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Cómo trabaja JobBot por vos</h2>
+          <p>
+            No hace magia, hace el trabajo pesado: buscar, filtrar y ordenar las oportunidades
+            para que vos llegues descansado a las entrevistas.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <article class="feature-card gs-fade">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </div>
+            <h3>Búsqueda continua</h3>
+            <p>
+              Escanea LinkedIn, Jobicy y otros portales varias veces por día. Te olvidás del
+              "refrescar" y de revisar siempre lo mismo.
+            </p>
+          </article>
+
+          <article class="feature-card gs-fade">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </div>
+            <h3>Filtro con IA</h3>
+            <p>
+              Compara tu CV con cada anuncio y te muestra el nivel de encaje. Así sabés rápido
+              cuáles valen tu tiempo y cuáles no.
+            </p>
+          </article>
+
+          <article class="feature-card gs-fade">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+            </div>
+            <h3>Te prepara para las entrevistas</h3>
+            <p>
+              Antes de que te llamen, podés practicar preguntas típicas del puesto para llegar
+              con más seguridad a la conversación.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- MARKET ANALYSIS -->
+    <section class="market-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>El mercado hoy</h2>
+          <p>Conectá tu CV y vemos qué oportunidades hay para vos. Análisis en tiempo real.</p>
+        </div>
+
+        <div class="market-grid">
+          <div class="market-card gs-fade">
+            <h4>Empleos por Rubro</h4>
+            <div class="donut-wrapper">
+              <canvas id="rubrosChart"></canvas>
+              <div class="donut-center">
+                <div class="big-number">247</div>
+                <div class="label">empleos</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="market-card gs-fade">
+            <h4>Skills más demandados</h4>
+            <div class="skills-list">
+              <span class="skill-tag">React</span>
+              <span class="skill-tag">TypeScript</span>
+              <span class="skill-tag">Node.js</span>
+              <span class="skill-tag">Python</span>
+              <span class="skill-tag">AWS</span>
+              <span class="skill-tag">Docker</span>
+              <span class="skill-tag">SQL</span>
+              <span class="skill-tag">Git</span>
+            </div>
+            <div style="margin-top: 1.25rem;">
+              <h4 style="margin-bottom: 0.75rem;">Tendencia vs. hace 30 días</h4>
+              <div class="trend-item">
+                <span class="trend-name">Frontend Dev</span>
+                <span class="trend-value">+12%</span>
+              </div>
+              <div class="trend-item">
+                <span class="trend-name">UX/UI Designer</span>
+                <span class="trend-value">+8%</span>
+              </div>
+              <div class="trend-item">
+                <span class="trend-name">Data Analyst</span>
+                <span class="trend-value">+5%</span>
+              </div>
+              <div class="trend-item">
+                <span class="trend-name">QA Engineer</span>
+                <span class="trend-value negative">-3%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="market-card gs-fade">
+            <h4>Salarios Promedio (USD)</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+                  <span>Junior</span>
+                  <span style="font-weight: 600;">$500 - $800</span>
+                </div>
+                <div style="background: var(--surface-soft); height: 6px; border-radius: 3px; overflow: hidden;">
+                  <div style="background: var(--primary); width: 35%; height: 100%;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+                  <span>Semi Senior</span>
+                  <span style="font-weight: 600;">$1.200 - $2.000</span>
+                </div>
+                <div style="background: var(--surface-soft); height: 6px; border-radius: 3px; overflow: hidden;">
+                  <div style="background: var(--success); width: 60%; height: 100%;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+                  <span>Senior</span>
+                  <span style="font-weight: 600;">$2.500 - $4.000</span>
+                </div>
+                <div style="background: var(--surface-soft); height: 6px; border-radius: 3px; overflow: hidden;">
+                  <div style="background: var(--warning); width: 85%; height: 100%;"></div>
+                </div>
+              </div>
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+                  <span>Lead/Manager</span>
+                  <span style="font-weight: 600;">$4.000 - $6.000</span>
+                </div>
+                <div style="background: var(--surface-soft); height: 6px; border-radius: 3px; overflow: hidden;">
+                  <div style="background: #8b5cf6; width: 95%; height: 100%;"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- STATS BAR -->
-  <div class="stats-bar">
-    <div class="container">
-      <div class="stats-inner">
-        <div class="stat">
-          <span class="stat-num" id="stat-sources">5+</span>
-          <div class="stat-label">fuentes de empleo</div>
+    <!-- JOBS THIS WEEK -->
+    <section class="jobs-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Jobs nuevos esta semana</h2>
+          <p>Recomendaciones personalizadas basadas en tu perfil. Conectá tu CV para ver tu match.</p>
         </div>
-        <div class="stat">
-          <span class="stat-num">2h</span>
-          <div class="stat-label">intervalo de monitoreo</div>
+
+        <div class="jobs-grid" id="jobsGrid">
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">Frontend Developer</div>
+                <div class="job-company">TechFlow Argentina</div>
+              </div>
+              <div class="match-badge match-high">
+                <i class="fas fa-bolt"></i> 92%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">React</span>
+              <span class="job-tag">TypeScript</span>
+              <span class="job-tag">Remoto</span>
+            </div>
+            <div class="job-salary">$1.800 - $2.400 USD</div>
+          </article>
+
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">Full Stack Engineer</div>
+                <div class="job-company">DataViz Labs</div>
+              </div>
+              <div class="match-badge match-high">
+                <i class="fas fa-bolt"></i> 87%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">Node.js</span>
+              <span class="job-tag">Python</span>
+              <span class="job-tag">Presencial</span>
+            </div>
+            <div class="job-salary">$2.000 - $2.800 USD</div>
+          </article>
+
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">UI/UX Designer</div>
+                <div class="job-company">Creative Studio BA</div>
+              </div>
+              <div class="match-badge match-medium">
+                <i class="fas fa-bolt"></i> 68%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">Figma</span>
+              <span class="job-tag">UX Research</span>
+              <span class="job-tag">Híbrido</span>
+            </div>
+            <div class="job-salary">$1.500 - $2.000 USD</div>
+          </article>
+
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">Backend Developer</div>
+                <div class="job-company">CloudNet SA</div>
+              </div>
+              <div class="match-badge match-high">
+                <i class="fas fa-bolt"></i> 85%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">Go</span>
+              <span class="job-tag">PostgreSQL</span>
+              <span class="job-tag">Remoto</span>
+            </div>
+            <div class="job-salary">$2.200 - $3.000 USD</div>
+          </article>
+
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">DevOps Engineer</div>
+                <div class="job-company">SecureStack</div>
+              </div>
+              <div class="match-badge match-low">
+                <i class="fas fa-bolt"></i> 45%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">Kubernetes</span>
+              <span class="job-tag">AWS</span>
+              <span class="job-tag">Remoto</span>
+            </div>
+            <div class="job-salary">$2.500 - $3.500 USD</div>
+          </article>
+
+          <article class="job-card gs-fade">
+            <div class="job-header">
+              <div>
+                <div class="job-title">Product Manager</div>
+                <div class="job-company">Innovate Corp</div>
+              </div>
+              <div class="match-badge match-medium">
+                <i class="fas fa-bolt"></i> 72%
+              </div>
+            </div>
+            <div class="job-tags">
+              <span class="job-tag">Agile</span>
+              <span class="job-tag">Analytics</span>
+              <span class="job-tag">Presencial</span>
+            </div>
+            <div class="job-salary">$2.000 - $2.500 USD</div>
+          </article>
         </div>
-        <div class="stat">
-          <span class="stat-num" id="stat-users">—</span>
-          <div class="stat-label">usuarios activos</div>
-          <div class="stat-live" id="stat-live-users"><span class="live-dot"></span> en vivo</div>
-        </div>
-        <div class="stat">
-          <span class="stat-num" id="stat-jobs">—</span>
-          <div class="stat-label">ofertas encontradas</div>
-          <div class="stat-live" id="stat-live-jobs"><span class="live-dot"></span> en vivo</div>
-        </div>
-        <div class="stat">
-          <span class="stat-num">100%</span>
-          <div class="stat-label">gratuito y open source</div>
+
+        <div style="text-align: center; margin-top: 2rem;">
+          <a href="#demo" class="btn btn-primary gs-fade">Conectá tu CV y ved más</a>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <!-- HOW IT WORKS -->
-  <section>
-    <div class="container">
-      <div class="section-tag">// cómo funciona</div>
-      <h2 class="section-title">De cero a alertas en 5 minutos</h2>
-      <p class="section-desc">Sin configuraciones complejas. Abrís Telegram, mandás /start y el bot empieza a trabajar
-        por vos.</p>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">01 —</div>
-          <div class="step-icon">🤖</div>
-          <h3>Abrí el bot</h3>
-          <p>Buscá @jobs912bot en Telegram y enviá /start. Listo, estás registrado.</p>
+    <!-- CV PERSONALIZATION -->
+    <section class="cv-section" id="demo">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Armá tu propuesta</h2>
+          <p>Como render.cv pero gratis. Pegá un link de empleo y te generamos una propuesta personalizada.</p>
         </div>
-        <div class="step">
-          <div class="step-num">02 —</div>
-          <div class="step-icon">⚙️</div>
-          <h3>Configurá tu perfil</h3>
-          <p>Usá /preferencias y respondé 6 preguntas: nivel, rol, tecnologías, ubicación, modalidad y antigüedad. El bot genera keywords inteligentes.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">03 —</div>
-          <div class="step-icon">🔔</div>
-          <h3>Activá alertas</h3>
-          <p>Con /activar_alertas el bot empieza a monitorear cada 2 horas y te avisa solo si hay algo nuevo.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">04 —</div>
-          <div class="step-icon">🎯</div>
-          <h3>Recibí ofertas</h3>
-          <p>Te llegan notificaciones con título, empresa, ubicación y link directo. Sin ruido ni duplicados.</p>
+
+        <div class="cv-tool gs-fade">
+          <div class="cv-input-group">
+            <input type="text" id="jobUrlInput" placeholder="Pegá aquí el link del empleo (LinkedIn, Bumeran, etc.)" />
+            <button id="analyzeBtn" class="btn btn-primary">
+              <i class="fas fa-magic"></i> Analizar
+            </button>
+          </div>
+
+          <div class="cv-result" id="cvResult">
+            <div class="cv-summary">
+              <h5><i class="fas fa-check-circle" style="color: var(--success);"></i> Tu match con este rol</h5>
+              <div class="cv-match-items">
+                <div class="cv-match-item">
+                  <i class="fas fa-check" style="color: var(--success);"></i>
+                  <span class="match">5 años experiencia en React</span>
+                </div>
+                <div class="cv-match-item">
+                  <i class="fas fa-check" style="color: var(--success);"></i>
+                  <span class="match">TypeScript - requerido</span>
+                </div>
+                <div class="cv-match-item">
+                  <i class="fas fa-check" style="color: var(--success);"></i>
+                  <span class="match">Experiencia con APIs REST</span>
+                </div>
+                <div class="cv-match-item">
+                  <i class="fas fa-times" style="color: var(--danger);"></i>
+                  <span class="no-match">No mencionas experiencia con Testing (deseable)</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="cv-suggestion">
+              <h5><i class="fas fa-lightbulb"></i> Propuesta sugerida</h5>
+              <p>
+                "Hola, me interesa mucho esta posición de Frontend Developer. Tengo 5 años de experiencia 
+                trabajando con React y TypeScript en proyectos de escala, donde lideré la migración de una 
+                aplicación legacy a una arquitectura moderna. Me encantaría contarles cómo mi experiencia 
+                con APIs REST y trabajo en equipo remote puede aportar a TechFlow..."
+              </p>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- FEATURES -->
-  <section style="padding-top:0">
-    <div class="container">
-      <div class="section-tag">// funcionalidades</div>
-      <h2 class="section-title">Todo lo que necesitás</h2>
-      <p class="section-desc">Construido específicamente para estudiantes de IT y juniors buscando su primera
-        oportunidad.</p>
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">🔍</div>
-          <h3>Monitoreo Smart</h3>
-          <p>Scrapeo constante de LinkedIn, Remotive, Himalayas y más. Filtramos por Seniority y Modalidad.</p>
+    <!-- TRACKER NOTION STYLE -->
+    <section class="tracker-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Tu pipeline de postulaciones</h2>
+          <p>Seguimiento estilo Notion: tabla, kanban y calendario en una sola vista.</p>
         </div>
-        <div class="feature-card" style="border-color: var(--cyan);">
-          <div class="feature-icon" style="background: rgba(0, 212, 255, 0.1); color: var(--cyan);">📊</div>
-          <h3>GitHub Match PRO</h3>
-          <p>Analizamos tus repositorios y los comparamos con la oferta. Te decimos qué proyectos destacar.</p>
-        </div>
-        <div class="feature-card" style="border-color: var(--cyan);">
-          <div class="feature-icon" style="background: rgba(0, 212, 255, 0.1); color: var(--cyan);">📝</div>
-          <h3>Job Tracker</h3>
-          <p>Gestioná todas tus aplicaciones desde el bot. Cambiá estados, agregá notas y no pierdas el hilo.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">🤖</div>
-          <h3>AI Match Score</h3>
-          <p>Llama 3.3 analiza tu CV y cada oferta para darte un score de 1 a 100 de compatibilidad.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">🎯</div>
-          <h3>Simulador Técnico</h3>
-          <p>Entrená para entrevistas reales con preguntas generadas por IA basadas en la vacante.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">🛡️</div>
-          <h3>GDPR & Privacidad</h3>
-          <p>Tus datos son tuyos. Borrá toda tu información con un solo comando cuando consigas trabajo.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">⏳</div>
-          <h3>Control de antigüedad</h3>
-          <p>Elegí si querés ver ofertas de las últimas 24h, 1 semana o 3 meses. Vos decidís la frescura.</p>
+
+        <div class="tracker-container gs-fade">
+          <div class="tracker-header">
+            <h3 style="font-size: 1rem; font-weight: 600;">Mis postulaciones</h3>
+            <div class="tracker-tabs">
+              <button class="tracker-tab active" data-tab="table">
+                <i class="fas fa-table"></i> Tabla
+              </button>
+              <button class="tracker-tab" data-tab="calendar">
+                <i class="fas fa-calendar"></i> Calendario
+              </button>
+            </div>
+          </div>
+
+          <div id="tab-table" class="tab-content active">
+            <div class="notion-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>Puesto</th>
+                    <th>Remoto</th>
+                    <th>Salario</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th>Notas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>TechFlow</strong></td>
+                    <td>Frontend Developer</td>
+                    <td><span style="color: var(--success);">✓</span></td>
+                    <td>$2.200</td>
+                    <td><span class="status-badge status-interview"><i class="fas fa-comments"></i> Entrevista</span></td>
+                    <td>28 Mar</td>
+                    <td style="color: var(--text-muted);">Tech lead muy copado</td>
+                  </tr>
+                  <tr>
+                    <td><strong>DataViz</strong></td>
+                    <td>Full Stack</td>
+                    <td><span style="color: var(--danger);">✗</span></td>
+                    <td>$2.500</td>
+                    <td><span class="status-badge status-applied"><i class="fas fa-paper-plane"></i> Aplicado</span></td>
+                    <td>27 Mar</td>
+                    <td style="color: var(--text-muted);">-</td>
+                  </tr>
+                  <tr>
+                    <td><strong>CloudNet</strong></td>
+                    <td>Backend Dev</td>
+                    <td><span style="color: var(--success);">✓</span></td>
+                    <td>$2.800</td>
+                    <td><span class="status-badge status-rejected"><i class="fas fa-times"></i> No lanjut</span></td>
+                    <td>25 Mar</td>
+                    <td style="color: var(--text-muted);">Buscaban más seniority</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Innovate</strong></td>
+                    <td>Product Manager</td>
+                    <td><span style="color: var(--danger);">✗</span></td>
+                    <td>$2.200</td>
+                    <td><span class="status-badge status-offer"><i class="fas fa-trophy"></i> Oferta</span></td>
+                    <td>22 Mar</td>
+                    <td style="color: var(--success); font-weight: 500;">¡Aceptada!</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="tab-calendar" class="tab-content">
+            <div class="calendar-mini">
+              <div class="calendar-day other-month">1</div>
+              <div class="calendar-day other-month">2</div>
+              <div class="calendar-day">3</div>
+              <div class="calendar-day">4</div>
+              <div class="calendar-day">5</div>
+              <div class="calendar-day">6</div>
+              <div class="calendar-day">7</div>
+              <div class="calendar-day">8</div>
+              <div class="calendar-day">9</div>
+              <div class="calendar-day">10</div>
+              <div class="calendar-day">11</div>
+              <div class="calendar-day">12</div>
+              <div class="calendar-day">13</div>
+              <div class="calendar-day">14</div>
+              <div class="calendar-day">15</div>
+              <div class="calendar-day">16</div>
+              <div class="calendar-day">17</div>
+              <div class="calendar-day">18</div>
+              <div class="calendar-day">19</div>
+              <div class="calendar-day has-event">20</div>
+              <div class="calendar-day">21</div>
+              <div class="calendar-day has-event today">22</div>
+              <div class="calendar-day">23</div>
+              <div class="calendar-day">24</div>
+              <div class="calendar-day">25</div>
+              <div class="calendar-day">26</div>
+              <div class="calendar-day has-event">27</div>
+              <div class="calendar-day">28</div>
+              <div class="calendar-day">29</div>
+              <div class="calendar-day">30</div>
+              <div class="calendar-day">31</div>
+            </div>
+            <div class="calendar-legend">
+              <span><div class="dot"></div> Entrevista</span>
+              <span><div class="dot" style="background: var(--success);"></div> Oferta</span>
+              <span><div class="dot" style="background: var(--primary); border: 2px solid var(--primary-strong);"></div> Hoy</span>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- SOURCES -->
-  <section style="padding-top:0">
-    <div class="container">
-      <div class="section-tag">// fuentes monitoreadas</div>
-      <h2 class="section-title">¿Dónde busca el bot?</h2>
-      <p class="section-desc">APIs públicas y RSS feeds reales — no scraping que se rompe, sino datos que siempre
-        llegan.</p>
-      <div class="sources-grid">
-        <div class="source-pill"><span class="source-dot"></span>LinkedIn AR (Google News)</div>
-        <div class="source-pill"><span class="source-dot"></span>Himalayas (Startups)</div>
-        <div class="source-pill"><span class="source-dot"></span>Remotive API</div>
-        <div class="source-pill"><span class="source-dot"></span>Arbeitnow API</div>
-        <div class="source-pill"><span class="source-dot"></span>Jobicy API</div>
-        <div class="source-pill"><span class="source-dot"></span>RSS personalizados</div>
-        <div class="source-pill"><span class="source-dot dim"></span>Google Jobs (SerpAPI)</div>
-        <div class="source-pill"><span class="source-dot dim"></span>Twitter/X (plan pago)</div>
-      </div>
-      <p style="margin-top:20px; font-size:12px; color:var(--text-muted)">
-        ● Activo sin configuración &nbsp;&nbsp; ○ Requiere API key
-      </p>
+    <!-- TIPS SECTION -->
+    <section class="tips-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Consejos para tu búsqueda</h2>
+          <p>Tips actualizados según tu etapa actual y errores comunes que podés evitar.</p>
+        </div>
 
-      <!-- PRO MOCKUP -->
-      <div style="margin-top: 60px; text-align: center;">
-        <img src="mockup_pro.png" alt="JobBot Pro Features" style="max-width: 100%; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 40px 100px rgba(0, 255, 136, 0.1);">
-      </div>
-    </div>
-  </section>
+        <div class="tips-grid">
+          <article class="tip-card gs-fade">
+            <div class="tip-icon blue">
+              <i class="fas fa-paper-plane"></i>
+            </div>
+            <h4>Aplicá a los primeros</h4>
+            <p>Los primeros 5 postulantes tienen 3x más chances de ser vistos. JobBot te alerta cuando aparece algo nuevo.</p>
+          </article>
 
-  <!-- PRICING / COMPARISON -->
-  <section style="padding-top:0" id="pro">
-    <div class="container">
-      <div class="section-tag">// el siguiente nivel</div>
-      <h2 class="section-title">Pasate a <span style="color:var(--green)">PRO</span></h2>
-      <p class="section-desc">Liberá todo el poder de la IA y gestioná tu carrera como un experto.</p>
-      
-      <style>
-        .pricing-table {
-          width: 100%;
-          border-collapse: collapse;
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          overflow: hidden;
-        }
-        .pricing-table th, .pricing-table td {
-          padding: 20px;
-          text-align: left;
-          border-bottom: 1px solid var(--border);
-        }
-        .pricing-table th {
-          background: #161b22;
-          color: var(--white);
-          font-family: 'Syne', sans-serif;
-          font-size: 14px;
-        }
-        .pricing-table td:first-child {
-          color: var(--text-muted);
-          font-weight: 500;
-        }
-        .check { color: var(--green); }
-        .cross { color: var(--text-muted); opacity: 0.5; }
-        .pro-highlight { background: rgba(0, 255, 136, 0.03); }
-      </style>
+          <article class="tip-card gs-fade">
+            <div class="tip-icon green">
+              <i class="fas fa-file-alt"></i>
+            </div>
+            <h4>Personalizá cada CV</h4>
+            <p>No mandes el mismo CV a todos. Destacá las keywords del aviso en tu propuesta inicial.</p>
+          </article>
 
-      <table class="pricing-table">
-        <thead>
-          <tr>
-            <th>Funcionalidad</th>
-            <th>Free</th>
-            <th style="color: var(--green);">PRO</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Alertas de Empleo</td>
-            <td>Cada 12hs</td>
-            <td class="pro-highlight"><b>Cada 2hs (Real-time)</b></td>
-          </tr>
-          <tr>
-            <td>Keywords de búsqueda</td>
-            <td>Máximo 2</td>
-            <td class="pro-highlight"><b>Ilimitadas</b></td>
-          </tr>
-          <tr>
-            <td>GitHub Match Score</td>
-            <td><span class="cross">✕</span></td>
-            <td class="pro-highlight"><span class="check">✔</span> <b>Ilimitado</b></td>
-          </tr>
-          <tr>
-            <td>Job Tracker personal</td>
-            <td>Limitado (3)</td>
-            <td class="pro-highlight"><span class="check">✔</span> <b>Ilimitado</b></td>
-          </tr>
-          <tr>
-            <td>Simulador de Entrevistas</td>
-            <td>3 por semana</td>
-            <td class="pro-highlight"><b>Ilimitado</b></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+          <article class="tip-card gs-fade">
+            <div class="tip-icon yellow">
+              <i class="fas fa-search"></i>
+            </div>
+            <h4>Buscá en varios portales</h4>
+            <p>El 60% de los empleos no se publican en LinkedIn. JobBot监控ea 15+ fuentes distintas.</p>
+          </article>
 
-  <!-- COMMANDS -->
-  <section style="padding-top:0">
-    <div class="container">
-      <div class="section-tag">// comandos</div>
-      <h2 class="section-title">Interfaz de Telegram</h2>
-      <p class="section-desc">Todo desde el chat, sin apps extra ni dashboards complicados.</p>
-      <div class="commands-list">
-        <div class="cmd-row">
-          <span class="cmd-name">/start</span>
-          <span class="cmd-desc">Inicializar el bot y ver el menú de bienvenida</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/preferencias</span>
-          <span class="cmd-desc">Configurar nivel, rol, tecnologías, ubicación, modalidad y antigüedad</span>
-        </div>
-        <div class="cmd-row">
-            <span class="cmd-name">/github</span>
-            <span class="cmd-desc"><span style="color:var(--cyan)">[PRO]</span> Analizá tu código y hacé match técnico con ofertas reales.</span>
-        </div>
-        <div class="cmd-row">
-            <span class="cmd-name">/track [id]</span>
-            <span class="cmd-desc"><span style="color:var(--cyan)">[PRO]</span> Gestioná tus postulaciones y cambiá estados desde el bot.</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/horarios</span>
-          <span class="cmd-desc">Configurar frecuencia (ej: cada 3hs) y franja horaria de alertas.</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/entrevista</span>
-          <span class="cmd-desc">Simulador de entrevista técnica generado por IA basado en una vacante.</span>
-        </div>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/analizar_oferta [URL]</span>
-          <span class="cmd-desc">Compara tu CV contra un link de trabajo</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/cargar_cv</span>
-          <span class="cmd-desc">Subir tu currículum en PDF o TXT</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/borrar_datos</span>
-          <span class="cmd-desc">Eliminar TODA tu información (GDPR)</span>
-        </div>
-        <div class="cmd-row">
-          <span class="cmd-name">/ayuda</span>
-          <span class="cmd-desc">Ver todos los comandos disponibles</span>
+          <article class="tip-card gs-fade">
+            <div class="tip-icon red">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h4>Cuidado con los scams</h4>
+            <p>JobBot filtra ofertas sospechosas. Nunca mandes dinero ni datos bancarios a recruiters.</p>
+          </article>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- CTA -->
-  <section class="cta-section">
-    <div class="cta-glow"></div>
-    <div class="container">
-      <h2>Empezá a buscar<br /><span>más inteligente</span></h2>
-      <p>Gratis, open source y listo para usar. Mientras vos dormís, el bot trabaja.</p>
-      <a href="https://t.me/jobs912bot" class="telegram-btn">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.069l-2.025 9.547c-.148.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L8.332 14.49 5.37 13.58c-.646-.203-.658-.646.136-.953l10.884-4.197c.538-.194 1.009.131.172.639z" />
-        </svg>
-        Abrir JobBot en Telegram
-      </a>
-    </div>
-  </section>
+    <!-- DASHBOARD (ORIGINAL) -->
+    <section id="dash" class="dashboard-section">
+      <div class="container">
+        <div class="section-header gs-fade">
+          <h2>Tu panel de búsqueda</h2>
+          <p>
+            Si ya usaste el bot, ingresá tu ID de Telegram para ver un resumen de tus
+            postulaciones y en qué etapa está cada una. O probá con un ejemplo para ver cómo se ve.
+          </p>
+        </div>
 
-  <!-- FOOTER -->
+        <div class="dash-input-row gs-fade">
+          <input type="text" id="tid-input" placeholder="Tu ID de Telegram (por ejemplo: 123456789)" />
+          <button id="tid-submit" class="btn btn-primary">Ver mi panel</button>
+          <button id="demo-button" class="btn btn-ghost">Ver ejemplo</button>
+        </div>
+
+        <div class="dash-note gs-fade">
+          Tu ID aparece dentro del bot. Si recién estás probando, usá "Ver ejemplo" para ver una vista de muestra.
+        </div>
+
+        <div class="alert-prefs gs-fade" aria-label="Preferencias de alertas">
+          <div class="alert-prefs-header">
+            <h3>Dónde querés recibir las alertas</h3>
+            <p>Elegí el canal que mejor se adapte a tu día a día. Podés cambiarlo cuando quieras.</p>
+          </div>
+          <div class="channel-pills">
+            <button type="button" class="channel-pill" data-channel="telegram">
+              <span class="channel-pill-main">Telegram</span>
+              <span class="channel-pill-sub">Mensajes directos del bot, lista para usar hoy.</span>
+            </button>
+            <button type="button" class="channel-pill" data-channel="web">
+              <span class="channel-pill-main">Solo panel web</span>
+              <span class="channel-pill-sub">Sin notificaciones push. Entrás acá cuando querés revisar.</span>
+            </button>
+            <button type="button" class="channel-pill" data-channel="email">
+              <span class="channel-pill-main">Resumen por email</span>
+              <span class="channel-pill-sub">Un resumen con las mejores oportunidades (en preparación).</span>
+            </button>
+            <button type="button" class="channel-pill" data-channel="whatsapp">
+              <span class="channel-pill-main">WhatsApp</span>
+              <span class="channel-pill-sub">Alertas por WhatsApp (beta cerrada, pronto disponible).</span>
+            </button>
+            <button type="button" class="channel-pill" data-channel="twitter">
+              <span class="channel-pill-main">Twitter / X</span>
+              <span class="channel-pill-sub">DMs o listas privadas para tus búsquedas (idea en validación).</span>
+            </button>
+          </div>
+          <p id="alert-summary" class="alert-summary"></p>
+
+          <div style="margin-top:0.6rem;">
+            <span style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:0.25rem;">Frecuencia de alertas</span>
+            <div class="digest-row" aria-label="Frecuencia de resúmenes">
+              <button type="button" class="digest-pill" data-digest="realtime">Tiempo real</button>
+              <button type="button" class="digest-pill" data-digest="daily">1 resumen por día</button>
+              <button type="button" class="digest-pill" data-digest="weekly">1 resumen semanal</button>
+            </div>
+          </div>
+
+          <div class="prefs-grid" style="margin-top:0.8rem;">
+            <div class="prefs-field">
+              <label for="weekly-goal-input">Objetivo semanal de aplicaciones</label>
+              <input id="weekly-goal-input" type="number" min="0" step="1" placeholder="Ej: 7" />
+              <small>Cuántas aplicaciones te gustaría enviar por semana. Lo usamos solo para el panel.</small>
+            </div>
+            <div class="prefs-field">
+              <label for="blocked-companies-input">Empresas que NO querés ver</label>
+              <textarea id="blocked-companies-input" placeholder="Ej: Empresa1, Empresa2"></textarea>
+              <small>Lista separada por comas. No te mostraremos avisos de estas empresas.</small>
+            </div>
+            <div class="prefs-field">
+              <label for="preferred-companies-input">Empresas que te interesan más</label>
+              <textarea id="preferred-companies-input" placeholder="Ej: Globant, MercadoLibre"></textarea>
+              <small>Prioriza resultados de estas empresas cuando haya match.</small>
+            </div>
+          </div>
+        </div>
+
+        <div id="dashboard-error" class="error-box"></div>
+
+        <div id="dashboard-content" style="display:none;">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Nivel detectado</div>
+              <div id="d-level" class="stat-value">--</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Rol principal</div>
+              <div id="d-role" class="stat-value" style="color:var(--primary-strong); font-size:1.4rem;">--</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Postulaciones registradas</div>
+              <div id="d-apps" class="stat-value">--</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Objetivo semanal</div>
+              <div id="d-goal-count" class="stat-value" style="font-size:1.2rem;">--</div>
+              <div class="goal-bar">
+                <div id="d-goal-fill" class="goal-bar-fill"></div>
+              </div>
+              <div id="d-goal-label" class="goal-label"></div>
+            </div>
+          </div>
+
+          <div class="dash-layout">
+            <div class="dash-box">
+              <h3>Cómo avanza tu búsqueda</h3>
+              <p style="font-size:0.85rem; color:var(--text-muted);">
+                Cantidad de oportunidades en cada etapa: aplicadas, con entrevista, rechazadas y con oferta.
+              </p>
+              <div class="chart-wrapper">
+                <canvas id="funnelChart"></canvas>
+              </div>
+            </div>
+
+            <div class="dash-box" aria-label="Listado de postulaciones">
+              <h3>Detalle de postulaciones</h3>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Empresa</th>
+                      <th>Puesto</th>
+                      <th>Estado</th>
+                      <th>Actualizado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="d-table-body">
+                  </tbody>
+                </table>
+              </div>
+              <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.4rem;">Solo vos ves esta información.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
   <footer>
     <div class="container">
-      <div class="footer-inner">
-        <div class="footer-logo">Job<span>Bot</span>.ar</div>
-        <div class="footer-text">Hecho con ☕ por Nacho (PISCU) — Lic. Gestión de TI · Buenos Aires</div>
-        <div class="footer-links">
-          <a href="https://github.com/nachopalmeri/-jobbot-landing">GitHub</a>
-          <a href="https://t.me/jobs912bot">Telegram</a>
-        </div>
-      </div>
+      <p>© 2026 JobBot AR. Hecho para acompañarte en tu búsqueda laboral, no para reemplazarte.</p>
     </div>
   </footer>
 
-  <!-- STATS FETCHER -->
   <script>
-    (function () {
-      // URL del stats API del bot — cambiá esto cuando expongas el bot públicamente
-      // Puede ser vía ngrok, Cloudflare Tunnel, o un VPS
-      const STATS_API_URL = 'https://jobbot-api.example.com/api/stats';
+    const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      async function fetchStats() {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 5000);
+    if (!prefersReducedMotion) {
+      gsap.registerPlugin(ScrollTrigger);
 
-          const response = await fetch(STATS_API_URL, {
-            signal: controller.signal,
-            headers: { 'Accept': 'application/json' }
-          });
-          clearTimeout(timeout);
-
-          if (!response.ok) throw new Error('API no disponible');
-          const data = await response.json();
-
-          // Actualizar stats en el DOM
-          if (data.total_users !== undefined) {
-            document.getElementById('stat-users').textContent = data.total_users;
-            document.getElementById('stat-live-users').classList.add('visible');
+      gsap.utils.toArray('.gs-fade').forEach(function (elem, i) {
+        gsap.fromTo(
+          elem,
+          { y: 18, opacity: 0 },
+          {
+            scrollTrigger: { trigger: elem, start: 'top 90%' },
+            y: 0,
+            opacity: 1,
+            duration: 0.6,
+            ease: 'power2.out',
+            delay: elem.closest('.hero') && i < 4 ? i * 0.12 : 0,
           }
-          if (data.total_jobs_found !== undefined) {
-            const jobsNum = data.total_jobs_found;
-            document.getElementById('stat-jobs').textContent =
-              jobsNum >= 1000 ? (jobsNum / 1000).toFixed(1) + 'k' : jobsNum;
-            document.getElementById('stat-live-jobs').classList.add('visible');
-          }
-          if (data.sources_count !== undefined) {
-            document.getElementById('stat-sources').textContent = data.sources_count + '+';
-          }
+        );
+      });
+    } else {
+      document.querySelectorAll('.gs-fade').forEach((el) => {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      });
+    }
 
-        } catch (err) {
-          // Fallback silencioso — los stats simplemente muestran "—"
-          console.log('Stats API no disponible, usando valores por defecto');
+    const chartColors = {
+      purple: '#6366f1',
+      blue: '#3b82f6',
+      green: '#10b981',
+      yellow: '#f59e0b',
+      red: '#ef4444',
+      pink: '#ec4899',
+    };
+
+    const rubrosChart = new Chart(document.getElementById('rubrosChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Tech/Software', 'Diseño/UX', 'Marketing/Digital', 'Data/Analytics', 'Producto/PM', 'Otros'],
+        datasets: [{
+          data: [35, 20, 15, 12, 10, 8],
+          backgroundColor: [
+            chartColors.purple,
+            chartColors.blue,
+            chartColors.green,
+            chartColors.yellow,
+            chartColors.pink,
+            '#94a3b8'
+          ],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: {
+              usePointStyle: true,
+              pointStyle: 'circle',
+              padding: 15,
+              font: { size: 11 }
+            }
+          }
+        }
+      }
+    });
+
+    document.querySelectorAll('.tracker-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tracker-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      });
+    });
+
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const jobUrlInput = document.getElementById('jobUrlInput');
+    const cvResult = document.getElementById('cvResult');
+
+    if (analyzeBtn && jobUrlInput) {
+      analyzeBtn.addEventListener('click', () => {
+        if (jobUrlInput.value.trim()) {
+          cvResult.classList.add('active');
+          if (!prefersReducedMotion) {
+            gsap.fromTo(cvResult, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4 });
+          }
+        }
+      });
+
+      jobUrlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          analyzeBtn.click();
+        }
+      });
+    }
+
+    const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://127.0.0.1:8080'
+      : '';
+
+    const ALERT_PREFS_KEY = 'jobbot_alert_prefs_v1';
+    const USER_PREFS_KEY = 'jobbot_user_prefs_v1';
+
+    const SAMPLE_DASHBOARD = {
+      user_level: 'Semi Senior',
+      user_role: 'Frontend Developer',
+      funnel: { applied: 8, interview: 3, rejected: 2, offer: 1 },
+      applications: [
+        { company: 'Acme Tech', job_title: 'Frontend React', status: 'entrevista', created_at: new Date().toISOString() },
+        { company: 'Studio Pixel', job_title: 'UI Designer', status: 'aplicado', created_at: new Date().toISOString() },
+        { company: 'DataNorth', job_title: 'Product Designer', status: 'rechazado', created_at: new Date().toISOString() },
+        { company: 'MediaLab', job_title: 'Creative Technologist', status: 'oferta', created_at: new Date().toISOString() },
+      ],
+    };
+
+    function applyAlertPrefs(prefs) {
+      const pills = document.querySelectorAll('.channel-pill');
+      const summaryEl = document.getElementById('alert-summary');
+
+      pills.forEach((pill) => {
+        const channel = pill.dataset.channel;
+        const isActive = channel === prefs.channel;
+        pill.classList.toggle('selected', isActive);
+      });
+
+      if (!summaryEl) return;
+
+      if (prefs.channel === 'web') {
+        summaryEl.textContent = 'No te mandamos mensajes: ves todo acá en el panel cuando tengas ganas de revisar.';
+      } else if (prefs.channel === 'email') {
+        summaryEl.textContent = 'Vamos a priorizar un resumen por mail con las mejores oportunidades (feature en preparación).';
+      } else if (prefs.channel === 'whatsapp') {
+        summaryEl.textContent = 'En la siguiente versión vamos a probar alertas por WhatsApp. Por ahora guardamos tu preferencia para priorizarlo.';
+      } else if (prefs.channel === 'twitter') {
+        summaryEl.textContent = 'Estamos explorando alertas vía Twitter/X (DMs/listas). Elegirlo nos ayuda a priorizar esa integración.';
+      } else {
+        summaryEl.textContent = 'Te vamos a avisar por Telegram apenas detectemos algo que matchee bien con tu perfil.';
+      }
+    }
+
+    function applyDigestMode(mode) {
+      const pills = document.querySelectorAll('.digest-pill');
+      pills.forEach((pill) => {
+        const m = pill.dataset.digest;
+        pill.classList.toggle('selected', m === mode);
+      });
+    }
+
+    function applyAdvancedPrefsFromServer(prefs) {
+      if (!prefs) return;
+
+      const weeklyGoalInput = document.getElementById('weekly-goal-input');
+      const blockedInput = document.getElementById('blocked-companies-input');
+      const preferredInput = document.getElementById('preferred-companies-input');
+
+      const weeklyGoal = prefs.weekly_goal ?? null;
+      if (weeklyGoalInput && weeklyGoal != null) {
+        weeklyGoalInput.value = weeklyGoal || '';
+      }
+
+      if (blockedInput && typeof prefs.blocked_companies === 'string') {
+        blockedInput.value = prefs.blocked_companies;
+      }
+
+      if (preferredInput && typeof prefs.preferred_companies === 'string') {
+        preferredInput.value = prefs.preferred_companies;
+      }
+
+      if (prefs.digest_mode) {
+        applyDigestMode(prefs.digest_mode);
+      }
+
+      // Cache local de prefs avanzadas
+      try {
+        localStorage.setItem(
+          USER_PREFS_KEY,
+          JSON.stringify({
+            digest_mode: prefs.digest_mode || 'realtime',
+            weekly_goal: weeklyGoal || 0,
+            blocked_companies: prefs.blocked_companies || '',
+            preferred_companies: prefs.preferred_companies || '',
+          })
+        );
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    function initAlertPrefs() {
+      const pills = document.querySelectorAll('.channel-pill');
+      const digestPills = document.querySelectorAll('.digest-pill');
+      const weeklyGoalInput = document.getElementById('weekly-goal-input');
+      const blockedInput = document.getElementById('blocked-companies-input');
+      const preferredInput = document.getElementById('preferred-companies-input');
+      if (!pills.length) return;
+
+      let stored = null;
+      try {
+        const raw = localStorage.getItem(ALERT_PREFS_KEY);
+        stored = raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        stored = null;
+      }
+
+      const prefs = stored && stored.channel ? stored : { channel: 'telegram' };
+
+      applyAlertPrefs(prefs);
+
+      pills.forEach((pill) => {
+        pill.addEventListener('click', () => {
+          const channel = pill.dataset.channel || 'telegram';
+          const nextPrefs = { channel };
+          try {
+            localStorage.setItem(ALERT_PREFS_KEY, JSON.stringify(nextPrefs));
+          } catch (e) {
+            // ignore storage errors
+          }
+          applyAlertPrefs(nextPrefs);
+
+          // Si el usuario ya ingresó su Telegram ID, persistimos también en el backend
+          const tidInput = document.getElementById('tid-input');
+          const rawTid = tidInput && tidInput.value ? tidInput.value.trim() : '';
+          if (rawTid && /^\d+$/.test(rawTid)) {
+            fetch(`${API_BASE}/api/preferences`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ telegram_id: rawTid, alert_channel: channel }),
+            }).catch(() => {
+              // si falla, al menos queda guardado localmente
+            });
+          }
+        });
+      });
+
+      function getNumericTid() {
+        const tidInput = document.getElementById('tid-input');
+        const rawTid = tidInput && tidInput.value ? tidInput.value.trim() : '';
+        return rawTid && /^\d+$/.test(rawTid) ? rawTid : null;
+      }
+
+      // Digest mode listeners
+      digestPills.forEach((pill) => {
+        pill.addEventListener('click', () => {
+          const mode = pill.dataset.digest || 'realtime';
+          applyDigestMode(mode);
+
+          const tid = getNumericTid();
+          if (!tid) return;
+
+          fetch(`${API_BASE}/api/preferences`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_id: tid, digest_mode: mode }),
+          }).catch(() => {});
+        });
+      });
+
+      // Weekly goal change
+      if (weeklyGoalInput) {
+        weeklyGoalInput.addEventListener('change', () => {
+          const tid = getNumericTid();
+          if (!tid) return;
+          const value = weeklyGoalInput.value;
+          fetch(`${API_BASE}/api/preferences`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_id: tid, weekly_goal: value }),
+          }).catch(() => {});
+        });
+      }
+
+      function persistCompanyFilters() {
+        const tid = getNumericTid();
+        if (!tid) return;
+        const blocked = blockedInput ? blockedInput.value : '';
+        const preferred = preferredInput ? preferredInput.value : '';
+        fetch(`${API_BASE}/api/preferences`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telegram_id: tid,
+            blocked_companies: blocked,
+            preferred_companies: preferred,
+          }),
+        }).catch(() => {});
+      }
+
+      if (blockedInput) {
+        blockedInput.addEventListener('blur', persistCompanyFilters);
+      }
+      if (preferredInput) {
+        preferredInput.addEventListener('blur', persistCompanyFilters);
+      }
+    }
+
+    let chartInstance = null;
+
+    function renderDashboard(data) {
+      const contentEl = document.getElementById('dashboard-content');
+      const errEl = document.getElementById('dashboard-error');
+
+      errEl.style.display = 'none';
+
+      document.getElementById('d-level').textContent = data.user_level || 'Sin definir';
+      document.getElementById('d-role').textContent = data.user_role || 'Generalista';
+      document.getElementById('d-apps').textContent = data.applications ? data.applications.length : 0;
+
+      // Objetivo semanal
+      const weeklyGoal = typeof data.weekly_goal === 'number' ? data.weekly_goal : 0;
+      const weeklyApplied = typeof data.weekly_applied === 'number' ? data.weekly_applied : 0;
+      const goalCountEl = document.getElementById('d-goal-count');
+      const goalFillEl = document.getElementById('d-goal-fill');
+      const goalLabelEl = document.getElementById('d-goal-label');
+
+      if (goalCountEl && goalFillEl && goalLabelEl) {
+        if (weeklyGoal > 0) {
+          goalCountEl.textContent = `${weeklyApplied}/${weeklyGoal}`;
+          const ratio = Math.max(0, Math.min(1, weeklyApplied / weeklyGoal));
+          goalFillEl.style.width = `${Math.round(ratio * 100)}%`;
+          if (weeklyApplied >= weeklyGoal) {
+            goalLabelEl.textContent = '¡Objetivo de la semana cumplido!';
+          } else {
+            const remaining = weeklyGoal - weeklyApplied;
+            goalLabelEl.textContent = `Te faltan ${remaining} aplicación(es) para llegar a tu objetivo.`;
+          }
+        } else {
+          goalCountEl.textContent = '--';
+          goalFillEl.style.width = '0%';
+          goalLabelEl.textContent = 'Definí un objetivo semanal para ver tu progreso acá.';
         }
       }
 
-      // Fetch stats al cargar la página
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', fetchStats);
-      } else {
-        fetchStats();
-      }
-    })();
-  </script>
+      const ctx = document.getElementById('funnelChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
 
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Aplicadas', 'Entrevistas', 'Rechazadas', 'Ofertas'],
+          datasets: [
+            {
+              data: [
+                data.funnel?.applied || 0,
+                data.funnel?.interview || 0,
+                data.funnel?.rejected || 0,
+                data.funnel?.offer || 0,
+              ],
+              backgroundColor: [
+                'rgba(129, 140, 248, 0.22)',
+                'rgba(249, 115, 22, 0.2)',
+                'rgba(248, 113, 113, 0.2)',
+                'rgba(34, 197, 94, 0.22)',
+              ],
+              borderColor: ['#6366f1', '#ea580c', '#ef4444', '#22c55e'],
+              borderWidth: 1.8,
+              borderRadius: 6,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, color: '#64748b', font: { size: 11 } },
+              grid: { color: '#e2e8f0' },
+            },
+            x: {
+              ticks: { color: '#64748b', font: { size: 11 } },
+              grid: { display: false },
+            },
+          },
+        },
+      });
+
+      const tbody = document.getElementById('d-table-body');
+      tbody.innerHTML = '';
+
+      if (!data.applications || data.applications.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td colspan="4" style="padding:1.4rem; text-align:center; color:#64748b; font-size:0.9rem;">Todavía no registramos postulaciones. Probá aplicar a tu primer aviso desde el bot.</td>';
+        tbody.appendChild(tr);
+      } else {
+        data.applications.forEach((app) => {
+          let badgeClass = 'badge-muted';
+          let label = app.status || 'aplicado';
+
+          if (app.status === 'oferta') {
+            badgeClass = 'badge-pill';
+            label = 'oferta';
+          } else if (app.status === 'entrevista') {
+            badgeClass = 'badge-soft';
+            label = 'entrevista';
+          } else if (app.status === 'rechazado') {
+            badgeClass = 'badge-muted';
+            label = 'rechazado';
+          }
+
+          const dStr = app.created_at ? new Date(app.created_at).toLocaleDateString() : '';
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-weight:500;">${app.company || 'Empresa privada'}</td>
+            <td style="color:#64748b;">${app.job_title || '-'}</td>
+            <td><span class="badge ${badgeClass}">${label}</span></td>
+            <td style="color:#94a3b8; font-size:0.85rem;">${dStr}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      contentEl.style.display = 'block';
+      if (!prefersReducedMotion) {
+        gsap.fromTo(contentEl, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4 });
+      }
+
+      // Aplicar preferencias avanzadas (digest, filtros, objetivo) si vienen en el payload
+      applyAdvancedPrefsFromServer({
+        weekly_goal: data.weekly_goal,
+        blocked_companies: data.blocked_companies,
+        preferred_companies: data.preferred_companies,
+        digest_mode: data.digest_mode,
+      });
+    }
+
+    async function fetchRealDashboard() {
+      const tidInput = document.getElementById('tid-input');
+      const tid = tidInput.value.trim();
+      const errEl = document.getElementById('dashboard-error');
+      const btn = document.getElementById('tid-submit');
+
+      if (!tid) {
+        errEl.style.display = 'block';
+        errEl.textContent = 'Ingresá tu ID de Telegram para continuar.';
+        return;
+      }
+
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Buscando...';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/dashboard?telegram_id=${encodeURIComponent(tid)}`);
+        if (!res.ok) {
+          throw new Error('No encontramos datos para ese ID. Asegurate de haber hablado al menos una vez con el bot.');
+        }
+
+        const data = await res.json();
+        renderDashboard(data);
+      } catch (e) {
+        errEl.style.display = 'block';
+        errEl.textContent = e.message || 'Ocurrió un error inesperado. Probá de nuevo en unos minutos.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ver mi panel';
+      }
+    }
+
+    const tidSubmit = document.getElementById('tid-submit');
+    const demoButton = document.getElementById('demo-button');
+
+    if (tidSubmit) {
+      tidSubmit.addEventListener('click', fetchRealDashboard);
+    }
+
+    if (demoButton) {
+      demoButton.addEventListener('click', () => {
+        renderDashboard(SAMPLE_DASHBOARD);
+      });
+    }
+
+    initAlertPrefs();
+  </script>
 </body>
 
 </html>

@@ -99,6 +99,7 @@ async def check_jobs_for_user(
     db: Database,
     scraper: JobScraper,
     notify_if_empty: bool = False,
+    respect_channel: bool = True,
 ):
     """
     Ejecuta una búsqueda completa para un usuario y le notifica
@@ -150,6 +151,20 @@ async def check_jobs_for_user(
     all_jobs = JobScraper.apply_negative_filter(all_jobs, experience_level=exp_level)
     all_jobs = JobScraper.apply_modality_filter(all_jobs, modality=modality)
 
+    # --- Filtros por empresas (lista negra / preferidos) ---
+    company_filters = db.get_company_filters(telegram_id)
+    blocked = company_filters.get("blocked", set())
+    preferred = company_filters.get("preferred", set())
+
+    if blocked:
+        filtered_by_company = []
+        for job in all_jobs:
+            name = (job.get("company") or "").strip().lower()
+            if name and name in blocked:
+                continue
+            filtered_by_company.append(job)
+        all_jobs = filtered_by_company
+
     # --- Filtrar los que ya se enviaron ---
     new_jobs = db.filter_new_jobs(telegram_id, all_jobs)
 
@@ -184,11 +199,38 @@ async def check_jobs_for_user(
         new_jobs = sorted(enriched_jobs, key=lambda j: j.get("match_score", 0), reverse=True)
         logger.info("Jobs enriquecidos con match de CV para usuario %s", telegram_id)
 
+    # Ordenar para priorizar empresas preferidas, si hubiera
+    if preferred:
+        def pref_key(job):
+            name = (job.get("company") or "").strip().lower()
+            return 0 if name in preferred else 1
+
+        new_jobs = sorted(new_jobs, key=pref_key)
+
     logger.info("Enviando %d nuevas ofertas al usuario %s", len(new_jobs), telegram_id)
 
     # --- Obtener intervalo del usuario para el header ---
     schedule = db.get_user_schedule(telegram_id)
     user_interval = schedule.get("check_interval_hours", 6)
+
+    # --- Respetar canal de alertas configurado (solo para scheduler/monitoreo) ---
+    send_via_telegram = True
+    if respect_channel:
+        channel = db.get_alert_channel(telegram_id)
+        if channel != "telegram":
+            send_via_telegram = False
+
+    # Si no se envía por Telegram, igualmente marcamos como vistos para no repetirlos
+    if not send_via_telegram:
+        jobs_to_mark = new_jobs[: config.MAX_JOBS_PER_NOTIFICATION]
+        for job in jobs_to_mark:
+            db.mark_job_seen(telegram_id, job)
+        logger.info(
+            "Usuario %s con canal '%s': ofertas registradas solo para panel/web, sin push Telegram",
+            telegram_id,
+            db.get_alert_channel(telegram_id),
+        )
+        return
 
     # --- Enviar encabezado ---
     try:
@@ -265,7 +307,7 @@ async def scheduled_job_check(context):
     for user in active_users:
         tid = user["telegram_id"]
         try:
-            await check_jobs_for_user(bot, tid, db, scraper, notify_if_empty=False)
+            await check_jobs_for_user(bot, tid, db, scraper, notify_if_empty=False, respect_channel=True)
         except Exception as e:
             logger.error("Error procesando usuario %s en scheduler: %s", tid, e)
         # Pequeña pausa entre usuarios para no saturar la API de Telegram

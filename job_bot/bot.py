@@ -87,7 +87,7 @@ def run_scheduler(app: Application, loop: asyncio.AbstractEventLoop):
                 tid = user["telegram_id"]
                 try:
                     future = asyncio.run_coroutine_threadsafe(
-                        check_jobs_for_user(app.bot, tid, db, scraper, notify_if_empty=False),
+                        check_jobs_for_user(app.bot, tid, db, scraper, notify_if_empty=False, respect_channel=True),
                         loop,
                     )
                     future.result(timeout=120)
@@ -141,6 +141,10 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     profile = db.get_user_profile(user.id)
     schedule = db.get_user_schedule(user.id)
+    alert_channel = db.get_alert_channel(user.id)
+    weekly_goal = db.get_weekly_goal(user.id)
+    weekly_done = db.get_weekly_applications_count(user.id)
+    digest_mode = db.get_digest_mode(user.id)
     level_names = {
         "sin_experiencia": "Sin experiencia",
         "junior": "Junior",
@@ -152,6 +156,14 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tec = profile.get("technologies") or "No definido"
 
     alertas  = "✅ Activas"  if user_data.get("active_alerts") else "❌ Inactivas"
+    canal_map = {
+        "telegram": "Telegram (mensajes directos)",
+        "web": "Solo panel web (sin push)",
+        "email": "Resumen por email (próximamente)",
+        "whatsapp": "WhatsApp (en preparación)",
+        "twitter": "Twitter/X (en preparación)",
+    }
+    canal_txt = canal_map.get(alert_channel, "Telegram (mensajes directos)")
     cv       = f"✅ {Path(user_data['cv_path']).name}" if user_data.get("cv_path") else "❌ No cargado"
     last     = user_data.get("last_check") or "Nunca"
     location = user_data.get("location") or config.DEFAULT_LOCATION
@@ -160,6 +172,13 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
     interval = schedule.get("check_interval_hours", 6)
     start_h = schedule.get("alert_start_hour", 8)
     end_h = schedule.get("alert_end_hour", 22)
+
+    digest_map = {
+        "realtime": "Tiempo real (varias veces al día)",
+        "daily": "Resumen diario",
+        "weekly": "Resumen semanal",
+    }
+    digest_txt = digest_map.get(digest_mode, "Tiempo real (varias veces al día)")
 
     feeds_section = ""
     if custom_feeds:
@@ -175,7 +194,10 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🛠 Tecnología: {tec}\n"
         f"⏳ Antigüedad máx: {profile.get('max_job_age_days', 30)} días\n\n"
         f"🔔 Alertas: {alertas}\n"
+        f"📡 Canal: {canal_txt}\n"
         f"⏰ Frecuencia: cada {interval}h (de {start_h}:00 a {end_h}:00)\n"
+        f"🗓 Modo de resumen: {digest_txt}\n"
+        f"🎯 Objetivo semanal: {weekly_goal or 0} aplicaciones (llevás {weekly_done})\n"
         f"📄 CV: {cv}\n"
         f"🕐 Último chequeo: {last}\n\n"
         f"🔍 Keywords generadas ({len(keywords)}):\n{kw_lines}"
@@ -475,7 +497,16 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"({len(keywords)} keywords — puede tardar 15-30 segundos)"
     )
     try:
-        await check_jobs_for_user(context.bot, user_id, db, scraper, notify_if_empty=True)
+        # En búsquedas manuales siempre respondemos en Telegram,
+        # aunque el canal de alertas automático sea "solo web".
+        await check_jobs_for_user(
+            context.bot,
+            user_id,
+            db,
+            scraper,
+            notify_if_empty=True,
+            respect_channel=False,
+        )
         await status_msg.delete()
     except Exception as e:
         logger.error("Error en búsqueda manual: %s", e)

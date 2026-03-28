@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     telegram_id        BIGINT PRIMARY KEY,
     name               TEXT    NOT NULL,
     active_alerts      SMALLINT DEFAULT 0,
+    alert_channel      TEXT    DEFAULT 'telegram',
     cv_path            TEXT,
     location           TEXT    DEFAULT 'Buenos Aires Argentina',
     experience_level   TEXT    DEFAULT 'junior',
@@ -17,6 +18,10 @@ CREATE TABLE IF NOT EXISTS users (
     alert_start_hour   INTEGER DEFAULT 8,
     alert_end_hour     INTEGER DEFAULT 22,
     timezone           TEXT    DEFAULT 'America/Buenos_Aires',
+    weekly_goal_apps   INTEGER DEFAULT 5,
+    blocked_companies  TEXT    DEFAULT '',
+    preferred_companies TEXT   DEFAULT '',
+    digest_mode        TEXT    DEFAULT 'realtime',
     created_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_check         TIMESTAMPTZ
 );
