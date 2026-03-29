@@ -25,7 +25,12 @@ class Database:
     producción.
     """
 
-    def __init__(self, db_path: Optional[str] = None, db_type: Optional[str] = None, pg_url: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        db_type: Optional[str] = None,
+        pg_url: Optional[str] = None,
+    ):
         try:
             import config  # Ejecución directa desde job_bot/
         except ImportError:
@@ -135,10 +140,22 @@ class Database:
                 pass
             # Migraciones defensivas para nuevas preferencias de usuario
             for col, ddl in [
-                ("weekly_goal_apps", "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_goal_apps INTEGER DEFAULT 5"),
-                ("blocked_companies", "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_companies TEXT DEFAULT ''"),
-                ("preferred_companies", "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_companies TEXT DEFAULT ''"),
-                ("digest_mode", "ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_mode TEXT DEFAULT 'realtime'"),
+                (
+                    "weekly_goal_apps",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_goal_apps INTEGER DEFAULT 5",
+                ),
+                (
+                    "blocked_companies",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_companies TEXT DEFAULT ''",
+                ),
+                (
+                    "preferred_companies",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_companies TEXT DEFAULT ''",
+                ),
+                (
+                    "digest_mode",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_mode TEXT DEFAULT 'realtime'",
+                ),
             ]:
                 try:
                     self._execute(ddl)
@@ -277,6 +294,15 @@ class Database:
                         created_at      TEXT DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
+
+                # Migración defensiva: columna para controlar el periodo de uso diario
+                try:
+                    conn.execute(
+                        "ALTER TABLE web_users ADD COLUMN usage_period_start TEXT"
+                    )
+                except Exception:
+                    # Si ya existe, ignoramos el error
+                    pass
             logger.info("✅ SQLite DB inicializada")
 
             logger.info("✅ Base de datos inicializada: %s", self.db_path)
@@ -358,7 +384,9 @@ class Database:
                 tz = zoneinfo.ZoneInfo(mapped_tz)
             except Exception:
                 # Fallback robusto: si no existe, usar UTC para no romper el scheduler
-                logger.warning("Timezone '%s' inválida, usando UTC para scheduler", tz_name)
+                logger.warning(
+                    "Timezone '%s' inválida, usando UTC para scheduler", tz_name
+                )
                 tz = zoneinfo.ZoneInfo("UTC")
 
             now_user = datetime.datetime.now(tz)
@@ -561,6 +589,32 @@ class Database:
             "UPDATE users SET weekly_goal_apps = ? WHERE telegram_id = ?",
             (goal_int, telegram_id),
         )
+
+    def set_search_mode(self, telegram_id: int, mode: str):
+        """Configura el modo de búsqueda (volumen o calidad)."""
+        valid_modes = ["volumen", "calidad"]
+        if mode not in valid_modes:
+            return
+
+        # Migración defensiva: agregar columna si no existe
+        try:
+            self._execute(
+                "ALTER TABLE users ADD COLUMN search_mode TEXT DEFAULT 'calidad'"
+            )
+        except Exception:
+            pass
+
+        self._execute(
+            "UPDATE users SET search_mode = ? WHERE telegram_id = ?",
+            (mode, telegram_id),
+        )
+
+    def get_search_mode(self, telegram_id: int) -> str:
+        """Retorna el modo de búsqueda del usuario."""
+        user = self.get_user(telegram_id)
+        if not user:
+            return "calidad"
+        return user.get("search_mode", "calidad")
 
     def get_user_profile(self, telegram_id: int) -> Dict:
         """Retorna el perfil del usuario para filtrado."""
@@ -850,7 +904,10 @@ class Database:
         }
 
     def set_company_filters(
-        self, telegram_id: int, blocked_companies: str = "", preferred_companies: str = ""
+        self,
+        telegram_id: int,
+        blocked_companies: str = "",
+        preferred_companies: str = "",
     ):
         """Actualiza las cadenas crudas de empresas bloqueadas/preferidas."""
         blocked = (blocked_companies or "").strip()
@@ -965,10 +1022,41 @@ class Database:
         )
 
     def check_usage_limit(self, telegram_id: int, usage_type: str) -> bool:
-        """Verifica si el usuario puede usar un recurso."""
+        """Verifica si el usuario puede usar un recurso.
+
+        Para SQLite se interpretan los límites como "por día": al primer uso
+        de cada día se resetean los contadores *_used y se marca la fecha
+        actual en usage_period_start. En Supabase se mantiene el comportamiento
+        anterior (contadores acumulativos), ya que el esquema vive en
+        schema_supabase.sql.
+        """
+        import datetime
+
         user = self.get_web_user(telegram_id)
         if not user:
-            return True  # Si no tiene cuenta web, tiene límites por defecto
+            return True  # Si no tiene cuenta web, usamos comportamiento por defecto
+
+        # Solo aplicamos lógica de periodo diario en SQLite, donde controlamos el esquema
+        if self.db_type != "supabase":
+            today = datetime.date.today().isoformat()
+            period_start = user.get("usage_period_start")
+
+            # Si es un nuevo día (o nunca se seteo), reseteamos contadores diarios
+            if period_start != today:
+                try:
+                    self._execute(
+                        """UPDATE web_users SET 
+                               ai_analyses_used = 0,
+                               searches_used    = 0,
+                               usage_period_start = ?
+                           WHERE telegram_id = ?""",
+                        (today, telegram_id),
+                    )
+                    # Releer el usuario con contadores reseteados
+                    user = self.get_web_user(telegram_id) or user
+                except Exception:
+                    # Si algo falla, seguimos con los valores actuales para no romper el flujo
+                    pass
 
         used = user.get(f"{usage_type}_used", 0)
         limit = user.get(f"{usage_type}_limit", 0)

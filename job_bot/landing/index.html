@@ -5181,14 +5181,14 @@
 
           <div class="number-card gs-fade">
             <div class="number-stat">40+</div>
-            <div class="number-label">aplicaciones promedio antes de la oferta</div>
-            <div class="number-context">Los contratados aplicaron 4x más que el promedio.</div>
+            <div class="number-label">alertas recibidas antes de la oferta</div>
+            <div class="number-context">Los contratados recibieron alertas para 4x más puestos.</div>
           </div>
 
           <div class="number-card gs-fade">
             <div class="number-stat">5×</div>
             <div class="number-label">más volumen con JobBot vs. búsqueda manual</div>
-            <div class="number-context">Nuestros usuarios Pro aplican a 30-50 empleos/semana.</div>
+            <div class="number-context">Nuestros usuarios Pro reciben alertas de 30-50 empleos/semana.</div>
           </div>
 
           <div class="number-card loss-card gs-fade">
@@ -5196,7 +5196,7 @@
             <div class="number-label">Sin JobBot estás perdiendo:</div>
             <ul class="loss-list">
               <li>40+ empleos nuevos por semana que ni ves</li>
-              <li>Las primeras 24hs donde se deciden el 67% de las entrevistas</li>
+              <li>Las primeras 24hs donde se決定an el 67% de las entrevistas</li>
               <li>5+ horas semanales refrescando LinkedIn</li>
             </ul>
           </div>
@@ -5352,13 +5352,13 @@
             </div>
             <p class="plan-desc">Para quienes buscan en serio</p>
             <ul class="plan-features">
-              <li><i class="fas fa-check"></i> <strong>Empleos ilimitados</strong></li>
-              <li><i class="fas fa-check"></i> <strong>Match % con tu CV</strong> (IA)</li>
-              <li><i class="fas fa-check"></i> <strong>Pipeline visual</strong> de postulaciones</li>
-              <li><i class="fas fa-check"></i> <strong>5 alertas</strong> configurables</li>
-              <li><i class="fas fa-check"></i> Análisis de mercado salarial</li>
-              <li><i class="fas fa-check"></i> Filtros avanzados (remoto, seniority)</li>
-              <li><i class="fas fa-times"></i> Entrenamiento para entrevistas</li>
+              <li><i class="fas fa-check"></i> <strong>Búsqueda ilimitada</strong> en 5 fuentes</li>
+              <li><i class="fas fa-check"></i> <strong>Match %</strong> con tu CV (IA)</li>
+              <li><i class="fas fa-check"></i> <strong>Alertas automáticas</strong> por Telegram</li>
+              <li><i class="fas fa-check"></i> <strong>Analizador de CV</strong> con Groq</li>
+              <li><i class="fas fa-check"></i> Filtros (remoto, seniority, zona)</li>
+              <li><i class="fas fa-check"></i> Historial de búsquedas</li>
+              <li><i class="fas fa-times"></i> Entrenamiento entrevistas</li>
             </ul>
             <a href="#demo" class="btn btn-primary btn-full">Obtener Pro</a>
             <p class="plan-note">Menos de un café por día</p>
@@ -5372,8 +5372,8 @@
             <p class="plan-desc">Todo para maximizar tus chances</p>
             <ul class="plan-features">
               <li><i class="fas fa-check"></i> <strong>Todo de Pro</strong></li>
-              <li><i class="fas fa-check"></i> <strong>Entrenamiento IA</strong> para entrevistas</li>
-              <li><i class="fas fa-check"></i> <strong>Sugerencias de CV</strong> personalizadas</li>
+              <li><i class="fas fa-check"></i> <strong>Simulador de entrevistas</strong> con IA</li>
+              <li><i class="fas fa-check"></i> <strong>Análisis de CV</strong> avanzado</li>
               <li><i class="fas fa-check"></i> <strong>Alertas ilimitadas</strong></li>
               <li><i class="fas fa-check"></i> Exportar datos (CSV/JSON)</li>
               <li><i class="fas fa-check"></i> Soporte prioritario</li>
@@ -5868,19 +5868,19 @@
                 <div class="demo-content">
                   <div class="demo-welcome">
                     <h3>¡Bienvenido, Juan! 👋</h3>
-                    <p>Tu meta esta semana: <strong>30 aplicaciones</strong>. Vamos 18/30.</p>
+                      <p>Tu meta esta semana: <strong>30 alertas</strong>. Vamos 18/30.</p>
                   </div>
 
                   <!-- Goal Progress Bar -->
                   <div class="demo-goal-tracker">
                     <div class="goal-header">
                       <span class="goal-label">📊 Progreso semanal</span>
-                      <span class="goal-count">18/30 aplicaciones</span>
+                      <span class="goal-count">18/30 alertas</span>
                     </div>
                     <div class="goal-bar">
                       <div class="goal-fill" style="width: 60%;"></div>
                     </div>
-                    <p class="goal-motivation">¡A 12 aplicaciones de tu meta! JobBot sigue buscando...</p>
+                    <p class="goal-motivation">¡A 12 alertas de tu meta! JobBot sigue buscando...</p>
                   </div>
 
                   <div class="demo-stats-row">
@@ -5993,7 +5993,7 @@
                   <div class="demo-goal-tracker highlight-pro">
                     <div class="goal-header">
                       <span class="goal-label">🏆 Meta semanal SUPERADA</span>
-                      <span class="goal-count">42/35 aplicaciones</span>
+                      <span class="goal-count">42/35 alertas</span>
                     </div>
                     <div class="goal-bar">
                       <div class="goal-fill" style="width: 100%;"></div>
@@ -6487,7 +6487,7 @@
         <div class="proof-divider"></div>
         <div class="proof-item">
           <span class="proof-number">15,000+</span>
-          <span class="proof-label">aplicaciones automáticas</span>
+          <span class="proof-label">alertas enviadas</span>
         </div>
         <div class="proof-divider"></div>
         <div class="proof-item">
@@ -7068,7 +7068,7 @@
             goalLabelEl.textContent = '¡Objetivo de la semana cumplido!';
           } else {
             const remaining = weeklyGoal - weeklyApplied;
-            goalLabelEl.textContent = `Te faltan ${remaining} aplicación(es) para llegar a tu objetivo.`;
+            goalLabelEl.textContent = `Te faltan ${remaining} alerta(s) para llegar a tu objetivo.`;
           }
         } else {
           goalCountEl.textContent = '--';
@@ -7542,12 +7542,12 @@
         
         setTimeout(() => {
           const lowerText = text.toLowerCase();
-          let response = '¡Gracias por tu mensaje! 🚀\n\nJobBot te ayuda a aplicar a 30-50 puestos por semana automáticamente. ¿Te gustaría saber más sobre el plan Pro, cómo funciona el matching, o consejos para tu CV?';
+          let response = '¡Gracias por tu mensaje! 🚀\n\nJobBot te alerta sobre 30-50 puestos por semana automáticamente. ¿Te gustaría saber más sobre el plan Pro, cómo funciona el matching, o consejos para tu CV?';
           
           if (lowerText.includes('precio') || lowerText.includes('plan') || lowerText.includes('pro')) {
-            response = '💎 Plan Pro: $14.999 ARS/mes\n\n✅ Aplicaciones automáticas ilimitadas\n✅ Matching IA avanzado\n✅ Alertas instantáneas\n✅ Análisis de CV con IA\n✅ 5 fuentes de empleo activas\n\n📊 Comparación: Sin JobBot: 2-3 apps/semana. Con JobBot: 30-50 apps/semana';
+            response = '💎 Plan Pro: $3 USD/mes\n\n✅ Búsqueda ilimitada en 5 fuentes\n✅ Matching IA avanzado\n✅ Alertas automáticas por Telegram\n✅ Análisis de CV con IA (Groq)\n\n📊 Comparación: Sin JobBot: 2-3 empleos/semana. Con JobBot: 30-50 alertas/semana';
           } else if (lowerText.includes('match') || lowerText.includes('funciona')) {
-            response = '🎯 Nuestro matching inteligente:\n\n1. Analizá tu CV y experiencia\n2. Buscamos en 5 fuentes (Remotive, Arbeitnow, Jobicy, Himalayas, LinkedIn)\n3. Filtramos por compatibilidad >75%\n4. Aplicamos automáticamente con tu perfil optimizado\n\n⚡ Resultado: 10x más aplicaciones con mejor calidad';
+            response = '🎯 Nuestro matching inteligente:\n\n1. Analizá tu CV y experiencia\n2. Buscamos en 5 fuentes (Remotive, Arbeitnow, Jobicy, Himalayas, LinkedIn)\n3. Filtramos por compatibilidad >75%\n4. Te alertamos automáticamente cuando hay matches\n\n⚡ Resultado: 10x más empleos encontrados con mejor calidad';
           } else if (lowerText.includes('cv') || lowerText.includes('curriculum')) {
             response = '📄 Consejos para tu CV:\n\n✅ Usá palabras clave del puesto que querés\n✅ Quantificá logros ("Aumenté ventas 40%")\n✅ Mantenelo en 1-2 páginas\n✅ Incluí tus mejores proyectos\n\n🤖 JobBot analiza tu CV y sugiere mejoras automáticamente con IA';
           }

@@ -26488,3 +26488,8 @@ telegram.error.Conflict: Conflict: terminated by other getUpdates request; make 
 2026-03-28 20:03:03,910 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
 2026-03-28 20:13:04,059 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
 2026-03-28 20:23:04,147 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
+2026-03-28 21:36:02,947 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
+2026-03-28 22:17:53,425 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
+2026-03-28 22:27:53,439 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
+2026-03-28 22:37:53,447 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
+2026-03-28 22:47:53,467 | INFO     | __main__ | ⏰ Scheduler poll | 0 usuario(s) pendientes de chequeo
