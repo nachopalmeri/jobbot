@@ -1256,6 +1256,11 @@ async def web(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Alias de /web para enviar el link al dashboard/landing."""
+    await web(update, context)
+
+
 # ============================================================
 # JOB TRACKER (PRO — /track y /postulaciones)
 # ============================================================
@@ -1575,6 +1580,7 @@ def main():
     app.add_handler(CommandHandler("modo", modo))
     app.add_handler(CommandHandler("github", github_analysis))
     app.add_handler(CommandHandler("web", web))
+    app.add_handler(CommandHandler("dashboard", dashboard))
     app.add_handler(CommandHandler("borrar_datos", borrar_datos))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
