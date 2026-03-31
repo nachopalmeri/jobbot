@@ -22,6 +22,12 @@ SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 # RapidAPI (Para LinkedIn Profesional): ~100/200 gratuitas por mes según la API exacta.
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 
+# Hosts opcionales sobre RapidAPI
+RAPIDAPI_JSEARCH_HOST = os.getenv("RAPIDAPI_JSEARCH_HOST", "jsearch.p.rapidapi.com")
+RAPIDAPI_JSEARCH_MEGA_HOST = os.getenv("RAPIDAPI_JSEARCH_MEGA_HOST", "jsearch-mega.p.rapidapi.com")
+RAPIDAPI_ACTIVE_JOBS_HOST = os.getenv("RAPIDAPI_ACTIVE_JOBS_HOST", "active-jobs-db.p.rapidapi.com")
+RAPIDAPI_LINKEDIN_DATA_HOST = os.getenv("RAPIDAPI_LINKEDIN_DATA_HOST", "linkedin-data-api.p.rapidapi.com")
+
 # Twitter/X: Requiere plan Basic ($100/mes) para búsqueda.
 # El plan free solo permite postear, NO buscar.
 # Obtenelo en https://developer.twitter.com
@@ -145,13 +151,39 @@ MAX_RESULTS_PER_SOURCE = 10    # Máximo de resultados por fuente por keyword
 MAX_JOBS_PER_NOTIFICATION = 15 # Máximo de ofertas enviadas en un ciclo
 REQUEST_TIMEOUT = 12           # Timeout en segundos para cada request HTTP
 
-# ============================================================
-# STATS API - Endpoint público para la landing page
-# ============================================================
-STATS_API_PORT = int(os.getenv("STATS_API_PORT", "8080"))
-STATS_API_ENABLED = os.getenv("STATS_API_ENABLED", "true").lower() == "true"
+# Proveedores premium / cache
+PREMIUM_BACKFILL_MIN_RESULTS = int(os.getenv("PREMIUM_BACKFILL_MIN_RESULTS", "5"))
+PROVIDER_COOLDOWN_SECONDS = int(os.getenv("PROVIDER_COOLDOWN_SECONDS", "900"))
+PROVIDER_CACHE_TTL_SECONDS = int(os.getenv("PROVIDER_CACHE_TTL_SECONDS", "1800"))
+COMPANY_CACHE_TTL_SECONDS = int(os.getenv("COMPANY_CACHE_TTL_SECONDS", "86400"))
 
 # ============================================================
-# LANDING PAGE - URL para el comando /web
+# SMART SUMMARY UX - Configuracion del nuevo flujo de jobs
 # ============================================================
-LANDING_URL = os.getenv("LANDING_URL", "https://jobbot-landing.vercel.app")
+# Tiempo de vida de un batch (minutos)
+JOB_BATCH_TTL_MINUTES = int(os.getenv("JOB_BATCH_TTL_MINUTES", "30"))
+
+# Tiempo de espera antes de enviar fallback en alertas (minutos)
+JOB_BATCH_FALLBACK_MINUTES = int(os.getenv("JOB_BATCH_FALLBACK_MINUTES", "35"))
+
+# Maximo de ofertas por batch segun plan (Smart Summary)
+MAX_JOBS_PER_BATCH = {
+    "free": int(os.getenv("MAX_JOBS_FREE", "5")),
+    "starter": int(os.getenv("MAX_JOBS_STARTER", "8")),
+    "pro": int(os.getenv("MAX_JOBS_PRO", "15")),
+    "premium": int(os.getenv("MAX_JOBS_PREMIUM", "20"))
+}
+
+# Cooldown entre busquedas manuales (anti-spam)
+SEARCH_COOLDOWN_MINUTES = int(os.getenv("SEARCH_COOLDOWN_MINUTES", "5"))
+
+# ============================================================
+# STATS API LEGACY - Compatibilidad temporal con la landing HTML vieja
+# ============================================================
+STATS_API_PORT = int(os.getenv("STATS_API_PORT", "8080"))
+STATS_API_ENABLED = os.getenv("STATS_API_ENABLED", "false").lower() == "true"
+
+# ============================================================
+# LANDING PAGE - URL publica actual para el comando /web
+# ============================================================
+LANDING_URL = os.getenv("LANDING_URL", "https://jobbot.ar")

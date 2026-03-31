@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import os
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,7 +18,13 @@ except ImportError:
 
 
 router = APIRouter()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# `bcrypt` 5.x breaks passlib's backend self-check on some environments.
+# Keep backward verification for existing bcrypt hashes, but generate new
+# passwords with pbkdf2_sha256 to avoid register/login failures.
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt"],
+    deprecated="auto",
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 APP_ENV = os.getenv("APP_ENV", "development").lower()
@@ -128,6 +135,22 @@ async def register(user_data: dict, db: Database = Depends(get_db)):
             detail="Ya existe una cuenta con ese email",
         )
 
+    existing_web_for_telegram = db.get_web_user(telegram_id)
+    if existing_web_for_telegram:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ese Telegram ID ya esta vinculado a otra cuenta",
+        )
+
+    if db.get_user(telegram_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Ese Telegram ID ya existe en JobBot. Para vincular una cuenta activa "
+                "necesitas verificarla desde Telegram."
+            ),
+        )
+
     hashed_pw = get_password_hash(password)
     db.create_user_if_not_exists(telegram_id, name)
     db.create_web_user(telegram_id, email, hashed_pw)
@@ -195,6 +218,10 @@ class TelegramAuthRequest(BaseModel):
     telegram_first_name: str
     telegram_last_name: Optional[str] = None
     hash: str
+
+
+class TelegramCodeLoginRequest(BaseModel):
+    code: str
 
 
 @router.post("/telegram")
@@ -265,12 +292,69 @@ async def telegram_auth(request: TelegramAuthRequest):
 
 @router.post("/telegram/init")
 async def init_telegram_auth(telegram_id: int):
-    import secrets
-
     token = secrets.token_urlsafe(32)
 
     return {
         "auth_url": f"https://jobbot.ar/auth/verify?token={token}&telegram_id={telegram_id}",
         "token": token,
         "expires_in": 300,
+    }
+
+
+@router.post("/telegram/code")
+async def telegram_code_login(
+    payload: TelegramCodeLoginRequest, db: Database = Depends(get_db)
+):
+    code = (payload.code or "").strip().upper()
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Codigo requerido",
+        )
+
+    login_record = db.consume_web_login_code(code)
+    if not login_record:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Codigo invalido o expirado",
+        )
+
+    telegram_id = int(login_record["telegram_id"])
+    base_user = db.get_user(telegram_id) or {}
+    web_user = db.get_web_user(telegram_id) or {}
+    email = web_user.get("email") or f"telegram:{telegram_id}"
+
+    access_token = create_access_token(
+        data={
+            "sub": email,
+            "telegram_id": telegram_id,
+            "auth_method": "telegram_code",
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "telegram_id": telegram_id,
+        "user": {
+            "telegram_id": telegram_id,
+            "name": base_user.get("name") or "Usuario",
+            "plan": db.get_user_plan(telegram_id),
+            "email": web_user.get("email"),
+        },
+    }
+
+
+@router.post("/telegram/web-login-link")
+async def create_telegram_web_login_link(
+    current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
+):
+    code = secrets.token_hex(3).upper()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    db.create_web_login_code(current_user["telegram_id"], code, expires_at)
+    landing_url = (os.getenv("LANDING_URL") or "https://jobbot.ar").rstrip("/")
+    return {
+        "code": code,
+        "expires_in": 600,
+        "login_url": f"{landing_url}/login?code={code}",
     }

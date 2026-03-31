@@ -5,6 +5,7 @@ from enum import Enum
 
 class PlanType(str, Enum):
     FREE = "free"
+    STARTER = "starter"
     PRO = "pro"
     PREMIUM = "premium"
 

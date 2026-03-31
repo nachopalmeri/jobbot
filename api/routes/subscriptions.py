@@ -20,14 +20,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PLANS = {
-    "pro": {
+    "starter": {
         "price_usd": 3,
+        "name": "Starter",
+        "stripe_price_id": os.getenv("STRIPE_STARTER_PRICE_ID", "price_starter"),
+        "mp_price_id": os.getenv("MP_STARTER_PRICE_ID", "starter"),
+    },
+    "pro": {
+        "price_usd": 5,
         "name": "Pro",
         "stripe_price_id": os.getenv("STRIPE_PRO_PRICE_ID", "price_pro"),
         "mp_price_id": os.getenv("MP_PRO_PRICE_ID", "pro"),
     },
     "premium": {
-        "price_usd": 5,
+        "price_usd": 15,
         "name": "Premium",
         "stripe_price_id": os.getenv("STRIPE_PREMIUM_PRICE_ID", "price_premium"),
         "mp_price_id": os.getenv("MP_PREMIUM_PRICE_ID", "premium"),
@@ -90,33 +96,48 @@ async def get_plans():
                 "name": "Free",
                 "price": 0,
                 "currency": "USD",
-                "features": ["5 empleos diarios", "Busqueda basica", "1 alerta activa"],
+                "features": [
+                    "5 busquedas por dia",
+                    "Hasta 5 resultados por consulta",
+                    "Dashboard y pipeline basico",
+                ],
+            },
+            {
+                "id": "starter",
+                "name": "Starter",
+                "price": 3,
+                "currency": "USD",
+                "features": [
+                    "30 busquedas por dia",
+                    "Resultados completos",
+                    "Pipeline de postulaciones",
+                    "Alertas automatizadas por Telegram",
+                ],
             },
             {
                 "id": "pro",
                 "name": "Pro",
-                "price": 3,
+                "price": 5,
                 "currency": "USD",
                 "features": [
-                    "Empleos ilimitados",
-                    "Match con tu CV",
-                    "Analisis de mercado",
+                    "80 busquedas por dia",
+                    "Resultados completos y filtros avanzados",
+                    "Analisis de CV con IA",
                     "Pipeline de postulaciones",
-                    "10 alertas activas",
+                    "Alertas automatizadas por Telegram",
                 ],
             },
             {
                 "id": "premium",
                 "name": "Premium",
-                "price": 5,
+                "price": 15,
                 "currency": "USD",
                 "features": [
                     "Todo de Pro",
                     "CV Tailoring",
                     "Entrevistas mock con IA",
-                    "Priority support",
-                    "Exportar CVs",
-                    "Alertas ilimitadas",
+                    "Busquedas ilimitadas",
+                    "Mayor cuota diaria de IA",
                 ],
             },
         ]
@@ -140,15 +161,20 @@ async def get_subscription_status(
 async def create_checkout_session(
     checkout: CheckoutRequest,
     current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
 ):
     if checkout.plan not in PLANS:
         raise HTTPException(status_code=400, detail="Plan no valido")
 
     plan = PLANS[checkout.plan]
+    web_user = db.get_web_user(current_user["telegram_id"]) or {}
+    payer_email = web_user.get("email")
+    payer = {**current_user, "email": payer_email}
+
     if checkout.provider == "stripe":
-        return await create_stripe_checkout(checkout, current_user, plan)
+        return await create_stripe_checkout(checkout, payer, plan)
     if checkout.provider == "mercadopago":
-        return await create_mercadopago_checkout(checkout, current_user, plan)
+        return await create_mercadopago_checkout(checkout, payer, plan)
     if checkout.provider == "crypto":
         return await create_crypto_checkout(checkout, current_user, plan)
     raise HTTPException(status_code=400, detail="Proveedor no valido")
@@ -164,15 +190,18 @@ async def create_stripe_checkout(checkout: CheckoutRequest, user: dict, plan: di
             detail="Stripe no configurado",
         )
 
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        line_items=[{"price": plan["stripe_price_id"], "quantity": 1}],
-        mode="subscription",
-        success_url=checkout.success_url + "?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url=checkout.cancel_url,
-        customer_email=user["email"],
-        metadata={"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
-    )
+    session_payload = {
+        "payment_method_types": ["card"],
+        "line_items": [{"price": plan["stripe_price_id"], "quantity": 1}],
+        "mode": "subscription",
+        "success_url": checkout.success_url + "?session_id={CHECKOUT_SESSION_ID}",
+        "cancel_url": checkout.cancel_url,
+        "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
+    }
+    if user.get("email") and "@" in user["email"]:
+        session_payload["customer_email"] = user["email"]
+
+    session = stripe.checkout.Session.create(**session_payload)
     return {"provider": "stripe", "url": session.url, "session_id": session.id}
 
 
@@ -187,26 +216,27 @@ async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, pla
         )
 
     sdk = mercadopago.SDK(access_token)
-    preference = sdk.preference().create(
-        {
-            "items": [
-                {
-                    "title": f"JobBot {plan['name']}",
-                    "quantity": 1,
-                    "unit_price": plan["price_usd"],
-                    "currency_id": "USD",
-                }
-            ],
-            "payer": {"email": user["email"]},
-            "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
-            "back_urls": {
-                "success": checkout.success_url,
-                "failure": checkout.cancel_url,
-                "pending": checkout.cancel_url,
-            },
-            "auto_return": "approved",
-        }
-    )
+    preference_payload = {
+        "items": [
+            {
+                "title": f"JobBot {plan['name']}",
+                "quantity": 1,
+                "unit_price": plan["price_usd"],
+                "currency_id": "USD",
+            }
+        ],
+        "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
+        "back_urls": {
+            "success": checkout.success_url,
+            "failure": checkout.cancel_url,
+            "pending": checkout.cancel_url,
+        },
+        "auto_return": "approved",
+    }
+    if user.get("email") and "@" in user["email"]:
+        preference_payload["payer"] = {"email": user["email"]}
+
+    preference = sdk.preference().create(preference_payload)
     return {
         "provider": "mercadopago",
         "url": preference["response"]["init_point"],
@@ -215,12 +245,10 @@ async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, pla
 
 
 async def create_crypto_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
-    return {
-        "provider": "crypto",
-        "url": f"https://commerce.coinbase.com/checkout/demo_{checkout.plan}",
-        "charge_id": f"demo_{user['telegram_id']}",
-        "note": "Configure COINBASE_COMMERCE_KEY para produccion",
-    }
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Checkout crypto no disponible en este despliegue",
+    )
 
 
 @router.post("/webhook/stripe")
@@ -369,8 +397,9 @@ async def _send_telegram_notification(telegram_id: int, message: str) -> bool:
 async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
     """Notify user about subscription plan change."""
     plan_names = {
-        "pro": "Pro ($3/mes)",
-        "premium": "Premium ($5/mes)",
+        "starter": "Starter ($3/mes)",
+        "pro": "Pro ($5/mes)",
+        "premium": "Premium ($15/mes)",
         "free": "Free"
     }
     plan_name = plan_names.get(plan, plan)

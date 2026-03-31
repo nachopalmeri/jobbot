@@ -57,6 +57,8 @@ python bot.py
 | `/cargar_cv` | Subir tu CV (PDF/TXT) para que la IA lo analice |
 | `/analizar_cv` | La IA (Llama 3) analiza tu perfil y te da sugerencias de mejora |
 | `/analizar_oferta [URL]`| Compara tu CV contra una oferta específica y te da un puntaje de "match" |
+| `/empresa [dominio|URL]` | Trae una ficha resumida de la empresa antes de aplicar |
+| `/detalle_job [job_id] [country]` | Consulta detalle extendido de una oferta vía proveedor premium |
 | `/buscar` | Búsqueda manual inmediata |
 | `/activar_alertas` | Activar el monitoreo automático inteligente |
 | `/desactivar_alertas`| Pausar el monitoreo |
@@ -75,6 +77,9 @@ El bot busca automáticamente en:
 - **Jobicy** (Startup & remote tech jobs) ✅
 - **Himalayas** (Remote jobs for startups & tech) ✅
 - **Google Jobs** (vía SerpAPI - opcional) 🔑
+- **Active Jobs DB** (backfill premium bajo demanda) 🔑
+- **JSearch / JSearch Mega** (backfill y detalle extendido) 🔑
+- **LinkedIn Company Data** (enrichment por dominio) 🔑
 - **Twitter/X** (vía API v2 - opcional) 🔑
 - **Custom RSS** (feeds que vos mismo agregues) ✅
 
@@ -139,6 +144,12 @@ La idea es ir ampliando esta suite a medida que el bot crece.
 - Pagos y planes persistidos en base de datos
 - Pipeline de postulaciones activo hoy
 - Calendario inteligente: planificado como `Coming Soon`, no disponible todavía en el MVP
+
+## Estado de landing y deploy
+
+- La landing publica canonica vive en `frontend/src/app/page.tsx`.
+- `job_bot/landing/index.html` queda solo como backup de una version estatica legacy.
+- Si tenes un deploy viejo en Vercel apuntando a ese HTML, migra primero a `jobbot/frontend` antes de borrar o archivar la landing vieja.
 
 ---
 

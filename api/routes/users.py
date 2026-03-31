@@ -26,6 +26,7 @@ class PreferencesUpdate(BaseModel):
     timezone: str = "America/Buenos_Aires"
     weekly_goal: int = 10
     digest_mode: str = "realtime"
+    active_alerts: bool = False
     blocked_companies: str = ""
     preferred_companies: str = ""
 
@@ -52,6 +53,7 @@ def _build_dashboard_payload(db: Database, telegram_id: int) -> dict:
         "funnel": funnel,
         "applications": apps,
         "digest_mode": db.get_digest_mode(telegram_id),
+        "active_alerts": bool((db.get_user(telegram_id) or {}).get("active_alerts")),
         "blocked_companies": company_filters.get("blocked_raw", ""),
         "preferred_companies": company_filters.get("preferred_raw", ""),
         "check_interval_hours": schedule.get("check_interval_hours", 6),
@@ -77,11 +79,16 @@ async def get_usage(
 ):
     telegram_id = current_user["telegram_id"]
     web_user = db.get_web_user(telegram_id) or {}
+    plan = db.get_user_plan(telegram_id)
 
     ai_used = int(web_user.get("ai_analyses_used") or 0)
-    ai_limit = int(web_user.get("ai_analyses_limit") or 2)
     searches_used = int(web_user.get("searches_used") or 0)
-    searches_limit = int(web_user.get("searches_limit") or 5)
+    if plan == "free":
+        ai_limit = 0
+        searches_limit = 5
+    else:
+        ai_limit = 0
+        searches_limit = 0
 
     return {
         "ai_analyses_used": ai_used,
@@ -118,6 +125,7 @@ async def get_preferences(
         "timezone": schedule.get("timezone", "America/Buenos_Aires"),
         "weekly_goal": db.get_weekly_goal(telegram_id),
         "digest_mode": db.get_digest_mode(telegram_id),
+        "active_alerts": bool((db.get_user(telegram_id) or {}).get("active_alerts")),
         "blocked_companies": company_filters.get("blocked_raw", ""),
         "preferred_companies": company_filters.get("preferred_raw", ""),
     }
@@ -148,6 +156,7 @@ async def update_preferences(
     )
     db.set_alert_channel(telegram_id, payload.alert_channel)
     db.set_digest_mode(telegram_id, payload.digest_mode)
+    db.set_alerts_active(telegram_id, payload.active_alerts)
     db.set_weekly_goal(telegram_id, payload.weekly_goal)
     db.set_company_filters(
         telegram_id,

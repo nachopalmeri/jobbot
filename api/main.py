@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 
 from fastapi import FastAPI, Request
@@ -24,17 +25,35 @@ if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
+
+def _cors_origins() -> list[str]:
+    configured = [
+        origin.strip()
+        for origin in (os.getenv("CORS_ORIGINS", "")).split(",")
+        if origin.strip()
+    ]
+    if configured:
+        return configured
+
+    return [
+        "http://localhost:3000",
+        "http://localhost:3010",
+        "http://localhost:3011",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3010",
+        "http://127.0.0.1:3011",
+        "https://tu-dominio.com",
+        "https://jobbot.ar",
+    ]
+
 app = FastAPI(
     title="JobBot API", version="1.0.0", description="API para el servicio JobBot SaaS"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://tu-dominio.com",
-        "https://jobbot.ar",
-    ],
+    allow_origins=_cors_origins(),
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -85,7 +85,7 @@ async def analyze_cv(
     current_user: dict = Depends(get_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    if current_user["plan"] == "free":
+    if current_user["plan"] not in {"pro", "premium"}:
         raise HTTPException(
             status_code=403,
             detail="Esta funcion requiere Plan Pro",

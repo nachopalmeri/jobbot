@@ -149,6 +149,7 @@ class Database:
                 "CREATE TABLE IF NOT EXISTS custom_feeds (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, feed_url TEXT, feed_name TEXT)",
                 "CREATE TABLE IF NOT EXISTS applications (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, job_title TEXT, company TEXT, url TEXT, status TEXT DEFAULT 'aplicado', notes TEXT, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS web_login_codes (code TEXT PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
             ]
             for q in queries:
                 self._execute(q)
@@ -248,6 +249,14 @@ class Database:
                         applied_at  TEXT    DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY(telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
                     );
+                    CREATE TABLE IF NOT EXISTS web_login_codes (
+                        code        TEXT PRIMARY KEY,
+                        telegram_id INTEGER NOT NULL,
+                        created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+                        expires_at  TEXT NOT NULL,
+                        used_at     TEXT,
+                        FOREIGN KEY(telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
+                    );
                 """)
                 # Migraciones para SQLite si faltan columnas
                 for col, default in [
@@ -327,6 +336,47 @@ class Database:
                         event_type      TEXT NOT NULL,
                         processed_at    TEXT DEFAULT CURRENT_TIMESTAMP
                     );
+                    
+                    -- Tabla de cache de datos de empresas (LinkedIn Data API)
+                    CREATE TABLE IF NOT EXISTS companies (
+                        domain          TEXT PRIMARY KEY,
+                        data            TEXT NOT NULL,  -- JSON con datos de la empresa
+                        cached_at       INTEGER NOT NULL,  -- timestamp Unix
+                        expires_at      INTEGER NOT NULL   -- timestamp Unix + TTL
+                    );
+                    
+                    -- Tabla de cache de datos financieros (Yahoo Finance API)
+                    CREATE TABLE IF NOT EXISTS stock_data (
+                        ticker          TEXT PRIMARY KEY,
+                        data            TEXT NOT NULL,  -- JSON con datos financieros
+                        cached_at       INTEGER NOT NULL  -- timestamp Unix
+                    );
+                    
+                    -- Tabla de batches de jobs pendientes (Smart Summary UX)
+                    CREATE TABLE IF NOT EXISTS pending_job_batches (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        telegram_id     INTEGER NOT NULL,
+                        jobs_json       TEXT NOT NULL,  -- JSON array de jobs
+                        total_count     INTEGER DEFAULT 0,
+                        high_match_count INTEGER DEFAULT 0,    -- >80%
+                        medium_match_count INTEGER DEFAULT 0,  -- 60-80%
+                        regular_match_count INTEGER DEFAULT 0, -- <60%
+                        source          TEXT DEFAULT 'manual', -- 'manual' o 'alert'
+                        created_at      INTEGER NOT NULL,        -- Unix timestamp
+                        expires_at      INTEGER NOT NULL,      -- Unix timestamp + TTL
+                        viewed          INTEGER DEFAULT 0,     -- 0=pending, 1=viewed, 2=expired
+                        fallback_sent   INTEGER DEFAULT 0      -- 0=no, 1=yes (alertas expiradas)
+                    );
+                    
+                    -- Tabla de interacciones con batches (analytics)
+                    CREATE TABLE IF NOT EXISTS batch_interactions (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        batch_id        INTEGER NOT NULL,
+                        telegram_id     INTEGER NOT NULL,
+                        action          TEXT NOT NULL,  -- 'viewed', 'expired', 'fallback_sent', 'dismissed'
+                        timestamp       INTEGER NOT NULL,
+                        FOREIGN KEY(batch_id) REFERENCES pending_job_batches(id) ON DELETE CASCADE
+                    );
                 """)
 
                 # Migración defensiva: columna para controlar el periodo de uso diario
@@ -405,6 +455,9 @@ class Database:
         active = active_res if active_res is not None else []
         due_users = []
 
+        def _int_or(value, default):
+            return default if value is None else int(value)
+
         for user in active:
             tz_name = user.get("timezone") or "America/Buenos_Aires"
 
@@ -421,13 +474,13 @@ class Database:
                 logger.warning(
                     "Timezone '%s' inválida, usando UTC para scheduler", tz_name
                 )
-                tz = zoneinfo.ZoneInfo("UTC")
+                tz = datetime.timezone.utc
 
             now_user = datetime.datetime.now(tz)
             current_hour = now_user.hour
 
-            start_h = int(user.get("alert_start_hour") or 8)
-            end_h = int(user.get("alert_end_hour") or 22)
+            start_h = _int_or(user.get("alert_start_hour"), 8)
+            end_h = _int_or(user.get("alert_end_hour"), 22)
 
             if start_h <= end_h:
                 if not (start_h <= current_hour < end_h):
@@ -436,7 +489,7 @@ class Database:
                 if end_h <= current_hour < start_h:
                     continue
 
-            interval_h = int(user.get("check_interval_hours") or 6)
+            interval_h = _int_or(user.get("check_interval_hours"), 6)
             last_check_str = user.get("last_check")
             if last_check_str:
                 try:
@@ -557,10 +610,12 @@ class Database:
                 "alert_end_hour": 22,
                 "timezone": "America/Buenos_Aires",
             }
+        def _int_or(value, default):
+            return default if value is None else int(value)
         return {
-            "check_interval_hours": int(user.get("check_interval_hours") or 6),
-            "alert_start_hour": int(user.get("alert_start_hour") or 8),
-            "alert_end_hour": int(user.get("alert_end_hour") or 22),
+            "check_interval_hours": _int_or(user.get("check_interval_hours"), 6),
+            "alert_start_hour": _int_or(user.get("alert_start_hour"), 8),
+            "alert_end_hour": _int_or(user.get("alert_end_hour"), 22),
             "timezone": user.get("timezone") or "America/Buenos_Aires",
         }
 
@@ -590,24 +645,14 @@ class Database:
         return mode
 
     def set_digest_mode(self, telegram_id: int, mode: str):
-        """Actualiza el modo de digest y ajusta el intervalo de chequeo aproximado."""
+        """Actualiza el modo de digest sin pisar la frecuencia real del scheduler."""
         normalized = (mode or "realtime").lower()
         if normalized not in {"realtime", "daily", "weekly"}:
             normalized = "realtime"
 
-        # Mapear modos a un intervalo de horas razonable
-        if normalized == "daily":
-            interval_h = 24
-        elif normalized == "weekly":
-            interval_h = 24 * 7
-        else:
-            # Realtime: mantener valor actual o default a 6h
-            schedule = self.get_user_schedule(telegram_id)
-            interval_h = int(schedule.get("check_interval_hours") or 6)
-
         self._execute(
-            "UPDATE users SET digest_mode = ?, check_interval_hours = ? WHERE telegram_id = ?",
-            (normalized, interval_h, telegram_id),
+            "UPDATE users SET digest_mode = ? WHERE telegram_id = ?",
+            (normalized, telegram_id),
         )
 
     def get_weekly_goal(self, telegram_id: int) -> int:
@@ -997,6 +1042,64 @@ class Database:
         """Obtiene usuario web por email."""
         return self._fetchone("SELECT * FROM web_users WHERE email = ?", (email,))
 
+    def create_web_login_code(self, telegram_id: int, code: str, expires_at: str):
+        """Guarda un codigo de login web de un solo uso generado desde Telegram."""
+        self._execute(
+            "DELETE FROM web_login_codes WHERE telegram_id = ? OR expires_at <= CURRENT_TIMESTAMP",
+            (telegram_id,),
+        )
+        self._execute(
+            """INSERT INTO web_login_codes (code, telegram_id, expires_at)
+               VALUES (?, ?, ?)""",
+            (code, telegram_id, expires_at),
+        )
+
+    def consume_web_login_code(self, code: str) -> Optional[Dict]:
+        """Consume un codigo de login web y devuelve el usuario asociado si sigue vigente."""
+        record = self._fetchone(
+            """SELECT code, telegram_id, expires_at, used_at
+               FROM web_login_codes
+               WHERE code = ?""",
+            (code,),
+        )
+        if not record:
+            return None
+
+        if record.get("used_at"):
+            return None
+
+        expires_at = record.get("expires_at")
+        if expires_at:
+            import datetime
+
+            try:
+                expiry = (
+                    datetime.datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    if isinstance(expires_at, str)
+                    else expires_at
+                )
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=datetime.timezone.utc)
+                now = datetime.datetime.now(datetime.timezone.utc)
+                if expiry < now:
+                    self._execute(
+                        "DELETE FROM web_login_codes WHERE code = ?",
+                        (code,),
+                    )
+                    return None
+            except Exception:
+                self._execute(
+                    "DELETE FROM web_login_codes WHERE code = ?",
+                    (code,),
+                )
+                return None
+
+        self._execute(
+            "UPDATE web_login_codes SET used_at = CURRENT_TIMESTAMP WHERE code = ?",
+            (code,),
+        )
+        return record
+
     def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
         """Actualiza el plan del usuario."""
         # Actualizar plan + metadatos de suscripción
@@ -1039,6 +1142,58 @@ class Database:
             self._execute(
                 """UPDATE web_users SET 
                         ai_analyses_limit = 0,
+                        searches_limit    = 0,
+                        job_tracker_enabled = 1
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+
+    def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
+        """Actualiza el plan del usuario con limites comerciales vigentes."""
+        if expires_at:
+            self._execute(
+                """UPDATE web_users SET plan = ?, subscription_status = 'active',
+                   subscription_expires_at = ? WHERE telegram_id = ?""",
+                (plan, expires_at, telegram_id),
+            )
+        else:
+            self._execute(
+                "UPDATE web_users SET plan = ? WHERE telegram_id = ?",
+                (plan, telegram_id),
+            )
+
+        normalized_plan = (plan or "free").lower()
+        if normalized_plan == "free":
+            self._execute(
+                """UPDATE web_users SET
+                        ai_analyses_limit = 0,
+                        searches_limit    = 5,
+                        job_tracker_enabled = 0
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+        elif normalized_plan == "starter":
+            self._execute(
+                """UPDATE web_users SET
+                        ai_analyses_limit = 0,
+                        searches_limit    = 30,
+                        job_tracker_enabled = 1
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+        elif normalized_plan == "pro":
+            self._execute(
+                """UPDATE web_users SET
+                        ai_analyses_limit = 5,
+                        searches_limit    = 80,
+                        job_tracker_enabled = 1
+                   WHERE telegram_id = ?""",
+                (telegram_id,),
+            )
+        elif normalized_plan == "premium":
+            self._execute(
+                """UPDATE web_users SET
+                        ai_analyses_limit = 30,
                         searches_limit    = 0,
                         job_tracker_enabled = 1
                    WHERE telegram_id = ?""",
@@ -1191,3 +1346,282 @@ class Database:
             )
         except Exception as e:
             logger.error(f"Error marking webhook as processed: {e}")
+
+    # ----------------------------------------------------------
+    # COMPANY DATA CACHE (LinkedIn Data API)
+    # ----------------------------------------------------------
+
+    def get_company_data(self, domain: str) -> Optional[Dict]:
+        """
+        Obtiene datos cacheados de una empresa.
+        
+        Returns:
+            Dict con 'data' (dict) y 'cached_at' (int timestamp) o None si no existe o expiró
+        """
+        import time
+        
+        domain = domain.strip().lower()
+        row = self._fetchone(
+            "SELECT data, cached_at, expires_at FROM companies WHERE domain = ?",
+            (domain,),
+        )
+        
+        if not row:
+            return None
+        
+        # Verificar si expiró
+        current_time = int(time.time())
+        if current_time > row["expires_at"]:
+            return None
+        
+        try:
+            import json
+            return {
+                "data": json.loads(row["data"]),
+                "cached_at": row["cached_at"]
+            }
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    def set_company_data(self, domain: str, data: Dict, ttl_seconds: int = 604800):
+        """
+        Guarda datos de empresa en caché.
+        
+        Args:
+            domain: Dominio de la empresa (ej: google.com)
+            data: Dict con datos de la empresa
+            ttl_seconds: Tiempo de vida del caché (default 7 días = 604800 seg)
+        """
+        import time
+        import json
+        
+        domain = domain.strip().lower()
+        current_time = int(time.time())
+        expires_at = current_time + ttl_seconds
+        
+        data_json = json.dumps(data, ensure_ascii=False)
+        
+        try:
+            self._execute(
+                """INSERT OR REPLACE INTO companies 
+                   (domain, data, cached_at, expires_at) 
+                   VALUES (?, ?, ?, ?)""",
+                (domain, data_json, current_time, expires_at),
+            )
+        except Exception as e:
+            logger.error(f"Error caching company data for {domain}: {e}")
+
+    # ----------------------------------------------------------
+    # JOB BATCHES (Smart Summary UX)
+    # ----------------------------------------------------------
+
+    def create_job_batch(
+        self,
+        telegram_id: int,
+        jobs: List[Dict],
+        source: str = "manual",
+        ttl_minutes: int = 30
+    ) -> int:
+        """
+        Crea un batch de jobs pendientes para el nuevo flujo UX.
+        
+        Args:
+            telegram_id: ID del usuario
+            jobs: Lista de trabajos encontrados
+            source: 'manual' (busqueda) o 'alert' (alerta automatica)
+            ttl_minutes: Tiempo de vida del batch (default 30 min)
+        
+        Returns:
+            ID del batch creado
+        """
+        import json
+        import time
+        
+        current_time = int(time.time())
+        expires_at = current_time + (ttl_minutes * 60)
+        
+        # Calcular conteos por match score
+        high = sum(1 for j in jobs if j.get('match_score', 0) >= 80)
+        medium = sum(1 for j in jobs if 60 <= j.get('match_score', 0) < 80)
+        regular = sum(1 for j in jobs if j.get('match_score', 0) < 60)
+        
+        jobs_json = json.dumps(jobs, ensure_ascii=False)
+        
+        try:
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO pending_job_batches 
+                   (telegram_id, jobs_json, total_count, high_match_count, 
+                    medium_match_count, regular_match_count, source,
+                    created_at, expires_at, viewed, fallback_sent)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)""",
+                (telegram_id, jobs_json, len(jobs), high, medium, regular,
+                 source, current_time, expires_at)
+            )
+            batch_id = cursor.lastrowid
+            conn.commit()
+            
+            logger.info(f"[BATCH] Creado batch {batch_id} para usuario {telegram_id} con {len(jobs)} jobs")
+            return batch_id
+            
+        except Exception as e:
+            logger.error(f"Error creando batch para usuario {telegram_id}: {e}")
+            return -1
+
+    def get_job_batch(self, batch_id: int) -> Optional[Dict]:
+        """Recupera un batch por su ID."""
+        import json
+        
+        row = self._fetchone(
+            """SELECT id, telegram_id, jobs_json, total_count, high_match_count,
+                      medium_match_count, regular_match_count, source,
+                      created_at, expires_at, viewed, fallback_sent
+               FROM pending_job_batches 
+               WHERE id = ?""",
+            (batch_id,)
+        )
+        
+        if not row:
+            return None
+        
+        try:
+            return {
+                "id": row["id"],
+                "telegram_id": row["telegram_id"],
+                "jobs": json.loads(row["jobs_json"]),
+                "total_count": row["total_count"],
+                "high_match_count": row["high_match_count"],
+                "medium_match_count": row["medium_match_count"],
+                "regular_match_count": row["regular_match_count"],
+                "source": row["source"],
+                "created_at": row["created_at"],
+                "expires_at": row["expires_at"],
+                "viewed": row["viewed"],
+                "fallback_sent": row["fallback_sent"]
+            }
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Error parseando batch {batch_id}: {e}")
+            return None
+
+    def mark_batch_viewed(self, batch_id: int):
+        """Marca un batch como visto."""
+        self._execute(
+            "UPDATE pending_job_batches SET viewed = 1 WHERE id = ?",
+            (batch_id,)
+        )
+        self._log_batch_interaction(batch_id, 'viewed')
+
+    def mark_batch_fallback_sent(self, batch_id: int):
+        """Marca que el fallback (envio directo) fue ejecutado."""
+        self._execute(
+            "UPDATE pending_job_batches SET fallback_sent = 1, viewed = 2 WHERE id = ?",
+            (batch_id,)
+        )
+        self._log_batch_interaction(batch_id, 'fallback_sent')
+
+    def expire_old_batches(self, max_age_hours: int = 24) -> int:
+        """
+        Limpia batches expirados.
+        
+        Returns:
+            Cantidad de batches eliminados
+        """
+        import time
+        
+        cutoff = int(time.time()) - (max_age_hours * 3600)
+        
+        # Primero marcar como expirados los que vencieron pero no fueron vistos
+        self._execute(
+            """UPDATE pending_job_batches 
+               SET viewed = 2 
+               WHERE expires_at < ? AND viewed = 0""",
+            (int(time.time()),)
+        )
+        
+        # Log interacciones
+        rows = self._fetchall(
+            """SELECT id FROM pending_job_batches 
+               WHERE expires_at < ? AND viewed = 0""",
+            (int(time.time()),)
+        )
+        for row in rows:
+            self._log_batch_interaction(row["id"], 'expired')
+        
+        # Eliminar batches muy viejos
+        cursor = self._get_conn().cursor()
+        cursor.execute(
+            "DELETE FROM pending_job_batches WHERE created_at < ?",
+            (cutoff,)
+        )
+        deleted = cursor.rowcount
+        
+        if self.db_path != ":memory:":
+            self._get_conn().commit()
+        
+        if deleted > 0:
+            logger.info(f"[BATCH] Eliminados {deleted} batches antiguos")
+        
+        return deleted
+
+    def get_expired_alert_batches(self, min_age_minutes: int = 30) -> List[Dict]:
+        """
+        Obtiene batches de ALERTAS que expiraron sin ser vistos.
+        Estos se enviaran por fallback.
+        
+        Returns:
+            Lista de batches expirados no vistos
+        """
+        import time
+        import json
+        
+        cutoff = int(time.time()) - (min_age_minutes * 60)
+        
+        rows = self._fetchall(
+            """SELECT id, telegram_id, jobs_json, total_count,
+                      high_match_count, medium_match_count, regular_match_count
+               FROM pending_job_batches 
+               WHERE source = 'alert' 
+                 AND expires_at < ?
+                 AND viewed = 0
+                 AND fallback_sent = 0""",
+            (cutoff,)
+        )
+        
+        batches = []
+        for row in rows:
+            try:
+                batches.append({
+                    "id": row["id"],
+                    "telegram_id": row["telegram_id"],
+                    "jobs": json.loads(row["jobs_json"]),
+                    "total_count": row["total_count"],
+                    "high_match_count": row["high_match_count"],
+                    "medium_match_count": row["medium_match_count"],
+                    "regular_match_count": row["regular_match_count"]
+                })
+            except json.JSONDecodeError:
+                continue
+        
+        return batches
+
+    def _log_batch_interaction(self, batch_id: int, action: str):
+        """Loguea una interaccion con el batch (analytics)."""
+        import time
+        
+        # Obtener telegram_id del batch
+        row = self._fetchone(
+            "SELECT telegram_id FROM pending_job_batches WHERE id = ?",
+            (batch_id,)
+        )
+        
+        if row:
+            try:
+                self._execute(
+                    """INSERT INTO batch_interactions 
+                       (batch_id, telegram_id, action, timestamp)
+                       VALUES (?, ?, ?, ?)""",
+                    (batch_id, row["telegram_id"], action, int(time.time()))
+                )
+            except Exception:
+                pass  # No critico, ignorar errores

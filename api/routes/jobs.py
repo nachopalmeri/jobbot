@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
-from typing import Optional
 import hashlib
 import re
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 try:
     from job_bot.database import Database
@@ -10,6 +11,9 @@ try:
 except ImportError:
     from database import Database
     from job_scraper import JobScraper
+
+from .auth import get_authenticated_user
+
 
 router = APIRouter()
 
@@ -25,13 +29,13 @@ def get_scraper() -> JobScraper:
 def _normalize_modality(value: str) -> str:
     mapping = {
         "remote": "remoto",
-        "hybrid": "híbrido",
+        "hybrid": "hibrido",
         "onsite": "presencial",
         "all": "cualquiera",
         "cualquiera": "cualquiera",
         "remoto": "remoto",
-        "híbrido": "híbrido",
-        "hibrido": "híbrido",
+        "hibrido": "hibrido",
+        "hibrido": "hibrido",
         "presencial": "presencial",
     }
     return mapping.get((value or "").strip().lower(), "cualquiera")
@@ -41,9 +45,11 @@ def _serialize_modality(job: dict) -> str:
     text = (
         f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')}"
     ).lower()
-    if any(token in text for token in ("remoto", "remote", "anywhere", "worldwide", "wfh")):
+    if any(
+        token in text for token in ("remoto", "remote", "anywhere", "worldwide", "wfh")
+    ):
         return "remote"
-    if any(token in text for token in ("híbrido", "hibrido", "hybrid")):
+    if any(token in text for token in ("hibrido", "hybrid")):
         return "hybrid"
     return "onsite"
 
@@ -67,7 +73,10 @@ def _extract_tags(job: dict) -> list[str]:
 
 def _extract_salary(job: dict) -> tuple[Optional[int], Optional[int], Optional[str]]:
     description = job.get("description", "") or ""
-    match = re.search(r"(USD|ARS|EUR|\$)\s?([\d,]{2,})\s?[-–]\s?(USD|ARS|EUR|\$)?\s?([\d,]{2,})", description)
+    match = re.search(
+        r"(USD|ARS|EUR|\$)\s?([\d,]{2,})\s?[-–]\s?(USD|ARS|EUR|\$)?\s?([\d,]{2,})",
+        description,
+    )
     if not match:
         return None, None, None
 
@@ -113,7 +122,7 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
     target_modality = _normalize_modality(profile.get("job_modality") or "cualquiera")
     if target_modality == "cualquiera" or modality == {
         "remoto": "remote",
-        "híbrido": "hybrid",
+        "hibrido": "hybrid",
         "presencial": "onsite",
     }.get(target_modality):
         score += 5
@@ -124,12 +133,16 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
 def _serialize_job(job: dict, score: int) -> dict:
     salary_min, salary_max, salary_currency = _extract_salary(job)
     job_url = job.get("url") or ""
-    job_id = hashlib.md5(job_url.encode("utf-8")).hexdigest() if job_url else hashlib.md5(
-        f"{job.get('title', '')}:{job.get('company', '')}".encode("utf-8")
-    ).hexdigest()
+    job_id = (
+        hashlib.md5(job_url.encode("utf-8")).hexdigest()
+        if job_url
+        else hashlib.md5(
+            f"{job.get('title', '')}:{job.get('company', '')}".encode("utf-8")
+        ).hexdigest()
+    )
     return {
         "id": job_id,
-        "title": job.get("title", "Sin título"),
+        "title": job.get("title", "Sin titulo"),
         "company": job.get("company", "N/A"),
         "location": job.get("location", "N/A"),
         "modality": _serialize_modality(job),
@@ -146,7 +159,6 @@ def _serialize_job(job: dict, score: int) -> dict:
 
 
 class TrackRequest(BaseModel):
-    telegram_id: int
     job_title: str
     company: str
     url: str
@@ -154,16 +166,22 @@ class TrackRequest(BaseModel):
 
 
 class UpdateApplicationRequest(BaseModel):
-    telegram_id: int
     status: str
+
+
+def _require_search_quota(db: Database, telegram_id: int):
+    if not db.check_usage_limit(telegram_id, "searches"):
+        raise HTTPException(
+            status_code=429,
+            detail="Alcanzaste el limite diario de busquedas para tu plan actual",
+        )
 
 
 @router.get("/search")
 async def search_jobs(
-    q: str = Query("", description="Query de búsqueda"),
-    telegram_id: int = Query(..., description="Telegram ID del usuario"),
+    q: str = Query("", description="Query de busqueda"),
     modality: Optional[str] = Query("all", description="remote, hybrid, onsite"),
-    location: Optional[str] = Query(None, description="Ubicación"),
+    location: Optional[str] = Query(None, description="Ubicacion"),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
     max_age_days: Optional[int] = Query(None, ge=1, le=365),
@@ -171,11 +189,14 @@ async def search_jobs(
     tags: Optional[str] = Query(None, description="Lista CSV de tags"),
     db: Database = Depends(get_db),
     scraper: JobScraper = Depends(get_scraper),
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    """Buscar empleos reales usando el scraper y el perfil del usuario."""
+    telegram_id = current_user["telegram_id"]
     user = db.get_user(telegram_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    _require_search_quota(db, telegram_id)
 
     profile = db.get_user_profile(telegram_id)
     search_location = location or user.get("location") or "Buenos Aires Argentina"
@@ -205,7 +226,10 @@ async def search_jobs(
         jobs = [
             job
             for job in jobs
-            if all(tag in f"{job.get('title', '')} {job.get('description', '')}".lower() for tag in tags_filter)
+            if all(
+                tag in f"{job.get('title', '')} {job.get('description', '')}".lower()
+                for tag in tags_filter
+            )
         ]
 
     serialized = []
@@ -217,43 +241,57 @@ async def search_jobs(
 
     serialized.sort(key=lambda item: item["match_score"], reverse=True)
     total = len(serialized)
-    paginated = serialized[offset : offset + limit]
+    effective_limit = min(limit, 5) if current_user["plan"] == "free" else limit
+    paginated = serialized[offset : offset + effective_limit]
+    db.increment_usage(telegram_id, "searches")
+
     return {
         "jobs": paginated,
         "total": total,
         "offset": offset,
-        "limit": limit,
+        "limit": effective_limit,
         "query": q,
     }
 
 
 @router.get("/recommended")
 async def get_recommended_jobs(
-    telegram_id: int = Query(...),
     db: Database = Depends(get_db),
     scraper: JobScraper = Depends(get_scraper),
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    profile = db.get_user_profile(telegram_id)
+    profile = db.get_user_profile(current_user["telegram_id"])
     role = profile.get("role_type") or "developer"
     return await search_jobs(
         q=role,
-        telegram_id=telegram_id,
         db=db,
         scraper=scraper,
+        current_user=current_user,
     )
 
 
 @router.post("/track")
-async def track_application(payload: TrackRequest, db: Database = Depends(get_db)):
-    db.create_user_if_not_exists(payload.telegram_id, f"User {payload.telegram_id}")
+async def track_application(
+    payload: TrackRequest,
+    db: Database = Depends(get_db),
+    current_user: dict = Depends(get_authenticated_user),
+):
+    telegram_id = current_user["telegram_id"]
+    if current_user["plan"] == "free":
+        raise HTTPException(
+            status_code=403,
+            detail="El pipeline de postulaciones requiere Plan Pro o Premium",
+        )
+
+    db.create_user_if_not_exists(telegram_id, current_user["name"])
     db.add_application(
-        payload.telegram_id,
+        telegram_id,
         payload.job_title,
         payload.company,
         payload.url,
         payload.notes or "",
     )
-    apps = db.get_user_applications(payload.telegram_id)
+    apps = db.get_user_applications(telegram_id)
     created = apps[0] if apps else {}
     return {
         "id": created.get("id"),
@@ -268,10 +306,10 @@ async def track_application(payload: TrackRequest, db: Database = Depends(get_db
 
 @router.get("/applications")
 async def get_applications(
-    telegram_id: int = Query(...),
     db: Database = Depends(get_db),
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    return {"applications": db.get_user_applications(telegram_id)}
+    return {"applications": db.get_user_applications(current_user["telegram_id"])}
 
 
 @router.patch("/applications/{app_id}")
@@ -279,6 +317,7 @@ async def update_application(
     app_id: int,
     payload: UpdateApplicationRequest,
     db: Database = Depends(get_db),
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    db.update_application_status(app_id, payload.telegram_id, payload.status)
+    db.update_application_status(app_id, current_user["telegram_id"], payload.status)
     return {"id": app_id, "status": payload.status, "message": "Estado actualizado"}

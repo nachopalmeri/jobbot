@@ -9,15 +9,18 @@ Ejecutar: python bot.py
 import asyncio
 import logging
 import os
+import secrets
 import threading
 import time
 import html
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
@@ -49,24 +52,40 @@ except ImportError:
 try:
     from cv_analyzer import (
         parse_cv,
-        extract_keywords,
-        compare_cv_with_offer,
-        format_cv_analysis,
         analyze_with_gemini,
-        generate_interview_questions,
+        compare_cv_with_offer,
         evaluate_interview_answer,
+        format_cv_analysis,
         generate_cover_letter,
+        generate_interview_questions,
     )
 except ImportError:
     from job_bot.cv_analyzer import (
         parse_cv,
-        extract_keywords,
-        compare_cv_with_offer,
-        format_cv_analysis,
         analyze_with_gemini,
-        generate_interview_questions,
+        compare_cv_with_offer,
         evaluate_interview_answer,
+        format_cv_analysis,
         generate_cover_letter,
+        generate_interview_questions,
+    )
+
+try:
+    from company_service import get_company_by_domain, format_company_info
+except ImportError:
+    from job_bot.company_service import get_company_by_domain, format_company_info
+
+try:
+    from financial_service import (
+        get_stock_data, 
+        get_ticker_from_domain,
+        format_company_full_message
+    )
+except ImportError:
+    from job_bot.financial_service import (
+        get_stock_data,
+        get_ticker_from_domain,
+        format_company_full_message
     )
 
 try:
@@ -193,6 +212,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Buscar en LinkedIn AR, Remotive, Arbeitnow, Jobicy y más\n"
         "• Notificarte SOLO cuando hay algo nuevo\n"
         "• Guardar y analizar tu CV\n\n"
+        "• Consultar ficha de empresas antes de aplicar\n\n"
         "📋 Comandos principales:\n"
         "/preferencias — Configurar tu perfil y zona\n"
         "/horarios — Elegir cada cuánto y en qué horarios buscamos\n"
@@ -937,6 +957,110 @@ async def analizar_oferta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(msg, parse_mode=ParseMode.HTML)
 
 
+async def empresa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Muestra información enriquecida de una empresa por dominio o URL.
+    Uso: /empresa apple.com
+    
+    Ahora con caché y datos de LinkedIn Data API (RapidAPI).
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "🏢 <b>Ficha de empresa</b>\n\n"
+            "Uso: <code>/empresa apple.com</code>\n"
+            "También podés pasar una URL: <code>/empresa https://apple.com</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    domain_or_url = " ".join(context.args).strip()
+    status_msg = await update.message.reply_text(
+        "🔎 Buscando información de la empresa..."
+    )
+
+    # Obtener info de empresa con caché (usa LinkedIn Data API)
+    company_data = get_company_by_domain(domain_or_url, db=db)
+    
+    if not company_data:
+        await status_msg.edit_text(
+            "❌ No encontré información de esa empresa.\n"
+            "Probá con el dominio directo, por ejemplo: <code>/empresa mercadolibre.com</code>\n\n"
+            "ℹ️ Si la empresa es muy nueva o pequeña, puede no estar indexada."
+        )
+        return
+
+    # Intentar obtener datos financieros si hay ticker disponible
+    stock_data = None
+    try:
+        ticker = get_ticker_from_domain(company_data.get('domain', ''))
+        if ticker:
+            await status_msg.edit_text(
+                "🔎 Buscando información de la empresa y datos financieros..."
+            )
+            stock_data = get_stock_data(ticker, db=db)
+    except Exception as e:
+        logger.info(f"No se pudieron obtener datos financieros: {e}")
+        # Continuar sin datos financieros
+
+    # Formatear y enviar respuesta combinada
+    formatted = format_company_full_message(company_data, stock_data)
+    await status_msg.edit_text(formatted, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+
+
+async def detalle_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Consulta detalle extendido de una oferta por job_id cuando el proveedor lo soporta.
+    Uso: /detalle_job <job_id> [country]
+    """
+    if not context.args:
+        await update.message.reply_text(
+            "🧾 <b>Detalle de oferta</b>\n\n"
+            "Uso: <code>/detalle_job JOB_ID [country]</code>\n"
+            "Ejemplo: <code>/detalle_job cWq1wY1gQE8gXv8aAAAAAA== us</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    job_id = context.args[0].strip()
+    country = context.args[1].strip().lower() if len(context.args) > 1 else "us"
+    status_msg = await update.message.reply_text("🔎 Buscando detalle completo...")
+
+    try:
+        data = scraper.get_job_details(job_id, country=country)
+    except Exception as e:
+        logger.error("Error obteniendo detalle de job '%s': %s", job_id, e)
+        await status_msg.edit_text(
+            "❌ No pude obtener el detalle de esa oferta.\n"
+            "Verificá el job_id o probá más tarde."
+        )
+        return
+
+    title = html.escape(str(data.get("job_title") or data.get("title") or "Oferta"))
+    company = html.escape(str(data.get("employer_name") or data.get("company_name") or "Empresa"))
+    location = html.escape(
+        str(
+            data.get("job_city")
+            or data.get("job_country")
+            or data.get("location")
+            or "N/A"
+        )
+    )
+    description = html.escape(str(data.get("job_description") or data.get("description") or ""))[:1200]
+    apply_url = html.escape(str(data.get("job_apply_link") or data.get("url") or ""))
+
+    lines = [
+        f"💼 <b>{title}</b>",
+        f"🏢 {company}",
+        f"📍 {location}",
+    ]
+    if description:
+        lines.append(f"\n📝 <i>{description}</i>")
+    if apply_url:
+        lines.append(f"\n🔗 {apply_url}")
+
+    await status_msg.edit_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
 # ============================================================
 # /agregar_feed
 # ============================================================
@@ -1223,6 +1347,9 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📄 Análisis de CV:\n"
         "/analizar_cv — Análisis general de tu CV\n"
         "/analizar_oferta [URL] — Comparar tu CV vs una oferta\n\n"
+        "🏢 Empresa y detalle:\n"
+        "/empresa [dominio|URL] — Ver info de una empresa\n"
+        "/detalle_job [job_id] [country] — Ver detalle técnico de una oferta\n\n"
         "📡 Feeds RSS:\n"
         "/agregar_feed [URL] [Nombre] — Agregar fuente\n"
         "/mis_feeds — Ver tus feeds\n"
@@ -1251,9 +1378,28 @@ async def web(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def web_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genera un enlace temporal para entrar al dashboard web con identidad Telegram."""
+    user = update.effective_user
+    db.create_user_if_not_exists(user.id, user.first_name or "Usuario")
+    code = secrets.token_hex(3).upper()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    db.create_web_login_code(user.id, code, expires_at)
+    base_url = (config.LANDING_URL or "https://jobbot.ar").rstrip("/")
+    login_url = f"{base_url}/login?code={code}"
+    await update.message.reply_text(
+        "🌐 <b>Entrá a tu panel web</b>\n\n"
+        f"Acceso directo: {login_url}\n"
+        f"Código de acceso: <code>{code}</code>\n\n"
+        "El enlace vence en 10 minutos y te deja entrar con tu identidad real de Telegram.\n"
+        "Si preferís, abrí la web y pegá el código manualmente en la opción Telegram.",
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Alias de /web para enviar el link al dashboard/landing."""
-    await web(update, context)
+    await web_login(update, context)
 
 
 # ============================================================
@@ -1454,6 +1600,107 @@ async def github_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# SMART SUMMARY UX - Handlers de Callbacks
+# ============================================================
+
+async def handle_view_jobs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handler para cuando el usuario toca el botón "Ver todas las ofertas"
+    en el mensaje resumen Smart Summary.
+    """
+    query = update.callback_query
+    await query.answer()  # Cerrar el "loading"
+    
+    # Extraer batch_id del callback_data
+    callback_data = query.data
+    try:
+        batch_id = int(callback_data.split(":")[1])
+    except (IndexError, ValueError):
+        await query.edit_message_text(
+            "❌ Error: No se pudo procesar la solicitud.\n"
+            "Probá con /buscar nuevamente."
+        )
+        return
+    
+    telegram_id = update.effective_user.id
+    
+    # Importar la función del scheduler
+    try:
+        from scheduler import send_jobs_from_batch
+    except ImportError:
+        from job_bot.scheduler import send_jobs_from_batch
+    
+    # Enviar los jobs del batch
+    success = await send_jobs_from_batch(
+        bot=context.bot,
+        telegram_id=telegram_id,
+        batch_id=batch_id,
+        db=db
+    )
+    
+    if success:
+        # Reemplazar el mensaje resumen con confirmación
+        await query.edit_message_text(
+            "✅ ¡Ofertas enviadas! Revisá el chat."
+        )
+
+
+async def handle_company_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handler para cuando el usuario toca "Saber más de la empresa"
+    en un mensaje de oferta.
+    """
+    query = update.callback_query
+    await query.answer()  # Cerrar el "loading"
+    
+    # Extraer dominio del callback_data
+    callback_data = query.data
+    try:
+        domain = callback_data.split(":", 1)[1]
+    except IndexError:
+        await query.edit_message_text(
+            "❌ Error: No se pudo obtener información de la empresa."
+        )
+        return
+    
+    # Obtener datos de la empresa
+    company_data = get_company_by_domain(domain, db=db)
+    
+    if not company_data:
+        await query.edit_message_text(
+            f"❌ No encontré información de <b>{domain}</b>.\n"
+            f"La empresa puede ser privada o muy pequeña.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    
+    # Intentar obtener datos financieros
+    stock_data = None
+    try:
+        ticker = get_ticker_from_domain(domain)
+        if ticker:
+            stock_data = get_stock_data(ticker, db=db)
+    except Exception as e:
+        logger.info(f"No se pudieron obtener datos financieros para {domain}: {e}")
+    
+    # Formatear mensaje completo
+    try:
+        from financial_service import format_company_full_message
+    except ImportError:
+        from job_bot.financial_service import format_company_full_message
+    
+    formatted = format_company_full_message(company_data, stock_data)
+    
+    # Enviar como nuevo mensaje (para no perder el job original)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=formatted,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
+    )
+
+
+# ============================================================
 # MAIN
 # ============================================================
 def main():
@@ -1561,6 +1808,8 @@ def main():
     app.add_handler(conv_entrevista)
     app.add_handler(CommandHandler("cargar_cv", cargar_cv_start))
     app.add_handler(CommandHandler("analizar_oferta", analizar_oferta))
+    app.add_handler(CommandHandler("empresa", empresa))
+    app.add_handler(CommandHandler("detalle_job", detalle_job))
     app.add_handler(CommandHandler("carta", carta))
     app.add_handler(CommandHandler("entrevista", entrevista_start))
     app.add_handler(CommandHandler("buscar", buscar))
@@ -1574,10 +1823,15 @@ def main():
     app.add_handler(CommandHandler("estado_job", estado_job))
     app.add_handler(CommandHandler("modo", modo))
     app.add_handler(CommandHandler("github", github_analysis))
-    app.add_handler(CommandHandler("web", web))
+    app.add_handler(CommandHandler("web", web_login))
+    app.add_handler(CommandHandler("web_login", web_login))
     app.add_handler(CommandHandler("dashboard", dashboard))
     app.add_handler(CommandHandler("borrar_datos", borrar_datos))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    
+    # ---- Handlers de Callbacks para Smart Summary UX ----
+    app.add_handler(CallbackQueryHandler(handle_view_jobs_callback, pattern="^view_jobs_batch:"))
+    app.add_handler(CallbackQueryHandler(handle_company_info_callback, pattern="^company_info:"))
 
     # ---- Crear y setear el event loop ANTES de lanzar el thread (Python 3.14+) ----
     loop = asyncio.new_event_loop()

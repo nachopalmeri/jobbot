@@ -22,8 +22,8 @@ import logging
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from urllib.parse import quote_plus
-from typing import List, Dict
+from urllib.parse import quote_plus, urlparse
+from typing import List, Dict, Optional, Tuple
 
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential
@@ -63,6 +63,10 @@ HEADERS = {
 class JobScraper:
     """Orquesta las búsquedas en todas las fuentes configuradas."""
 
+    def __init__(self):
+        self._cache: Dict[str, Tuple[float, object]] = {}
+        self._provider_cooldowns: Dict[str, float] = {}
+
     # ----------------------------------------------------------
     # BÚSQUEDA PRINCIPAL
     # ----------------------------------------------------------
@@ -80,6 +84,7 @@ class JobScraper:
         # --- APIs que buscan por query (una request por keyword) ---
         for keyword in active_keywords:
             logger.info("🔍 Buscando: '%s'", keyword)
+            keyword_start_count = len(all_jobs)
 
             if config.SOURCES_ENABLED.get("remotive"):
                 self._safe_search("Remotive", self.search_remotive, all_jobs, keyword)
@@ -97,27 +102,28 @@ class JobScraper:
                 self._safe_search("Himalayas", self.search_himalayas, all_jobs, keyword)
                 time.sleep(1)
 
-            if config.SOURCES_ENABLED.get("serpapi_google"):
-                self._safe_search("Google Jobs", self.search_google_jobs, all_jobs, keyword, location)
-                time.sleep(config.REQUEST_DELAY_SECONDS)
-
             if config.SOURCES_ENABLED.get("twitter"):
                 self._safe_search("Twitter/X", self.search_twitter, all_jobs, keyword)
                 time.sleep(config.REQUEST_DELAY_SECONDS)
 
             # --- Fuentes locales argentinas ---
             if config.SOURCES_ENABLED.get("linkedin_google"):
-                self._safe_search("LinkedIn AR Robust", self.search_linkedin_robust, all_jobs, keyword, location)
+                self._safe_search("LinkedIn AR (RSS)", self.search_linkedin_google, all_jobs, keyword, location)
                 time.sleep(2)
 
-        # Deduplicar resultados por URL
-        seen_urls: set = set()
-        unique_jobs: List[Dict] = []
-        for job in all_jobs:
-            url = job.get("url", "").strip()
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                unique_jobs.append(job)
+            keyword_results = len(all_jobs) - keyword_start_count
+            if keyword_results < config.PREMIUM_BACKFILL_MIN_RESULTS:
+                self._safe_search(
+                    "Premium Backfill",
+                    self.search_premium_backfill,
+                    all_jobs,
+                    keyword,
+                    location,
+                    config.PREMIUM_BACKFILL_MIN_RESULTS - keyword_results,
+                )
+                time.sleep(config.REQUEST_DELAY_SECONDS)
+
+        unique_jobs = self._dedupe_jobs(all_jobs)
 
         # Filtrar por ubicación del usuario
         location_filtered = self.apply_location_filter(unique_jobs, location)
@@ -139,6 +145,144 @@ class JobScraper:
             logger.info("  ✅ %s: %d resultado(s)", source_name, len(jobs))
         except Exception as e:
             logger.error("  ❌ %s falló: %s", source_name, e)
+
+    def _cache_get(self, key: str):
+        cached = self._cache.get(key)
+        if not cached:
+            return None
+
+        expires_at, value = cached
+        if expires_at < time.time():
+            self._cache.pop(key, None)
+            return None
+        return value
+
+    def _cache_set(self, key: str, value, ttl_seconds: int):
+        self._cache[key] = (time.time() + ttl_seconds, value)
+        return value
+
+    def _normalize_job(self, job: Dict) -> Dict:
+        """
+        Homogeneiza campos comunes para mejorar deduplicación y UX.
+        """
+        normalized = dict(job)
+        company_domain = self.extract_domain(
+            normalized.get("company_domain")
+            or normalized.get("company_url")
+            or normalized.get("company_website")
+            or ""
+        )
+        if not company_domain:
+            company_domain = self.extract_domain(normalized.get("url", ""))
+            if company_domain in {"linkedin.com", "google.com", "news.google.com"}:
+                company_domain = ""
+
+        normalized["company_domain"] = company_domain
+        normalized["title"] = (normalized.get("title") or "Sin título").strip()
+        normalized["company"] = (normalized.get("company") or "N/A").strip()
+        normalized["url"] = (normalized.get("url") or "").strip()
+        normalized["description"] = self._clean_text(normalized.get("description"))
+        return normalized
+
+    def _job_fingerprint(self, job: Dict) -> str:
+        url = (job.get("url") or "").strip().lower()
+        if url:
+            return f"url:{url}"
+        title = (job.get("title") or "").strip().lower()
+        company = (job.get("company") or "").strip().lower()
+        location = (job.get("location") or "").strip().lower()
+        return f"meta:{title}|{company}|{location}"
+
+    def _dedupe_jobs(self, jobs: List[Dict]) -> List[Dict]:
+        """
+        Deduplica por URL si existe; si no, por título+empresa+ubicación.
+        """
+        seen: set = set()
+        unique_jobs: List[Dict] = []
+        for raw_job in jobs:
+            job = self._normalize_job(raw_job)
+            fingerprint = self._job_fingerprint(job)
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            unique_jobs.append(job)
+        return unique_jobs
+
+    def _provider_ready(self, provider_name: str) -> bool:
+        cooldown_until = self._provider_cooldowns.get(provider_name, 0)
+        return cooldown_until <= time.time()
+
+    def _trip_provider(self, provider_name: str):
+        self._provider_cooldowns[provider_name] = (
+            time.time() + config.PROVIDER_COOLDOWN_SECONDS
+        )
+
+    @staticmethod
+    def extract_domain(value: str) -> str:
+        """Extrae un dominio limpio desde un dominio suelto o URL."""
+        if not value:
+            return ""
+
+        candidate = value.strip()
+        if "://" not in candidate:
+            candidate = f"https://{candidate}"
+
+        parsed = urlparse(candidate)
+        netloc = (parsed.netloc or parsed.path or "").strip().lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        return netloc.split("/")[0]
+
+    @staticmethod
+    def _clean_text(value: Optional[str], limit: int = 300) -> str:
+        text = (value or "").strip()
+        return text[:limit]
+
+    def _rapidapi_headers(self, host: str) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "X-RapidAPI-Key": config.RAPIDAPI_KEY,
+            "X-RapidAPI-Host": host,
+        }
+
+    def _requests_get_json(self, url: str, *, params: Optional[Dict] = None, headers: Optional[Dict] = None):
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers or HEADERS,
+            timeout=config.REQUEST_TIMEOUT,
+        )
+        if response.status_code == 429:
+            raise ValueError("Quota/rate limit alcanzado")
+        response.raise_for_status()
+        return response.json()
+
+    def search_premium_backfill(self, query: str, location: str, missing_results: int = 3) -> List[Dict]:
+        """
+        Usa proveedores premium sólo si las fuentes gratis no alcanzan.
+        Orden: Active Jobs DB -> Google Jobs (SerpAPI) -> JSearch/LinkedIn robust.
+        """
+        jobs: List[Dict] = []
+
+        premium_calls = [
+            ("active_jobs_db", self.search_active_jobs_db, (query, location)),
+            ("serpapi_google", self.search_google_jobs, (query, location)),
+            ("linkedin_robust", self.search_linkedin_robust, (query, location, False)),
+        ]
+
+        for provider_name, provider_fn, args in premium_calls:
+            if len(jobs) >= max(missing_results, 1):
+                break
+            if not self._provider_ready(provider_name):
+                continue
+            try:
+                provider_jobs = provider_fn(*args)
+                jobs.extend(provider_jobs)
+            except Exception as e:
+                logger.warning("Provider premium %s no disponible: %s", provider_name, e)
+                self._trip_provider(provider_name)
+
+        return jobs[: config.MAX_RESULTS_PER_SOURCE]
 
     # ----------------------------------------------------------
     # 1. REMOTIVE — API PÚBLICA GRATUITA
@@ -390,6 +534,62 @@ class JobScraper:
 
         return jobs
 
+    def search_active_jobs_db(self, query: str, location: str = "Buenos Aires") -> List[Dict]:
+        """
+        Busca en Active Jobs DB vía RapidAPI.
+        Se usa como backfill premium cuando las fuentes gratis quedan cortas.
+        """
+        if not config.RAPIDAPI_KEY:
+            raise ValueError("RAPIDAPI_KEY no configurada")
+
+        cache_key = f"active_jobs:{query}:{location}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        host = config.RAPIDAPI_ACTIVE_JOBS_HOST
+        url = f"https://{host}/active-ats-1h"
+        params = {
+            "offset": "0",
+            "title_filter": f"\"{query}\"",
+            "location_filter": f"\"{location}\"",
+            "description_type": "text",
+        }
+
+        data = self._requests_get_json(
+            url,
+            params=params,
+            headers=self._rapidapi_headers(host),
+        )
+
+        raw_items = data if isinstance(data, list) else data.get("jobs", [])
+        jobs: List[Dict] = []
+        for item in raw_items[: config.MAX_RESULTS_PER_SOURCE]:
+            apply_url = (
+                item.get("job_url")
+                or item.get("apply_url")
+                or item.get("url")
+                or ""
+            )
+            company_site = item.get("company_website") or item.get("company_url") or ""
+            jobs.append({
+                "id": item.get("id") or item.get("job_id") or apply_url,
+                "title": item.get("title", "Sin título").strip(),
+                "company": item.get("organization") or item.get("company") or "N/A",
+                "location": item.get("locations_derived", [location])[0] if item.get("locations_derived") else item.get("location", location),
+                "url": apply_url,
+                "description": self._clean_text(item.get("description") or item.get("description_text")),
+                "source": "Active Jobs DB",
+                "date": item.get("date_posted") or item.get("created_at", ""),
+                "company_domain": self.extract_domain(company_site),
+                "provider": "active_jobs_db",
+            })
+
+        if not jobs:
+            raise ValueError("Active Jobs DB devolvió 0 resultados")
+
+        return self._cache_set(cache_key, jobs, config.PROVIDER_CACHE_TTL_SECONDS)
+
     # ----------------------------------------------------------
     # 5. TWITTER/X API v2
     # ⚠️  Requiere plan Basic ($100/mes). El plan Free NO permite buscar tweets.
@@ -503,7 +703,7 @@ class JobScraper:
     # ESTRATEGIA DE FALLBACK / ROTACIÓN PARA LINKEDIN
     # ----------------------------------------------------------
 
-    def search_linkedin_robust(self, query: str, location: str = "Buenos Aires") -> List[Dict]:
+    def search_linkedin_robust(self, query: str, location: str = "Buenos Aires", allow_rss_fallback: bool = True) -> List[Dict]:
         """
         Enrutador profesional que previene caídas. Intenta múltiples proveedores.
         Si la Opción 1 falla, pasa a la Opción 2, y así sucesivamente.
@@ -523,11 +723,14 @@ class JobScraper:
             logger.debug("Fallback 2 (SerpAPI) omitido o falló: %s", e)
 
         # Estrategia 3: Google News RSS (Gratis, con retries vía Tenacity)
-        try:
-            return self._fetch_linkedin_via_google_rss_retry(query, location)
-        except Exception as e:
-            logger.error("❌ Todos los fallbacks de LinkedIn fallaron. Último error: %s", e)
-            return []
+        if allow_rss_fallback:
+            try:
+                return self._fetch_linkedin_via_google_rss_retry(query, location)
+            except Exception as e:
+                logger.error("❌ Todos los fallbacks de LinkedIn fallaron. Último error: %s", e)
+                return []
+
+        return []
 
     def _fetch_linkedin_via_rapidapi(self, query: str, location: str) -> List[Dict]:
         """
@@ -536,7 +739,8 @@ class JobScraper:
         if not getattr(config, 'RAPIDAPI_KEY', None):
             raise ValueError("RAPIDAPI_KEY no configurada en las variables de entorno.")
 
-        url = "https://jsearch.p.rapidapi.com/search"
+        host = config.RAPIDAPI_JSEARCH_HOST
+        url = f"https://{host}/search"
         querystring = {
             "query": f"{query} en {location} LinkedIn",
             "page": "1",
@@ -544,10 +748,7 @@ class JobScraper:
             "date_posted": "month",
             "language": "es"
         }
-        headers = {
-            "X-RapidAPI-Key": config.RAPIDAPI_KEY,
-            "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
-        }
+        headers = self._rapidapi_headers(host)
 
         response = requests.get(url, headers=headers, params=querystring, timeout=config.REQUEST_TIMEOUT)
         if response.status_code == 429:
@@ -558,13 +759,16 @@ class JobScraper:
         jobs = []
         for item in data.get("data", [])[:config.MAX_RESULTS_PER_SOURCE]:
             jobs.append({
+                "id": item.get("job_id", ""),
                 "title": item.get("job_title", "Sin título"),
                 "company": item.get("employer_name", "Ver empresa"),
                 "location": item.get("job_city", "") + " " + item.get("job_country", location),
                 "url": item.get("job_apply_link", ""),
                 "description": item.get("job_description", "")[:300],
                 "source": "LinkedIn API (Rapid)",
-                "date": item.get("job_posted_at_datetime_utc", "")
+                "date": item.get("job_posted_at_datetime_utc", ""),
+                "company_domain": self.extract_domain(item.get("employer_website", "")),
+                "provider": "jsearch",
             })
             
         if not jobs:
@@ -606,7 +810,8 @@ class JobScraper:
                 "url": item.get("link", ""),
                 "description": snippet,
                 "source": "LinkedIn AR (SerpAPI)",
-                "date": ""
+                "date": "",
+                "provider": "serpapi_linkedin",
             })
             
         if not jobs:
@@ -690,9 +895,73 @@ class JobScraper:
                 "description": "",
                 "source":      "LinkedIn AR",
                 "date":        entry.get("published", ""),
+                "provider":    "linkedin_google_rss",
             })
 
         return jobs
+
+    def get_job_details(self, job_id: str, country: str = "us") -> Dict:
+        """Obtiene detalle extendido de un job vía JSearch Mega."""
+        if not job_id:
+            raise ValueError("job_id requerido")
+        if not config.RAPIDAPI_KEY:
+            raise ValueError("RAPIDAPI_KEY no configurada")
+
+        cache_key = f"job_details:{job_id}:{country}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        host = config.RAPIDAPI_JSEARCH_MEGA_HOST
+        url = f"https://{host}/job-details"
+        params = {
+            "job_id": job_id,
+            "country": country,
+        }
+        data = self._requests_get_json(
+            url,
+            params=params,
+            headers=self._rapidapi_headers(host),
+        )
+        return self._cache_set(cache_key, data, config.PROVIDER_CACHE_TTL_SECONDS)
+
+    def enrich_company_by_domain(self, domain_or_url: str) -> Dict:
+        """Enriquece una empresa por dominio usando linkedin-data-api."""
+        domain = self.extract_domain(domain_or_url)
+        if not domain:
+            raise ValueError("No pude extraer un dominio válido")
+
+        cache_key = f"company:{domain}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        if not config.RAPIDAPI_KEY:
+            raise ValueError("RAPIDAPI_KEY no configurada")
+
+        host = config.RAPIDAPI_LINKEDIN_DATA_HOST
+        url = f"https://{host}/get-company-by-domain"
+        data = self._requests_get_json(
+            url,
+            params={"domain": domain},
+            headers=self._rapidapi_headers(host),
+        )
+
+        normalized = {
+            "domain": domain,
+            "name": data.get("name") or data.get("companyName") or domain,
+            "headline": data.get("headline") or data.get("tagline") or "",
+            "description": self._clean_text(data.get("description") or data.get("summary"), 500),
+            "industry": data.get("industry") or data.get("industries", ""),
+            "size": data.get("companySize") or data.get("staffCount") or "",
+            "website": data.get("website") or data.get("companyWebsite") or "",
+            "linkedin_url": data.get("linkedinUrl") or data.get("url") or "",
+            "location": data.get("headquarters") or data.get("location") or "",
+            "founded": data.get("foundedOn") or data.get("founded") or "",
+            "logo": data.get("logo") or data.get("logoUrl") or "",
+            "raw": data,
+        }
+        return self._cache_set(cache_key, normalized, config.COMPANY_CACHE_TTL_SECONDS)
 
     # ----------------------------------------------------------
     # FILTRO POR UBICACIÓN DEL USUARIO

@@ -60,6 +60,7 @@ log/
 htmlcov/
 .tox/
 .nox/
+test_artifacts/
 
 # Node.js / Next.js
 node_modules/
