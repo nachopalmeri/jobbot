@@ -3646,6 +3646,20 @@
       background: var(--surface-soft);
     }
 
+    .coming-soon-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
     .notion-table {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -5546,6 +5560,7 @@
                 <li><i class="fas fa-check"></i> Recordatorios de follow-up</li>
                 <li><i class="fas fa-check"></i> Estadísticas de conversión</li>
               </ul>
+              <p><span class="coming-soon-badge">Coming Soon</span> Calendario inteligente en roadmap del MVP.</p>
               <a href="#tracker" class="feature-link">Ver ejemplo de tracker <i class="fas fa-arrow-right"></i></a>
             </div>
             <div class="feature-visual">
@@ -6207,7 +6222,8 @@
         <div class="section-header gs-fade">
           <span class="section-icon">📊</span>
           <h2>Tu pipeline de postulaciones</h2>
-          <p>Seguimiento estilo Notion: tabla, kanban y calendario en una sola vista.</p>
+          <div class="coming-soon-badge">Coming Soon: Calendario inteligente</div>
+          <p>Seguimiento estilo Notion: tabla y kanban. Calendario inteligente - Próximamente.</p>
         </div>
 
         <div class="tracker-container gs-fade">
@@ -6217,8 +6233,8 @@
               <button class="tracker-tab active" data-tab="table">
                 <i class="fas fa-table"></i> Tabla
               </button>
-              <button class="tracker-tab" data-tab="calendar">
-                <i class="fas fa-calendar"></i> Calendario
+              <button class="tracker-tab" data-tab="calendar" disabled title="Coming Soon">
+                <i class="fas fa-calendar"></i> Calendario <span class="coming-soon-badge">Coming Soon</span>
               </button>
             </div>
           </div>
@@ -6830,7 +6846,7 @@
     document.head.appendChild(shakeStyle);
 
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://127.0.0.1:8080'
+      ? 'http://127.0.0.1:8000'
       : '';
 
     const ALERT_PREFS_KEY = 'jobbot_alert_prefs_v1';
@@ -6961,13 +6977,7 @@
           const tidInput = document.getElementById('tid-input');
           const rawTid = tidInput && tidInput.value ? tidInput.value.trim() : '';
           if (rawTid && /^\d+$/.test(rawTid)) {
-            fetch(`${API_BASE}/api/preferences`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ telegram_id: rawTid, alert_channel: channel }),
-            }).catch(() => {
-              // si falla, al menos queda guardado localmente
-            });
+            // Persistencia remota deshabilitada en la landing por seguridad.
           }
         });
       });
@@ -6988,11 +6998,7 @@
             const tid = getNumericTid();
             if (!tid) return;
 
-            fetch(`${API_BASE}/api/preferences`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ telegram_id: tid, digest_mode: mode }),
-            }).catch(() => {});
+            // Persistencia remota deshabilitada en la landing por seguridad.
           });
         });
       }
@@ -7003,11 +7009,7 @@
           const tid = getNumericTid();
           if (!tid) return;
           const value = weeklyGoalInput.value;
-          fetch(`${API_BASE}/api/preferences`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegram_id: tid, weekly_goal: value }),
-          }).catch(() => {});
+          // Persistencia remota deshabilitada en la landing por seguridad.
         });
       }
 
@@ -7016,15 +7018,7 @@
         if (!tid) return;
         const blocked = blockedInput ? blockedInput.value : '';
         const preferred = preferredInput ? preferredInput.value : '';
-        fetch(`${API_BASE}/api/preferences`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            telegram_id: tid,
-            blocked_companies: blocked,
-            preferred_companies: preferred,
-          }),
-        }).catch(() => {});
+        // Persistencia remota deshabilitada en la landing por seguridad.
       }
 
       if (blockedInput) {
@@ -7189,13 +7183,8 @@
       btn.textContent = 'Buscando...';
 
       try {
-        const res = await fetch(`${API_BASE}/api/dashboard?telegram_id=${encodeURIComponent(tid)}`);
-        if (!res.ok) {
-          throw new Error('No encontramos datos para ese ID. Asegurate de haber hablado al menos una vez con el bot.');
-        }
-
-        const data = await res.json();
-        renderDashboard(data);
+        window.location.href = '/login';
+        return;
       } catch (e) {
         errEl.style.display = 'block';
         errEl.textContent = e.message || 'Ocurrió un error inesperado. Probá de nuevo en unos minutos.';

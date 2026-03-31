@@ -16,7 +16,6 @@ job_bot/
 ├── job_scraper.py    ← Scrapers de todas las fuentes de empleo
 ├── scheduler.py      ← Lógica del monitoreo automático + perfilado
 ├── cv_analyzer.py    ← Inteligencia Artificial (Groq) para analizar CVs
-├── stats_api.py      ← API para enviar estadísticas a la landing page
 ├── requirements.txt  ← Dependencias
 ├── .env.example      ← Template de configuración
 ├── tests/            ← Unit tests para asegurar que todo funcione
@@ -131,6 +130,15 @@ Los tests actuales cubren:
 - Filtro negativo para ocultar ofertas senior a perfiles junior.
 
 La idea es ir ampliando esta suite a medida que el bot crece.
+
+---
+
+## Roadmap visible
+
+- Dashboard web autenticado con JWT
+- Pagos y planes persistidos en base de datos
+- Pipeline de postulaciones activo hoy
+- Calendario inteligente: planificado como `Coming Soon`, no disponible todavía en el MVP
 
 ---
 

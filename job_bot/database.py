@@ -40,6 +40,7 @@ class Database:
         self.db_type = (db_type or config.DATABASE_TYPE).lower()
         self.db_path = db_path or config.DATABASE_PATH
         self.pg_url = pg_url or config.DATABASE_URL
+        self._sqlite_memory_conn = None
 
         if self.db_type == "supabase" and not POSTGRES_AVAILABLE:
             logger.error(
@@ -56,6 +57,12 @@ class Database:
             conn.autocommit = True
             return conn
         else:
+            if self.db_path == ":memory:":
+                if self._sqlite_memory_conn is None:
+                    self._sqlite_memory_conn = sqlite3.connect(":memory:")
+                    self._sqlite_memory_conn.row_factory = sqlite3.Row
+                    self._sqlite_memory_conn.execute("PRAGMA journal_mode=WAL")
+                return self._sqlite_memory_conn
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA journal_mode=WAL")
@@ -82,8 +89,13 @@ class Database:
             finally:
                 conn.close()
         else:
-            with self._get_conn() as conn:
+            conn = self._get_conn()
+            if self.db_path == ":memory:":
                 conn.execute(query, params)
+                conn.commit()
+            else:
+                with conn:
+                    conn.execute(query, params)
 
     def _fetchone(self, query: str, params: tuple = ()):
         """Retorna una sola fila como dict."""
@@ -97,9 +109,13 @@ class Database:
             finally:
                 conn.close()
         else:
-            with self._get_conn() as conn:
+            conn = self._get_conn()
+            if self.db_path == ":memory:":
                 row = conn.execute(query, params).fetchone()
-                return dict(row) if row else None
+            else:
+                with conn:
+                    row = conn.execute(query, params).fetchone()
+            return dict(row) if row else None
 
     def _fetchall(self, query: str, params: tuple = ()):
         """Retorna todas las filas como lista de dicts."""
@@ -113,9 +129,13 @@ class Database:
             finally:
                 conn.close()
         else:
-            with self._get_conn() as conn:
+            conn = self._get_conn()
+            if self.db_path == ":memory:":
                 rows = conn.execute(query, params).fetchall()
-                return [dict(r) for r in rows]
+            else:
+                with conn:
+                    rows = conn.execute(query, params).fetchall()
+            return [dict(r) for r in rows]
 
     def _init_db(self):
         """Crea las tablas si no existen."""
@@ -128,6 +148,7 @@ class Database:
                 "CREATE TABLE IF NOT EXISTS jobs_seen (id BIGSERIAL PRIMARY KEY, job_hash TEXT, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, source TEXT, title TEXT, company TEXT, url TEXT, seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(job_hash, telegram_id))",
                 "CREATE TABLE IF NOT EXISTS custom_feeds (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, feed_url TEXT, feed_name TEXT)",
                 "CREATE TABLE IF NOT EXISTS applications (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, job_title TEXT, company TEXT, url TEXT, status TEXT DEFAULT 'aplicado', notes TEXT, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
             ]
             for q in queries:
                 self._execute(q)
@@ -163,7 +184,9 @@ class Database:
                     pass
             logger.info("✅ Supabase DB inicializada")
         else:
-            with self._get_conn() as conn:
+            conn = self._get_conn()
+            context = conn if self.db_path == ":memory:" else conn
+            with context as conn:
                 conn.executescript("""
                     CREATE TABLE IF NOT EXISTS users (
                         telegram_id        INTEGER PRIMARY KEY,
@@ -177,6 +200,7 @@ class Database:
                         technologies       TEXT    DEFAULT '',
                         job_modality       TEXT    DEFAULT 'cualquiera',
                         max_job_age_days   INTEGER DEFAULT 30,
+                        match_threshold    INTEGER DEFAULT 70,
                         check_interval_hours INTEGER DEFAULT 6,
                         alert_start_hour   INTEGER DEFAULT 8,
                         alert_end_hour     INTEGER DEFAULT 22,
@@ -232,6 +256,7 @@ class Database:
                     ("technologies", "''"),
                     ("job_modality", "'cualquiera'"),
                     ("max_job_age_days", "30"),
+                    ("match_threshold", "70"),
                     ("check_interval_hours", "6"),
                     ("alert_start_hour", "8"),
                     ("alert_end_hour", "22"),
@@ -292,6 +317,15 @@ class Database:
                         prompt_tokens   INTEGER,
                         response_tokens INTEGER,
                         created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+                    );
+                    
+                    -- Tabla de eventos de webhook procesados (idempotencia)
+                    CREATE TABLE IF NOT EXISTS webhook_events (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        event_id        TEXT UNIQUE NOT NULL,
+                        provider        TEXT NOT NULL,
+                        event_type      TEXT NOT NULL,
+                        processed_at    TEXT DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
 
@@ -468,13 +502,19 @@ class Database:
         technologies: str,
         job_modality: str,
         max_job_age_days: int = 30,
+        match_threshold: int = 70,
     ):
         """Guarda el perfil completo del usuario."""
+        try:
+            threshold = int(match_threshold)
+        except (TypeError, ValueError):
+            threshold = 70
+        threshold = max(50, min(95, threshold))
         self._execute(
             """
             UPDATE users SET
                 experience_level = ?, role_type = ?, technologies = ?,
-                job_modality = ?, max_job_age_days = ?
+                job_modality = ?, max_job_age_days = ?, match_threshold = ?
             WHERE telegram_id = ?
         """,
             (
@@ -483,6 +523,7 @@ class Database:
                 technologies,
                 job_modality,
                 max_job_age_days,
+                threshold,
                 telegram_id,
             ),
         )
@@ -626,6 +667,7 @@ class Database:
                 "technologies": "",
                 "job_modality": "cualquiera",
                 "max_job_age_days": 30,
+                "match_threshold": 70,
             }
         return {
             "experience_level": user.get("experience_level", "junior"),
@@ -633,6 +675,7 @@ class Database:
             "technologies": user.get("technologies", ""),
             "job_modality": user.get("job_modality", "cualquiera"),
             "max_job_age_days": int(user.get("max_job_age_days", 30)),
+            "match_threshold": int(user.get("match_threshold", 70) or 70),
         }
 
     def generate_smart_keywords(self, telegram_id: int) -> List[str]:
@@ -1126,3 +1169,25 @@ class Database:
             "SELECT * FROM ai_analyses WHERE telegram_id = ? ORDER BY created_at DESC",
             (telegram_id,),
         )
+
+    # ----------------------------------------------------------
+    # WEBHOOK IDEMPOTENCIA
+    # ----------------------------------------------------------
+
+    def is_webhook_processed(self, event_id: str) -> bool:
+        """Verifica si un evento de webhook ya fue procesado."""
+        result = self._fetchone(
+            "SELECT 1 FROM webhook_events WHERE event_id = ?",
+            (event_id,),
+        )
+        return result is not None
+
+    def mark_webhook_processed(self, event_id: str, provider: str, event_type: str):
+        """Marca un evento de webhook como procesado."""
+        try:
+            self._execute(
+                "INSERT OR IGNORE INTO webhook_events (event_id, provider, event_type) VALUES (?, ?, ?)",
+                (event_id, provider, event_type),
+            )
+        except Exception as e:
+            logger.error(f"Error marking webhook as processed: {e}")

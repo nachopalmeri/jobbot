@@ -26,6 +26,22 @@ from urllib.parse import quote_plus
 from typing import List, Dict
 
 try:
+    from tenacity import retry, stop_after_attempt, wait_exponential
+except ImportError:
+    # Fallback liviano para tests y entornos mínimos.
+    def retry(*args, **kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def stop_after_attempt(*args, **kwargs):
+        return None
+
+    def wait_exponential(*args, **kwargs):
+        return None
+
+try:
     import config
 except ImportError:  # Permite uso como paquete: job_bot.job_scraper
     from job_bot import config
@@ -91,7 +107,7 @@ class JobScraper:
 
             # --- Fuentes locales argentinas ---
             if config.SOURCES_ENABLED.get("linkedin_google"):
-                self._safe_search("LinkedIn AR", self.search_linkedin_google, all_jobs, keyword, location)
+                self._safe_search("LinkedIn AR Robust", self.search_linkedin_robust, all_jobs, keyword, location)
                 time.sleep(2)
 
         # Deduplicar resultados por URL
@@ -484,7 +500,132 @@ class JobScraper:
         return jobs
 
     # ----------------------------------------------------------
-    # 7. LINKEDIN JOBS via GOOGLE NEWS RSS — ARGENTINA LOCAL
+    # ESTRATEGIA DE FALLBACK / ROTACIÓN PARA LINKEDIN
+    # ----------------------------------------------------------
+
+    def search_linkedin_robust(self, query: str, location: str = "Buenos Aires") -> List[Dict]:
+        """
+        Enrutador profesional que previene caídas. Intenta múltiples proveedores.
+        Si la Opción 1 falla, pasa a la Opción 2, y así sucesivamente.
+        """
+        logger.info("🛡️ Iniciando búsqueda robusta de LinkedIn para: '%s' en '%s'", query, location)
+        
+        # Estrategia 1: API comercial (ej. RapidAPI JSearch / Proxycurl)
+        try:
+            return self._fetch_linkedin_via_rapidapi(query, location)
+        except Exception as e:
+            logger.debug("Fallback 1 (Comercial API) omitido o falló: %s", e)
+
+        # Estrategia 2: SerpAPI Google Search
+        try:
+            return self._fetch_linkedin_via_serpapi_search(query, location)
+        except Exception as e:
+            logger.debug("Fallback 2 (SerpAPI) omitido o falló: %s", e)
+
+        # Estrategia 3: Google News RSS (Gratis, con retries vía Tenacity)
+        try:
+            return self._fetch_linkedin_via_google_rss_retry(query, location)
+        except Exception as e:
+            logger.error("❌ Todos los fallbacks de LinkedIn fallaron. Último error: %s", e)
+            return []
+
+    def _fetch_linkedin_via_rapidapi(self, query: str, location: str) -> List[Dict]:
+        """
+        Utiliza "JSearch" o similar en RapidAPI. (Plan Free: ~100-200 mensuales)
+        """
+        if not getattr(config, 'RAPIDAPI_KEY', None):
+            raise ValueError("RAPIDAPI_KEY no configurada en las variables de entorno.")
+
+        url = "https://jsearch.p.rapidapi.com/search"
+        querystring = {
+            "query": f"{query} en {location} LinkedIn",
+            "page": "1",
+            "num_pages": "1",
+            "date_posted": "month",
+            "language": "es"
+        }
+        headers = {
+            "X-RapidAPI-Key": config.RAPIDAPI_KEY,
+            "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+        }
+
+        response = requests.get(url, headers=headers, params=querystring, timeout=config.REQUEST_TIMEOUT)
+        if response.status_code == 429:
+            raise ValueError("Límite de RapidAPI alcanzado (429 Too Many Requests)")
+        response.raise_for_status()
+        
+        data = response.json()
+        jobs = []
+        for item in data.get("data", [])[:config.MAX_RESULTS_PER_SOURCE]:
+            jobs.append({
+                "title": item.get("job_title", "Sin título"),
+                "company": item.get("employer_name", "Ver empresa"),
+                "location": item.get("job_city", "") + " " + item.get("job_country", location),
+                "url": item.get("job_apply_link", ""),
+                "description": item.get("job_description", "")[:300],
+                "source": "LinkedIn API (Rapid)",
+                "date": item.get("job_posted_at_datetime_utc", "")
+            })
+            
+        if not jobs:
+            raise ValueError("RapidAPI devolvió 0 resultados")
+            
+        return jobs
+
+    def _fetch_linkedin_via_serpapi_search(self, query: str, location: str) -> List[Dict]:
+        """
+        Raspa LinkedIn a través del buscador clásico de Google vía SerpAPI.
+        (Usa cuota de tus 100/mes de SerpAPI)
+        """
+        if not getattr(config, 'SERPAPI_KEY', None):
+            raise ValueError("SERPAPI_KEY no configurada")
+
+        search_q = f"site:linkedin.com/jobs/view {query} {location}"
+        params = {
+            "engine": "google",
+            "q": search_q,
+            "api_key": config.SERPAPI_KEY,
+            "hl": "es",
+            "gl": "ar"
+        }
+
+        response = requests.get("https://serpapi.com/search", params=params, timeout=config.REQUEST_TIMEOUT)
+        if response.status_code != 200 or "error" in response.json():
+            raise ValueError("SerpAPI falló o se quedó sin créditos.")
+            
+        data = response.json()
+        jobs = []
+        for item in data.get("organic_results", [])[:config.MAX_RESULTS_PER_SOURCE]:
+            title = item.get("title", "").replace(" - LinkedIn", "")
+            snippet = item.get("snippet", "")
+            
+            jobs.append({
+                "title": title,
+                "company": "LinkedIn", # Google Search no siempre separa bien la empresa aquí
+                "location": location,
+                "url": item.get("link", ""),
+                "description": snippet,
+                "source": "LinkedIn AR (SerpAPI)",
+                "date": ""
+            })
+            
+        if not jobs:
+            raise ValueError("SerpAPI devolvió 0 resultados")
+            
+        return jobs
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def _fetch_linkedin_via_google_rss_retry(self, query: str, location: str) -> List[Dict]:
+        """Envuelve Google News RSS con reintentos para evadir baneos temporales."""
+        logger.info("  Intentando LinkedIn vía Google News RSS (con posibles reintentos)...")
+        jobs = self.search_linkedin_google(query, location)
+        if not jobs:
+            # Forzamos un error si vino vacío para que el @retry actúe saltando al siguiente intento
+            raise ValueError("Google RSS devolvió 0 resultados o fuimos bloqueados temporalmente.")
+        return jobs
+
+    # ----------------------------------------------------------
+    # 7. LINKEDIN JOBS via GOOGLE NEWS RSS — ARGENTINA LOCAL (Implementación base)
     # ----------------------------------------------------------
 
     def search_linkedin_google(self, query: str, location: str = "Buenos Aires") -> List[Dict]:

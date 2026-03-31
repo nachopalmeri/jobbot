@@ -19,6 +19,9 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 # SerpAPI: 100 búsquedas GRATUITAS por mes → https://serpapi.com
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 
+# RapidAPI (Para LinkedIn Profesional): ~100/200 gratuitas por mes según la API exacta.
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
+
 # Twitter/X: Requiere plan Basic ($100/mes) para búsqueda.
 # El plan free solo permite postear, NO buscar.
 # Obtenelo en https://developer.twitter.com

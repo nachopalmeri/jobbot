@@ -1,17 +1,29 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import Optional
-from pydantic import BaseModel
-import jwt
+import hashlib
+import hmac
 import os
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import ExpiredSignatureError, JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel
+
+try:
+    from job_bot.database import Database
+except ImportError:
+    from database import Database
+
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jobbot-secret-key-change-in-production")
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+SECRET_KEY = os.getenv("JWT_SECRET_KEY") or (
+    "dev-insecure-key-change-me" if APP_ENV != "production" else ""
+)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
@@ -25,6 +37,11 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    if not SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT_SECRET_KEY no configurado",
+        )
     to_encode = data.copy()
     expire = datetime.utcnow() + (
         expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
@@ -34,25 +51,61 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def decode_token(token: str) -> Optional[dict]:
+    if not SECRET_KEY:
+        return None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
         return None
-    except jwt.PyJWTError:
+    except JWTError:
         return None
+
+
+def get_db() -> Database:
+    return Database()
+
+
+def get_authenticated_user(
+    token: str = Depends(oauth2_scheme), db: Database = Depends(get_db)
+):
+    """Resuelve el usuario autenticado desde el JWT y sus datos persistidos."""
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    telegram_id = payload.get("telegram_id")
+    email = payload.get("sub")
+    if telegram_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    telegram_id = int(telegram_id)
+    base_user = db.get_user(telegram_id) or {}
+    web_user = db.get_web_user(telegram_id) or {}
+
+    return {
+        "telegram_id": telegram_id,
+        "email": email,
+        "plan": db.get_user_plan(telegram_id),
+        "name": base_user.get("name") or web_user.get("email") or "Usuario",
+        "user": base_user,
+        "web_user": web_user,
+    }
 
 
 @router.post("/register")
-async def register(user_data: dict):
-    """
-    Registrar usuario con Telegram + email/password.
-    Por ahora retorna un placeholder - implementar con DB real.
-    """
-    email = user_data.get("email")
+async def register(user_data: dict, db: Database = Depends(get_db)):
+    email = (user_data.get("email") or "").strip().lower()
     password = user_data.get("password")
     telegram_id = user_data.get("telegram_id")
-    name = user_data.get("name", "Usuario")
+    name = (user_data.get("name") or "Usuario").strip() or "Usuario"
 
     if not email or not password or not telegram_id:
         raise HTTPException(
@@ -60,21 +113,39 @@ async def register(user_data: dict):
             detail="email, password y telegram_id son requeridos",
         )
 
-    hashed_pw = get_password_hash(password)
+    try:
+        telegram_id = int(telegram_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="telegram_id invalido",
+        )
 
+    existing = db.get_web_user_by_email(email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una cuenta con ese email",
+        )
+
+    hashed_pw = get_password_hash(password)
+    db.create_user_if_not_exists(telegram_id, name)
+    db.create_web_user(telegram_id, email, hashed_pw)
+    access_token = create_access_token(data={"sub": email, "telegram_id": telegram_id})
     return {
         "message": "Usuario registrado correctamente",
         "telegram_id": telegram_id,
         "email": email,
+        "access_token": access_token,
+        "token_type": "bearer",
     }
 
 
 @router.post("/token")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    Login con email y password. Retorna JWT token.
-    """
-    email = form_data.username
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Database = Depends(get_db)
+):
+    email = (form_data.username or "").strip().lower()
     password = form_data.password
 
     if not email or not password:
@@ -83,39 +154,43 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             detail="Email y password son requeridos",
         )
 
-    access_token = create_access_token(data={"sub": email, "telegram_id": 123456})
+    user = db.get_web_user_by_email(email)
+    if not user or not verify_password(password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales invalidas",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    return {"access_token": access_token, "token_type": "bearer", "telegram_id": 123456}
+    access_token = create_access_token(
+        data={"sub": email, "telegram_id": user["telegram_id"]}
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "telegram_id": user["telegram_id"],
+    }
 
 
 @router.post("/link")
 async def link_telegram(telegram_id: int, email: str, password: str):
-    """
-    Vincular cuenta de Telegram con cuenta web existente.
-    """
     return {"message": "Cuenta vinculada correctamente", "telegram_id": telegram_id}
 
 
 @router.get("/me")
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """
-    Obtener información del usuario actual.
-    """
-    payload = decode_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado"
-        )
-
+async def get_current_user(current_user: dict = Depends(get_authenticated_user)):
     return {
-        "telegram_id": payload.get("telegram_id"),
-        "email": payload.get("sub"),
-        "plan": "free",
+        "telegram_id": current_user["telegram_id"],
+        "email": current_user["email"],
+        "plan": current_user["plan"],
+        "name": current_user["name"],
     }
 
 
 class TelegramAuthRequest(BaseModel):
     telegram_id: int
+    auth_date: int
     telegram_username: Optional[str] = None
     telegram_first_name: str
     telegram_last_name: Optional[str] = None
@@ -124,33 +199,49 @@ class TelegramAuthRequest(BaseModel):
 
 @router.post("/telegram")
 async def telegram_auth(request: TelegramAuthRequest):
-    """
-    Autenticación via Telegram Bot.
-    El usuario hace click en un botón en el bot que lo redirige aquí con sus datos.
-    """
-    import hashlib
     import time
 
-    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "123456:ABC-DEF")
+    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not telegram_bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="TELEGRAM_BOT_TOKEN no configurado",
+        )
 
-    data_check_string = f"auth_date={int(time.time())}&first_name={request.telegram_first_name}&id={request.telegram_id}"
-    if request.telegram_username:
-        data_check_string += f"&username={request.telegram_username}"
-    if request.telegram_last_name:
-        data_check_string += f"&last_name={request.telegram_last_name}"
+    if abs(int(time.time()) - int(request.auth_date)) > 300:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Payload de Telegram expirado",
+        )
 
-    secret_key = hashlib.sha256(telegram_bot_token.encode()).digest()
-    computed_hash = hashlib.sha256(data_check_string.encode()).hexdigest()
-
-    if computed_hash != request.hash:
-        pass
-
-    user_data = {
-        "telegram_id": request.telegram_id,
-        "username": request.telegram_username,
+    check_pairs = {
+        "auth_date": str(request.auth_date),
         "first_name": request.telegram_first_name,
-        "last_name": request.telegram_last_name,
+        "id": str(request.telegram_id),
     }
+    if request.telegram_last_name:
+        check_pairs["last_name"] = request.telegram_last_name
+    if request.telegram_username:
+        check_pairs["username"] = request.telegram_username
+
+    data_check_string = "\n".join(
+        f"{key}={value}" for key, value in sorted(check_pairs.items())
+    )
+    secret_key = hashlib.sha256(telegram_bot_token.encode()).digest()
+    computed_hash = hmac.new(
+        secret_key,
+        data_check_string.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(computed_hash, request.hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Hash de Telegram invalido",
+        )
+
+    db = get_db()
+    db.create_user_if_not_exists(request.telegram_id, request.telegram_first_name)
 
     access_token = create_access_token(
         data={
@@ -167,17 +258,13 @@ async def telegram_auth(request: TelegramAuthRequest):
             "telegram_id": request.telegram_id,
             "username": request.telegram_username,
             "first_name": request.telegram_first_name,
-            "plan": "free",
+            "plan": db.get_user_plan(request.telegram_id),
         },
     }
 
 
 @router.post("/telegram/init")
 async def init_telegram_auth(telegram_id: int):
-    """
-    Iniciar flujo de autenticación via Telegram.
-    Retorna URL de verificación para mostrar en el bot.
-    """
     import secrets
 
     token = secrets.token_urlsafe(32)

@@ -1,11 +1,13 @@
 import unittest
-import sqlite3
 import os
+import tempfile
 from job_bot.database import Database
 
 class TestDatabase(unittest.TestCase):
     def setUp(self):
-        self.db_path = "test_temp.db"
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        temp_file.close()
+        self.db_path = temp_file.name
         self.db = Database(self.db_path)
 
     def tearDown(self):
@@ -23,8 +25,8 @@ class TestDatabase(unittest.TestCase):
         self.db.create_user_if_not_exists(123, "Test User")
         user = self.db.get_user(123)
         self.assertEqual(user["name"], "Test User")
-        # Por defecto, los usuarios nuevos empiezan buscando trabajos remotos
-        self.assertEqual(user["job_modality"], "remoto")
+        # Por defecto, los usuarios nuevos arrancan sin restringir modalidad
+        self.assertEqual(user["job_modality"], "cualquiera")
 
     def test_set_user_profile(self):
         self.db.create_user_if_not_exists(123, "Test User")

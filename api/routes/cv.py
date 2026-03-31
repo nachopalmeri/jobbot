@@ -1,9 +1,17 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Optional, List
 import os
-import json
+from typing import Optional
+
 import requests
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+try:
+    from job_bot.database import Database
+except ImportError:
+    from database import Database
+
+from .auth import get_authenticated_user, get_db
+
 
 router = APIRouter()
 
@@ -17,12 +25,6 @@ class CVAnalysisRequest(BaseModel):
     user_cv: Optional[str] = None
 
 
-class CVMatchItem(BaseModel):
-    keyword: str
-    match: bool
-    importance: str
-
-
 class CVProposalRequest(BaseModel):
     job_url: str
     job_title: str
@@ -30,147 +32,107 @@ class CVProposalRequest(BaseModel):
     user_cv: str
 
 
-class User:
-    def __init__(
-        self,
-        telegram_id: int = 123456,
-        email: str = "user@example.com",
-        plan: str = "free",
-    ):
-        self.telegram_id = telegram_id
-        self.email = email
-        self.plan = plan
-
-
-def get_current_user(token: str = Depends(lambda: "mock_user")):
-    return User(telegram_id=123456, email="user@example.com", plan="free")
-
-
-def get_current_user_from_telegram(telegram_id: int):
-    return User(
-        telegram_id=telegram_id, email=f"user{telegram_id}@example.com", plan="free"
-    )
-
-
 async def analyze_with_groq(prompt: str) -> str:
-    """Usar Groq API para análisis de CV."""
     if not GROQ_API_KEY:
-        return get_demo_analysis(prompt)
-
-    try:
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        }
-
-        data = {
-            "model": GROQ_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Eres un experto en recursos humanos y análisis de CVs. Analiza el CV del candidato comparado con los requisitos del puesto y proporciona recomendaciones específicas.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.3,
-            "max_tokens": 1024,
-        }
-
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30,
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio de IA no disponible temporalmente",
         )
 
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    data = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Eres un experto en recursos humanos y analisis de CVs.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1024,
+    }
 
-    except Exception as e:
-        print(f"Groq API error: {e}")
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=data,
+        timeout=30,
+    )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudo completar el analisis",
+        )
+    return response.json()["choices"][0]["message"]["content"]
 
-    return get_demo_analysis(prompt)
 
-
-def get_demo_analysis(prompt: str) -> str:
-    """Análisis de demo cuando no hay API key."""
-    return """
-## Análisis de Match
-
-### ✅ Keywords que matchean:
-- React - 5 años de experiencia
-- TypeScript - requerido y dominado
-- APIs REST - experiencia comprobada
-- Git - uso diario
-- CSS/Tailwind - habilidades avanzadas
-
-### ❌ Keywords faltantes:
-- Testing (deseable, no requerido)
-- GraphQL (nice to have)
-
-### 📊 Score: 87%
-
-## Recomendaciones:
-1. Destaca tu experiencia con TypeScript en el CV
-2. Menciona proyectos donde trabajaste con APIs REST
-3. Añade una sección de Testing aunque sea básico
-"""
+def _consume_ai_quota(db: Database, telegram_id: int):
+    if not db.check_usage_limit(telegram_id, "ai_analyses"):
+        raise HTTPException(
+            status_code=403,
+            detail="Limite de analisis alcanzado para tu plan actual",
+        )
+    db.increment_usage(telegram_id, "ai_analyses")
 
 
 @router.post("/analyze")
 async def analyze_cv(
-    request: CVAnalysisRequest, current_user: User = Depends(get_current_user)
+    request: CVAnalysisRequest,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
 ):
-    """Analizar match entre CV y descripción del empleo."""
-    if current_user.plan == "free":
+    if current_user["plan"] == "free":
         raise HTTPException(
             status_code=403,
-            detail="Esta función requiere Plan Pro. ¡Actualizá para desbloquear!",
+            detail="Esta funcion requiere Plan Pro",
         )
 
+    _consume_ai_quota(db, current_user["telegram_id"])
+
     prompt = f"""
-Analiza el siguiente CV contra la descripción del empleo:
+Analiza el siguiente CV contra la descripcion del empleo:
 
 URL del empleo: {request.job_url}
 
-Descripción del empleo:
+Descripcion del empleo:
 {request.job_description or "No proporcionada"}
 
 CV del candidato:
 {request.user_cv or "No proporcionado"}
 
 Proporciona:
-1. Lista de keywords que matchean (con check)
+1. Lista de keywords que matchean
 2. Keywords faltantes
 3. Score de match (0-100%)
-4. Recomendaciones específicas para mejorar
+4. Recomendaciones especificas para mejorar
 """
 
     analysis = await analyze_with_groq(prompt)
+    db.record_ai_analysis(current_user["telegram_id"], cv_analyzed=True, job_matched=True)
 
     return {
         "job_url": request.job_url,
-        "match_score": 87,
-        "matching_keywords": [
-            {"keyword": "React", "match": True, "importance": "required"},
-            {"keyword": "TypeScript", "match": True, "importance": "required"},
-            {"keyword": "REST APIs", "match": True, "importance": "required"},
-            {"keyword": "Testing", "match": False, "importance": "optional"},
-        ],
         "analysis": analysis,
     }
 
 
 @router.post("/proposal")
 async def generate_proposal(
-    request: CVProposalRequest, current_user: User = Depends(get_current_user)
+    request: CVProposalRequest,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
 ):
-    """Generar propuesta personalizada para un empleo (render.cv style)."""
-    if current_user.plan != "premium":
+    if current_user["plan"] != "premium":
         raise HTTPException(
             status_code=403,
-            detail="CV Tailoring requiere Plan Premium. ¡Actualizá para desbloquear!",
+            detail="CV Tailoring requiere Plan Premium",
         )
+
+    _consume_ai_quota(db, current_user["telegram_id"])
 
     prompt = f"""
 Genera una propuesta personalizada para el siguiente empleo:
@@ -182,95 +144,75 @@ CV del candidato:
 {request.user_cv}
 
 La propuesta debe:
-1. Ser de 2-3 párrafos máximo
+1. Ser de 2-3 parrafos maximo
 2. Destacar la experiencia relevante
 3. Ser personalizada y profesional
-4. Incluir un llamado a la acción claro
-5. No sonar genérica
-
-Genera la propuesta lista para copiar y pegar:
+4. Incluir un llamado a la accion claro
 """
 
     proposal = await analyze_with_groq(prompt)
+    db.record_ai_analysis(current_user["telegram_id"], cv_analyzed=True, job_matched=False)
 
     return {
         "company": request.company_name,
         "job_title": request.job_title,
         "proposal": proposal,
         "copied_text": proposal,
-        "tips": [
-            "Personaliza el saludo con el nombre del recruiter si lo conoces",
-            "Añade el link a tu LinkedIn o portfolio",
-            "Revisa que no haya errores antes de enviar",
-        ],
     }
 
 
 @router.get("/tips/{job_id}")
 async def get_application_tips(
-    job_id: str, current_user: User = Depends(get_current_user)
+    job_id: str,
+    _: dict = Depends(get_authenticated_user),
 ):
-    """Obtener tips personalizados para aplicar a un empleo."""
-    tips = [
-        {
-            "title": "Aplica temprano",
-            "description": "Los primeros 5 aplicantes tienen 3x más chances de ser vistos.",
-            "priority": "high",
-        },
-        {
-            "title": "Personaliza el asunto",
-            "description": "Usa el nombre del puesto en el asunto del email.",
-            "priority": "high",
-        },
-        {
-            "title": "Menciona referencias",
-            "description": "Si conocés a alguien en la empresa, mencionálo.",
-            "priority": "medium",
-        },
-        {
-            "title": "Sigue up",
-            "description": "Si no te responden en 5-7 días, un follow-up educado puede ayudar.",
-            "priority": "low",
-        },
-    ]
-
-    return {"job_id": job_id, "tips": tips}
+    return {
+        "job_id": job_id,
+        "tips": [
+            {
+                "title": "Aplica temprano",
+                "description": "Los primeros aplicantes tienen mas chances de ser vistos.",
+                "priority": "high",
+            },
+            {
+                "title": "Personaliza el asunto",
+                "description": "Usa el nombre del puesto en el asunto del email.",
+                "priority": "high",
+            },
+            {
+                "title": "Sigue up",
+                "description": "Haz un follow-up educado si no recibes respuesta.",
+                "priority": "low",
+            },
+        ],
+    }
 
 
 @router.post("/mock-interview")
 async def start_mock_interview(
-    job_title: str, current_user: User = Depends(get_current_user)
+    job_title: str,
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    """Iniciar模拟面试con IA (Premium only)."""
-    if current_user.plan != "premium":
+    if current_user["plan"] != "premium":
         raise HTTPException(
             status_code=403,
-            detail="Entrevistas mock requieren Plan Premium. ¡Actualizá para desbloquear!",
+            detail="Entrevistas mock requieren Plan Premium",
         )
 
     questions = {
         "Frontend Developer": [
-            "¿Cuéntame sobre un proyecto desafiante con React que hayas liderar?",
-            "¿Cómo manejas el estado en aplicaciones grandes?",
-            "¿Cuál es tu approach para optimizar performance?",
-            "¿Cómo trabajas con el equipo de diseño?",
-            "¿Qué medidas de seguridad implementas en frontend?",
+            "Cuentame sobre un proyecto desafiante con React que hayas liderado",
+            "Como manejas el estado en aplicaciones grandes",
+            "Cual es tu approach para optimizar performance",
         ],
         "Default": [
-            "¿Cuéntame sobre vos y tu experiencia?",
-            "¿Por qué te interesa este puesto?",
-            "¿Cuáles son tus fortalezas y debilidades?",
-            "¿Dónde te ves en 5 años?",
-            "¿Tienes preguntas para nosotros?",
+            "Cuentame sobre vos y tu experiencia",
+            "Por que te interesa este puesto",
+            "Cuales son tus fortalezas y debilidades",
         ],
     }
 
     return {
         "job_title": job_title,
         "questions": questions.get(job_title, questions["Default"]),
-        "tips": [
-            "Practica en voz alta antes de la entrevista real",
-            "Usa el método STAR para responder preguntas de comportamiento",
-            "Ten listo preguntas para hacer al recruiter",
-        ],
     }

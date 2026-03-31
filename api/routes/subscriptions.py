@@ -1,10 +1,19 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Header
-from typing import Optional
-from pydantic import BaseModel
-import os
-import json
-import hmac
+from datetime import datetime, timedelta, timezone
 import hashlib
+import hmac
+import os
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from pydantic import BaseModel
+
+try:
+    from job_bot.database import Database
+except ImportError:
+    from database import Database
+
+from .auth import get_authenticated_user, get_db
+
 
 router = APIRouter()
 
@@ -31,42 +40,47 @@ class CheckoutRequest(BaseModel):
     cancel_url: str = "https://jobbot.ar/cancel"
 
 
-class User:
-    def __init__(
-        self,
-        telegram_id: int = 123456,
-        email: str = "user@example.com",
-        plan: str = "free",
-    ):
-        self.telegram_id = telegram_id
-        self.email = email
-        self.plan = plan
+def _subscription_expiry_iso(days: int = 30) -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
 
 
-def get_current_user(token: str = Depends(lambda: "mock_user")):
-    return User(telegram_id=123456, email="user@example.com", plan="free")
+def _request_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
-def verify_stripe_signature(payload: bytes, signature: str) -> bool:
-    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-    if not webhook_secret:
-        return True
-    expected_signature = hmac.new(
-        webhook_secret.encode(), payload, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(signature, f"sha256={expected_signature}")
+def _validate_ip_whitelist(request: Request, env_key: str):
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return
+    allowed_ips = {item.strip() for item in raw.split(",") if item.strip()}
+    if _request_ip(request) not in allowed_ips:
+        raise HTTPException(status_code=403, detail="IP no autorizada")
 
 
-def verify_mercadopago_signature(request: Request) -> bool:
-    webhook_key = os.getenv("MP_WEBHOOK_KEY", "")
-    if not webhook_key:
-        return True
-    return True
+def _validate_mp_request(request: Request):
+    _validate_ip_whitelist(request, "MP_WEBHOOK_IPS")
+    secret = os.getenv("MP_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        return
+    signature = request.headers.get("x-signature", "")
+    if signature != secret:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+
+def _validate_coinbase_request(body: bytes, signature: str):
+    secret = os.getenv("COINBASE_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        return
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
 
 @router.get("/plans")
 async def get_plans():
-    """Obtener planes disponibles."""
     return {
         "plans": [
             {
@@ -74,7 +88,7 @@ async def get_plans():
                 "name": "Free",
                 "price": 0,
                 "currency": "USD",
-                "features": ["5 empleos diarios", "Búsqueda básica", "1 alerta activa"],
+                "features": ["5 empleos diarios", "Busqueda basica", "1 alerta activa"],
             },
             {
                 "id": "pro",
@@ -84,7 +98,7 @@ async def get_plans():
                 "features": [
                     "Empleos ilimitados",
                     "Match con tu CV",
-                    "Análisis de mercado",
+                    "Analisis de mercado",
                     "Pipeline de postulaciones",
                     "10 alertas activas",
                 ],
@@ -96,7 +110,7 @@ async def get_plans():
                 "currency": "USD",
                 "features": [
                     "Todo de Pro",
-                    "CV Tailoring (render.cv)",
+                    "CV Tailoring",
                     "Entrevistas mock con IA",
                     "Priority support",
                     "Exportar CVs",
@@ -108,77 +122,71 @@ async def get_plans():
 
 
 @router.get("/status")
-async def get_subscription_status(current_user: User = Depends(get_current_user)):
-    """Obtener estado de suscripción actual."""
+async def get_subscription_status(
+    current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
+):
+    web_user = db.get_web_user(current_user["telegram_id"]) or {}
+    plan = db.get_user_plan(current_user["telegram_id"])
     return {
-        "plan": current_user.plan,
-        "status": "active" if current_user.plan != "free" else None,
-        "expires_at": None,
+        "plan": plan,
+        "status": web_user.get("subscription_status") or ("active" if plan != "free" else None),
+        "expires_at": web_user.get("subscription_expires_at"),
     }
 
 
 @router.post("/create-checkout")
 async def create_checkout_session(
-    checkout: CheckoutRequest, current_user: User = Depends(get_current_user)
+    checkout: CheckoutRequest,
+    current_user: dict = Depends(get_authenticated_user),
 ):
-    """Crear sesión de pago según proveedor."""
     if checkout.plan not in PLANS:
-        raise HTTPException(status_code=400, detail="Plan no válido")
+        raise HTTPException(status_code=400, detail="Plan no valido")
 
     plan = PLANS[checkout.plan]
-
     if checkout.provider == "stripe":
         return await create_stripe_checkout(checkout, current_user, plan)
-    elif checkout.provider == "mercadopago":
+    if checkout.provider == "mercadopago":
         return await create_mercadopago_checkout(checkout, current_user, plan)
-    elif checkout.provider == "crypto":
+    if checkout.provider == "crypto":
         return await create_crypto_checkout(checkout, current_user, plan)
-    else:
-        raise HTTPException(status_code=400, detail="Proveedor no válido")
+    raise HTTPException(status_code=400, detail="Proveedor no valido")
 
 
-async def create_stripe_checkout(checkout: CheckoutRequest, user: User, plan: dict):
-    """Crear checkout de Stripe."""
-    try:
-        import stripe
+async def create_stripe_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
+    import stripe
 
-        stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "sk_test_placeholder")
-
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[
-                {
-                    "price": plan["stripe_price_id"],
-                    "quantity": 1,
-                }
-            ],
-            mode="subscription",
-            success_url=checkout.success_url + "?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url=checkout.cancel_url,
-            customer_email=user.email,
-            metadata={"telegram_id": str(user.telegram_id), "plan": checkout.plan},
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
+    if not stripe.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe no configurado",
         )
 
-        return {"provider": "stripe", "url": session.url, "session_id": session.id}
-    except ImportError:
-        return {
-            "provider": "stripe",
-            "url": f"https://checkout.stripe.com/c/pay/demo_{checkout.plan}",
-            "session_id": f"cs_demo_{user.telegram_id}",
-            "note": "Demo mode - configure STRIPE_SECRET_KEY",
-        }
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{"price": plan["stripe_price_id"], "quantity": 1}],
+        mode="subscription",
+        success_url=checkout.success_url + "?session_id={CHECKOUT_SESSION_ID}",
+        cancel_url=checkout.cancel_url,
+        customer_email=user["email"],
+        metadata={"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
+    )
+    return {"provider": "stripe", "url": session.url, "session_id": session.id}
 
 
-async def create_mercadopago_checkout(
-    checkout: CheckoutRequest, user: User, plan: dict
-):
-    """Crear checkout de MercadoPago."""
-    try:
-        import mercadopago
+async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
+    import mercadopago
 
-        sdk = mercadopago.SDK(os.getenv("MP_ACCESS_TOKEN", ""))
+    access_token = os.getenv("MP_ACCESS_TOKEN", "")
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MercadoPago no configurado",
+        )
 
-        preference_data = {
+    sdk = mercadopago.SDK(access_token)
+    preference = sdk.preference().create(
+        {
             "items": [
                 {
                     "title": f"JobBot {plan['name']}",
@@ -187,8 +195,8 @@ async def create_mercadopago_checkout(
                     "currency_id": "USD",
                 }
             ],
-            "payer": {"email": user.email},
-            "metadata": {"telegram_id": str(user.telegram_id), "plan": checkout.plan},
+            "payer": {"email": user["email"]},
+            "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
             "back_urls": {
                 "success": checkout.success_url,
                 "failure": checkout.cancel_url,
@@ -196,204 +204,178 @@ async def create_mercadopago_checkout(
             },
             "auto_return": "approved",
         }
-
-        preference = sdk.preference().create(preference_data)
-
-        return {
-            "provider": "mercadopago",
-            "url": preference["response"]["init_point"],
-            "preference_id": preference["response"]["id"],
-        }
-    except ImportError:
-        return {
-            "provider": "mercadopago",
-            "url": f"https://www.mercadopago.com.ar/checkout/v1/redirect/demo_{checkout.plan}",
-            "preference_id": f"demo_{user.telegram_id}",
-            "note": "Demo mode - configure MP_ACCESS_TOKEN",
-        }
+    )
+    return {
+        "provider": "mercadopago",
+        "url": preference["response"]["init_point"],
+        "preference_id": preference["response"]["id"],
+    }
 
 
-async def create_crypto_checkout(checkout: CheckoutRequest, user: User, plan: dict):
-    """Crear checkout de Coinbase Commerce."""
-    try:
-        import requests
-
-        headers = {
-            "X-CC-Api-Key": os.getenv("COINBASE_COMMERCE_KEY", ""),
-            "Content-Type": "application/json",
-        }
-
-        data = {
-            "name": f"JobBot {plan['name']}",
-            "description": f"Suscripción mensual a JobBot {plan['name']}",
-            "pricing_type": "fixed_price",
-            "local_price": {"amount": str(plan["price_usd"]), "currency": "USD"},
-            "metadata": {"telegram_id": str(user.telegram_id), "plan": checkout.plan},
-            "redirect_url": checkout.success_url,
-            "cancel_url": checkout.cancel_url,
-        }
-
-        response = requests.post(
-            "https://api.commerce.coinbase.com/charges", json=data, headers=headers
-        )
-
-        if response.status_code == 201:
-            charge = response.json()["data"]
-            return {
-                "provider": "crypto",
-                "url": charge["hosted_url"],
-                "charge_id": charge["id"],
-            }
-    except Exception:
-        pass
-
+async def create_crypto_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
     return {
         "provider": "crypto",
         "url": f"https://commerce.coinbase.com/checkout/demo_{checkout.plan}",
-        "charge_id": f"demo_{user.telegram_id}",
-        "note": "Demo mode",
+        "charge_id": f"demo_{user['telegram_id']}",
+        "note": "Configure COINBASE_COMMERCE_KEY para produccion",
     }
 
 
 @router.post("/webhook/stripe")
 async def stripe_webhook(
-    request: Request, stripe_signature: Optional[str] = Header(None)
+    request: Request,
+    stripe_signature: Optional[str] = Header(None, alias="stripe-signature"),
+    db: Database = Depends(get_db),
 ):
-    """Webhook de Stripe para procesar pagos."""
-    body = await request.body()
+    import stripe
 
-    if not verify_stripe_signature(body, stripe_signature or ""):
-        raise HTTPException(status_code=400, detail="Invalid signature")
+    body = await request.body()
+    webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    if not webhook_secret:
+        raise HTTPException(status_code=503, detail="Stripe webhook no configurado")
 
     try:
-        import stripe
+        event = stripe.Webhook.construct_event(body, stripe_signature, webhook_secret)
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
 
-        stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
-        event = stripe.Event.construct_from(
-            json.loads(body), stripe.api_key, stripe_signature
+    # Verificar idempotencia
+    event_id = event.get("id")
+    if event_id and db.is_webhook_processed(event_id):
+        return {"status": "already_processed"}
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        metadata = session.get("metadata", {})
+        await activate_subscription(
+            db,
+            metadata.get("telegram_id"),
+            metadata.get("plan", "pro"),
+            "stripe",
+            session.get("subscription") or session.get("id"),
         )
+    elif event["type"] == "customer.subscription.deleted":
+        metadata = event["data"]["object"].get("metadata", {})
+        await deactivate_subscription(db, metadata.get("telegram_id"))
 
-        if event.type == "checkout.session.completed":
-            session = event.data.object
-            telegram_id = session.get("metadata", {}).get("telegram_id")
-            plan = session.get("metadata", {}).get("plan", "pro")
+    # Marcar como procesado
+    if event_id:
+        db.mark_webhook_processed(event_id, "stripe", event["type"])
 
-            await activate_subscription(
-                telegram_id, plan, "stripe", session.get("subscription")
-            )
-
-        elif event.type == "customer.subscription.deleted":
-            await deactivate_subscription(
-                event.data.object.get("metadata", {}).get("telegram_id")
-            )
-
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "received", "debug": str(e)}
+    return {"status": "success"}
 
 
 @router.post("/webhook/mercadopago")
-async def mercadopago_webhook(request: Request):
-    """Webhook de MercadoPago para procesar pagos."""
-    if not verify_mercadopago_signature(request):
-        raise HTTPException(status_code=400, detail="Invalid signature")
-
+async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
+    _validate_mp_request(request)
     body = await request.json()
 
-    try:
-        if body.get("type") == "payment":
-            payment = body.get("data", {}).get("resource", {})
-
-            if payment.get("status") == "approved":
-                metadata = payment.get("metadata", {})
-                telegram_id = metadata.get("telegram_id")
-                plan = metadata.get("plan", "pro")
-
-                await activate_subscription(
-                    telegram_id, plan, "mercadopago", payment.get("id")
-                )
-
-        elif body.get("type") == "subscription_premiumCanceled":
-            await deactivate_subscription(
-                body.get("data", {})
-                .get("resource", {})
-                .get("metadata", {})
-                .get("telegram_id")
+    if body.get("type") == "payment":
+        payment = body.get("data", {}).get("resource", {})
+        payment_id = str(payment.get("id", ""))
+        
+        # Verificar idempotencia
+        if payment_id and db.is_webhook_processed(payment_id):
+            return {"status": "already_processed"}
+        
+        if payment.get("status") == "approved":
+            metadata = payment.get("metadata", {})
+            await activate_subscription(
+                db,
+                metadata.get("telegram_id"),
+                metadata.get("plan", "pro"),
+                "mercadopago",
+                payment_id,
             )
+            
+            # Marcar como procesado
+            if payment_id:
+                db.mark_webhook_processed(payment_id, "mercadopago", "payment.approved")
 
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "received", "debug": str(e)}
+    return {"status": "success"}
 
 
 @router.post("/webhook/crypto")
-async def crypto_webhook(request: Request):
-    """Webhook de Coinbase Commerce para procesar pagos."""
-    body = await request.json()
+async def crypto_webhook(
+    request: Request,
+    x_cc_webhook_signature: Optional[str] = Header(None),
+    db: Database = Depends(get_db),
+):
+    body = await request.body()
+    _validate_coinbase_request(body, x_cc_webhook_signature or "")
+    payload = await request.json()
+    
+    event = payload.get("event", {})
+    event_id = event.get("id")
+    
+    # Verificar idempotencia
+    if event_id and db.is_webhook_processed(event_id):
+        return {"status": "already_processed"}
 
-    try:
-        if body.get("event", {}).get("type") == "charge:confirmed":
-            charge = body.get("event", {}).get("data", {})
-            metadata = charge.get("metadata", {})
-            telegram_id = metadata.get("telegram_id")
-            plan = metadata.get("plan", "pro")
+    if event.get("type") == "charge:confirmed":
+        charge = event.get("data", {})
+        metadata = charge.get("metadata", {})
+        await activate_subscription(
+            db,
+            metadata.get("telegram_id"),
+            metadata.get("plan", "pro"),
+            "crypto",
+            charge.get("id"),
+        )
+        
+        # Marcar como procesado
+        if event_id:
+            db.mark_webhook_processed(event_id, "crypto", "charge:confirmed")
 
-            await activate_subscription(telegram_id, plan, "crypto", charge.get("id"))
-
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "received", "debug": str(e)}
+    return {"status": "success"}
 
 
 async def activate_subscription(
-    telegram_id: str, plan: str, provider: str, payment_id: str
+    db: Database, telegram_id: str, plan: str, provider: str, payment_id: str
 ):
-    """Activar suscripción del usuario."""
-    print(f"Activating {plan} for {telegram_id} via {provider}")
-    # Aquí iría la lógica de base de datos real
-    # user = db.get_user(telegram_id)
-    # user.plan = plan
-    # user.subscription_id = payment_id
-    # user.provider = provider
-    # user.expires_at = datetime.now() + timedelta(days=30)
-    # db.save(user)
+    if not telegram_id:
+        raise ValueError("telegram_id requerido")
+
+    telegram_id = int(telegram_id)
+    expiry = _subscription_expiry_iso()
+    db.update_user_plan(telegram_id, plan, expiry)
+    db.record_payment(
+        telegram_id=telegram_id,
+        provider=provider,
+        amount=PLANS.get(plan, {}).get("price_usd", 0),
+        currency="USD",
+        status="paid",
+        provider_payment_id=payment_id,
+    )
 
 
-async def deactivate_subscription(telegram_id: str):
-    """Desactivar suscripción del usuario."""
-    print(f"Deactivating subscription for {telegram_id}")
-    # Aquí iría la lógica de base de datos real
+async def deactivate_subscription(db: Database, telegram_id: str):
+    if not telegram_id:
+        return
+    db.update_user_plan(int(telegram_id), "free")
 
 
 @router.post("/cancel")
-async def cancel_subscription(current_user: User = Depends(get_current_user)):
-    """Cancelar suscripción actual."""
-    if current_user.plan == "free":
-        raise HTTPException(status_code=400, detail="No tienes suscripción activa")
+async def cancel_subscription(
+    current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
+):
+    if current_user["plan"] == "free":
+        raise HTTPException(status_code=400, detail="No tienes suscripcion activa")
 
-    try:
-        import stripe
-
-        stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
-
-        # Cancelar en Stripe
-        # stripe.Subscription.delete(current_user.subscription_id)
-
-    except Exception:
-        pass
-
-    return {"message": "Suscripción cancelada", "plan": "free", "expires_at": None}
+    await deactivate_subscription(db, str(current_user["telegram_id"]))
+    return {"message": "Suscripcion cancelada", "plan": "free", "expires_at": None}
 
 
 @router.post("/upgrade")
-async def upgrade_plan(plan: str, current_user: User = Depends(get_current_user)):
-    """Actualizar plan."""
+async def upgrade_plan(plan: str, current_user: dict = Depends(get_authenticated_user)):
     if plan not in PLANS:
-        raise HTTPException(status_code=400, detail="Plan no válido")
+        raise HTTPException(status_code=400, detail="Plan no valido")
 
     return {
         "message": f"Actualizando a plan {PLANS[plan]['name']}",
-        "current_plan": current_user.plan,
+        "current_plan": current_user["plan"],
         "new_plan": plan,
         "price": PLANS[plan]["price_usd"],
     }

@@ -1,85 +1,284 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional
+import hashlib
+import re
+
+try:
+    from job_bot.database import Database
+    from job_bot.job_scraper import JobScraper
+except ImportError:
+    from database import Database
+    from job_scraper import JobScraper
 
 router = APIRouter()
 
 
-def get_current_user(token: str = Depends(lambda: "mock_user")):
-    return {"telegram_id": 123456, "email": "user@example.com", "plan": "free"}
+def get_db() -> Database:
+    return Database()
+
+
+def get_scraper() -> JobScraper:
+    return JobScraper()
+
+
+def _normalize_modality(value: str) -> str:
+    mapping = {
+        "remote": "remoto",
+        "hybrid": "híbrido",
+        "onsite": "presencial",
+        "all": "cualquiera",
+        "cualquiera": "cualquiera",
+        "remoto": "remoto",
+        "híbrido": "híbrido",
+        "hibrido": "híbrido",
+        "presencial": "presencial",
+    }
+    return mapping.get((value or "").strip().lower(), "cualquiera")
+
+
+def _serialize_modality(job: dict) -> str:
+    text = (
+        f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')}"
+    ).lower()
+    if any(token in text for token in ("remoto", "remote", "anywhere", "worldwide", "wfh")):
+        return "remote"
+    if any(token in text for token in ("híbrido", "hibrido", "hybrid")):
+        return "hybrid"
+    return "onsite"
+
+
+def _extract_tags(job: dict) -> list[str]:
+    text = f"{job.get('title', '')} {job.get('description', '')}".lower()
+    candidates = [
+        "python",
+        "javascript",
+        "typescript",
+        "react",
+        "node",
+        "sql",
+        "aws",
+        "docker",
+        "java",
+        "golang",
+    ]
+    return [tag for tag in candidates if tag in text][:5]
+
+
+def _extract_salary(job: dict) -> tuple[Optional[int], Optional[int], Optional[str]]:
+    description = job.get("description", "") or ""
+    match = re.search(r"(USD|ARS|EUR|\$)\s?([\d,]{2,})\s?[-–]\s?(USD|ARS|EUR|\$)?\s?([\d,]{2,})", description)
+    if not match:
+        return None, None, None
+
+    min_raw = match.group(2).replace(",", "")
+    max_raw = match.group(4).replace(",", "")
+    currency = match.group(1) or match.group(3) or "USD"
+    try:
+        return int(min_raw), int(max_raw), currency
+    except ValueError:
+        return None, None, None
+
+
+def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> int:
+    haystack = (
+        f"{job.get('title', '')} {job.get('description', '')} {job.get('company', '')}"
+    ).lower()
+    score = 45
+
+    terms = [part.strip().lower() for part in query.split() if part.strip()]
+    tech_terms = [
+        part.strip().lower()
+        for part in (profile.get("technologies") or "").split(",")
+        if part.strip()
+    ]
+    role = (profile.get("role_type") or "").strip().lower()
+
+    for term in terms[:5]:
+        if term in haystack:
+            score += 10
+
+    for tech in tech_terms[:5]:
+        if tech in haystack:
+            score += 8
+
+    if role and role in haystack:
+        score += 12
+
+    for tag in tags_filter:
+        if tag in haystack:
+            score += 6
+
+    modality = _serialize_modality(job)
+    target_modality = _normalize_modality(profile.get("job_modality") or "cualquiera")
+    if target_modality == "cualquiera" or modality == {
+        "remoto": "remote",
+        "híbrido": "hybrid",
+        "presencial": "onsite",
+    }.get(target_modality):
+        score += 5
+
+    return max(50, min(95, score))
+
+
+def _serialize_job(job: dict, score: int) -> dict:
+    salary_min, salary_max, salary_currency = _extract_salary(job)
+    job_url = job.get("url") or ""
+    job_id = hashlib.md5(job_url.encode("utf-8")).hexdigest() if job_url else hashlib.md5(
+        f"{job.get('title', '')}:{job.get('company', '')}".encode("utf-8")
+    ).hexdigest()
+    return {
+        "id": job_id,
+        "title": job.get("title", "Sin título"),
+        "company": job.get("company", "N/A"),
+        "location": job.get("location", "N/A"),
+        "modality": _serialize_modality(job),
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "salary_currency": salary_currency,
+        "posted_at": job.get("date") or "",
+        "match_score": score,
+        "tags": _extract_tags(job),
+        "description": job.get("description", "")[:400],
+        "url": job_url,
+        "source": job.get("source", "Unknown"),
+    }
+
+
+class TrackRequest(BaseModel):
+    telegram_id: int
+    job_title: str
+    company: str
+    url: str
+    notes: Optional[str] = None
+
+
+class UpdateApplicationRequest(BaseModel):
+    telegram_id: int
+    status: str
 
 
 @router.get("/search")
 async def search_jobs(
-    q: str = Query(..., description="Query de búsqueda"),
-    modality: Optional[str] = Query(None, description="remote, hybrid, onsite"),
+    q: str = Query("", description="Query de búsqueda"),
+    telegram_id: int = Query(..., description="Telegram ID del usuario"),
+    modality: Optional[str] = Query("all", description="remote, hybrid, onsite"),
     location: Optional[str] = Query(None, description="Ubicación"),
-    current_user=Depends(get_current_user),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    max_age_days: Optional[int] = Query(None, ge=1, le=365),
+    match_threshold: Optional[int] = Query(None, ge=50, le=95),
+    tags: Optional[str] = Query(None, description="Lista CSV de tags"),
+    db: Database = Depends(get_db),
+    scraper: JobScraper = Depends(get_scraper),
 ):
-    """Buscar empleos - placeholder integrando con scraper real."""
+    """Buscar empleos reales usando el scraper y el perfil del usuario."""
+    user = db.get_user(telegram_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    profile = db.get_user_profile(telegram_id)
+    search_location = location or user.get("location") or "Buenos Aires Argentina"
+    threshold = match_threshold or profile.get("match_threshold", 70)
+    tags_filter = [tag.strip().lower() for tag in (tags or "").split(",") if tag.strip()]
+
+    query_keywords = [q.strip()] if q.strip() else db.get_user_keywords(telegram_id)
+    if not query_keywords:
+        query_keywords = db.generate_smart_keywords(telegram_id)
+    if not query_keywords:
+        query_keywords = ["python junior"]
+
+    jobs = scraper.search_all(
+        query_keywords,
+        search_location,
+        max_age_days=max_age_days or profile.get("max_job_age_days", 30),
+    )
+    jobs = JobScraper.apply_negative_filter(
+        jobs, experience_level=profile.get("experience_level", "junior")
+    )
+
+    requested_modality = _normalize_modality(modality or "all")
+    if requested_modality != "cualquiera":
+        jobs = JobScraper.apply_modality_filter(jobs, requested_modality)
+
+    if tags_filter:
+        jobs = [
+            job
+            for job in jobs
+            if all(tag in f"{job.get('title', '')} {job.get('description', '')}".lower() for tag in tags_filter)
+        ]
+
+    serialized = []
+    for job in jobs:
+        score = _score_job(job, q, profile, tags_filter)
+        if score < threshold:
+            continue
+        serialized.append(_serialize_job(job, score))
+
+    serialized.sort(key=lambda item: item["match_score"], reverse=True)
+    total = len(serialized)
+    paginated = serialized[offset : offset + limit]
     return {
-        "jobs": [
-            {
-                "id": 1,
-                "title": "Python Developer",
-                "company": "Tech Corp",
-                "location": "Remote",
-                "modality": "remote",
-                "source": "Remotive",
-                "url": "https://example.com/job/1",
-                "salary": "$80,000 - $120,000",
-                "posted_at": "2026-03-28",
-            },
-            {
-                "id": 2,
-                "title": "Backend Engineer",
-                "company": "StartupXYZ",
-                "location": "Buenos Aires",
-                "modality": "hybrid",
-                "source": "LinkedIn",
-                "url": "https://example.com/job/2",
-                "salary": "$50,000 - $80,000",
-                "posted_at": "2026-03-27",
-            },
-        ],
-        "total": 2,
+        "jobs": paginated,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
         "query": q,
     }
 
 
 @router.get("/recommended")
-async def get_recommended_jobs(current_user=Depends(get_current_user)):
-    """Obtener empleos recomendados basado en perfil."""
-    return {"jobs": [], "message": "Configura tu perfil para ver recomendaciones"}
+async def get_recommended_jobs(
+    telegram_id: int = Query(...),
+    db: Database = Depends(get_db),
+    scraper: JobScraper = Depends(get_scraper),
+):
+    profile = db.get_user_profile(telegram_id)
+    role = profile.get("role_type") or "developer"
+    return await search_jobs(
+        q=role,
+        telegram_id=telegram_id,
+        db=db,
+        scraper=scraper,
+    )
 
 
 @router.post("/track")
-async def track_application(
-    job_title: str,
-    company: str,
-    url: str,
-    notes: Optional[str] = None,
-    current_user=Depends(get_current_user),
-):
-    """Registrar postulación para tracking."""
+async def track_application(payload: TrackRequest, db: Database = Depends(get_db)):
+    db.create_user_if_not_exists(payload.telegram_id, f"User {payload.telegram_id}")
+    db.add_application(
+        payload.telegram_id,
+        payload.job_title,
+        payload.company,
+        payload.url,
+        payload.notes or "",
+    )
+    apps = db.get_user_applications(payload.telegram_id)
+    created = apps[0] if apps else {}
     return {
-        "id": 123,
-        "job_title": job_title,
-        "company": company,
-        "url": url,
-        "status": "aplicado",
-        "applied_at": "2026-03-28",
+        "id": created.get("id"),
+        "job_title": payload.job_title,
+        "company": payload.company,
+        "url": payload.url,
+        "status": created.get("status", "aplicado"),
+        "applied_at": created.get("applied_at"),
+        "notes": created.get("notes"),
     }
 
 
 @router.get("/applications")
-async def get_applications(current_user=Depends(get_current_user)):
-    """Obtener todas las postulaciones del usuario."""
-    return {"applications": []}
+async def get_applications(
+    telegram_id: int = Query(...),
+    db: Database = Depends(get_db),
+):
+    return {"applications": db.get_user_applications(telegram_id)}
 
 
 @router.patch("/applications/{app_id}")
 async def update_application(
-    app_id: int, status: str, current_user=Depends(get_current_user)
+    app_id: int,
+    payload: UpdateApplicationRequest,
+    db: Database = Depends(get_db),
 ):
-    """Actualizar estado de una postulación."""
-    return {"id": app_id, "status": status, "message": "Estado actualizado"}
+    db.update_application_status(app_id, payload.telegram_id, payload.status)
+    return {"id": app_id, "status": payload.status, "message": "Estado actualizado"}

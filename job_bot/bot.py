@@ -47,11 +47,6 @@ except ImportError:
     from job_bot.scheduler import check_jobs_for_user
 
 try:
-    from stats_api import run_stats_api
-except ImportError:
-    from job_bot.stats_api import run_stats_api
-
-try:
     from cv_analyzer import (
         parse_cv,
         extract_keywords,
@@ -1596,10 +1591,6 @@ def main():
         name="JobScheduler",
     )
     scheduler_thread.start()
-
-    # ---- Stats API (para la landing page) ----
-    if config.STATS_API_ENABLED:
-        run_stats_api(db, port=config.STATS_API_PORT)
 
     logger.info(
         "✅ Bot listo. Scheduler inteligente en background (polling cada %d min).",
