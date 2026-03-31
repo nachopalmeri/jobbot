@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
+import logging
 import os
 from typing import Optional
 
@@ -15,6 +16,7 @@ except ImportError:
 from .auth import get_authenticated_user, get_db
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 PLANS = {
@@ -332,6 +334,70 @@ async def crypto_webhook(
     return {"status": "success"}
 
 
+async def _send_telegram_notification(telegram_id: int, message: str) -> bool:
+    """Send a Telegram notification to a user."""
+    try:
+        import aiohttp
+        
+        token = os.getenv("TELEGRAM_TOKEN")
+        if not token:
+            logger.warning("TELEGRAM_TOKEN not configured, skipping notification")
+            return False
+            
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": telegram_id,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload) as response:
+                if response.status == 200:
+                    logger.info("Notification sent to user %s", telegram_id)
+                    return True
+                else:
+                    error_text = await response.text()
+                    logger.error("Failed to send notification to %s: %s", telegram_id, error_text)
+                    return False
+    except Exception as e:
+        logger.error("Error sending Telegram notification to %s: %s", telegram_id, e)
+        return False
+
+
+async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
+    """Notify user about subscription plan change."""
+    plan_names = {
+        "pro": "Pro ($3/mes)",
+        "premium": "Premium ($5/mes)",
+        "free": "Free"
+    }
+    plan_name = plan_names.get(plan, plan)
+    
+    # Parse expiry date for display
+    try:
+        expiry_date = datetime.fromisoformat(expiry)
+        expiry_formatted = expiry_date.strftime("%d/%m/%Y")
+    except:
+        expiry_formatted = expiry[:10] if expiry else "30 días"
+    
+    message = (
+        "✅ <b>¡Suscripción Activada!</b>\n\n"
+        f"Tu plan <b>{plan_name}</b> está ahora activo.\n\n"
+        f"📅 Válido hasta: <b>{expiry_formatted}</b>\n\n"
+        "🚀 Ahora tienes acceso a todas las funciones premium:\n"
+        "• Búsquedas ilimitadas\n"
+        "• Alertas automáticas cada hora\n"
+        "• Análisis de CV con IA\n"
+        "• Simulador de entrevistas\n"
+        "• Empresas preferidas\n\n"
+        "¡Gracias por confiar en JobBot! 🎯"
+    )
+    
+    return await _send_telegram_notification(telegram_id, message)
+
+
 async def activate_subscription(
     db: Database, telegram_id: str, plan: str, provider: str, payment_id: str
 ):
@@ -349,12 +415,35 @@ async def activate_subscription(
         status="paid",
         provider_payment_id=payment_id,
     )
+    
+    # Notify user about subscription activation
+    await _notify_plan_change(telegram_id, plan, expiry)
 
 
-async def deactivate_subscription(db: Database, telegram_id: str):
+async def _notify_cancellation(telegram_id: int) -> bool:
+    """Notify user about subscription cancellation."""
+    message = (
+        "📋 <b>Suscripción Cancelada</b>\n\n"
+        "Tu suscripción ha sido cancelada y volviste al plan <b>Free</b>.\n\n"
+        "🔄 Ahora tenés:\n"
+        "• 5 búsquedas por día\n"
+        "• Alertas cada 6 horas\n"
+        "• Acceso al dashboard\n\n"
+        "💡 ¿Querés volver a Pro? Escribí /precios en el bot."
+    )
+    
+    return await _send_telegram_notification(telegram_id, message)
+
+
+async def deactivate_subscription(db: Database, telegram_id: str, notify: bool = True):
     if not telegram_id:
         return
-    db.update_user_plan(int(telegram_id), "free")
+    
+    tid = int(telegram_id)
+    db.update_user_plan(tid, "free")
+    
+    if notify:
+        await _notify_cancellation(tid)
 
 
 @router.post("/cancel")
@@ -364,7 +453,7 @@ async def cancel_subscription(
     if current_user["plan"] == "free":
         raise HTTPException(status_code=400, detail="No tienes suscripcion activa")
 
-    await deactivate_subscription(db, str(current_user["telegram_id"]))
+    await deactivate_subscription(db, str(current_user["telegram_id"]), notify=True)
     return {"message": "Suscripcion cancelada", "plan": "free", "expires_at": None}
 
 
