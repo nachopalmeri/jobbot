@@ -461,3 +461,294 @@ async def generate_cover_letter(cv_text: str, role_info: str) -> Optional[str]:
     except Exception as e:
         logger.error("Error generando cover letter: %s", e)
         return None
+
+
+# ============================================================
+# ENTREVISTAS RRHH - Nuevas funciones para método STAR
+# ============================================================
+
+async def generate_rrhh_interview_questions(
+    cv_text: str, 
+    role_type: str = "", 
+    company_name: str = None,
+    company_data: Dict = None,
+    question_count: int = 5
+) -> Optional[List[Dict]]:
+    """
+    Genera preguntas de entrevista RRHH usando el pool de interview_data.py.
+    
+    Args:
+        cv_text: Texto del CV del candidato
+        role_type: Rol que busca (ej: "backend", "frontend")
+        company_name: Nombre de la empresa (opcional)
+        company_data: Datos de la empresa obtenidos de GlassdoorService
+        question_count: Cantidad de preguntas a generar (default 5)
+        
+    Returns:
+        Lista de diccionarios con preguntas estructuradas
+    """
+    try:
+        from interview_data import get_random_rrhh_questions, get_company_specific_questions
+        
+        # 1. Obtener preguntas aleatorias del pool
+        questions = get_random_rrhh_questions(question_count)
+        
+        # 2. Si hay empresa, reemplazar 1-2 preguntas por específicas
+        if company_name:
+            company_questions = get_company_specific_questions(company_name)
+            if company_questions:
+                # Reemplazar la última pregunta por una específica de la empresa
+                questions[-1] = type(questions[0])(
+                    id="company_specific",
+                    category="company_research",
+                    question=company_questions[0],
+                    star_focus="Demostrar conocimiento real de la empresa y alineación con sus valores",
+                    what_to_avoid="NO decir 'vi en la web que...' sin profundizar, NO ser superficial",
+                    golden_tip="Investigá LinkedIn, noticias recientes, y conectá tu experiencia con sus desafíos actuales",
+                    difficulty="medium"
+                )
+        
+        # 3. Convertir a formato de retorno
+        result = []
+        for i, q in enumerate(questions, 1):
+            result.append({
+                "number": i,
+                "id": q.id,
+                "text": q.question,
+                "category": q.category,
+                "star_focus": q.star_focus,
+                "what_to_avoid": q.what_to_avoid,
+                "golden_tip": q.golden_tip,
+                "difficulty": q.difficulty
+            })
+        
+        return result
+        
+    except Exception as e:
+        logger.error("Error generando preguntas RRHH: %s", e)
+        return None
+
+
+async def evaluate_rrhh_answer_star(
+    question: str,
+    answer: str,
+    cv_text: str,
+    star_focus: str,
+    feedback_mode: str = "immediate"
+) -> Optional[Dict]:
+    """
+    Evalúa una respuesta RRHH usando la metodología STAR estricta.
+    
+    Args:
+        question: La pregunta realizada
+        answer: Respuesta del candidato
+        cv_text: CV para contexto
+        star_focus: Qué aspectos STAR enfatizar para esta pregunta
+        feedback_mode: "immediate" (corta) o "detailed" (más completa)
+        
+    Returns:
+        Dict con evaluación estructurada o None si falla
+    """
+    if not config.GROQ_API_KEY:
+        return None
+    
+    try:
+        from groq import AsyncGroq
+        client = AsyncGroq(api_key=config.GROQ_API_KEY)
+        
+        # Prompt diferente según modo de feedback
+        if feedback_mode == "immediate":
+            prompt = f"""Sos un reclutador de RRHH senior evaluando respuestas usando el método STAR.
+        
+Pregunta: {question}
+Respuesta del candidato: {answer}
+Contexto CV: {cv_text[:1000]}
+Enfoque para esta pregunta: {star_focus}
+
+EVALUÁ usando el método STAR:
+- S (Situation): ¿Describió claramente el contexto? ¿Quién? ¿Dónde? ¿Cuándo?
+- T (Task): ¿Definió claramente su objetivo/desafío específico?
+- A (Action): ¿Qué acciones tomó ÉL/ELLA específicamente (no el equipo)?
+- R (Result): ¿Dio un resultado MEDIBLE con número/métrica?
+
+Respondé en ESTE FORMATO EXACTO:
+
+✅ S-Situación: [X]/10 - [feedback de 10 palabras máximo]
+⚠️ T-Task: [X]/10 - [feedback de 10 palabras máximo]
+✅ A-Acción: [X]/10 - [feedback de 10 palabras máximo]
+❌ R-Resultado: [X]/10 - [feedback de 10 palabras máximo]
+
+📊 Nota general: [X]/10
+
+💡 Tip de Oro: [una oración con consejo específico para mejorar]
+
+IMPORTANTE: Sé estricto. La mayoría de candidatos NO usan STAR bien. No des puntos por simpatía."""
+        else:  # detailed
+            prompt = f"""Sos un reclutador de RRHH senior evaluando respuestas usando el método STAR.
+        
+Pregunta: {question}
+Respuesta del candidato: {answer}
+Contexto CV: {cv_text[:1000]}
+Enfoque para esta pregunta: {star_focus}
+
+EVALUÁ usando el método STAR y dame un análisis detallado:
+
+Para cada componente STAR:
+1. S (Situation): ¿Contexto claro? ¿Específico o vago?
+2. T (Task): ¿Objetivo definido? ¿Medible?
+3. A (Action): ¿Qué hizo ÉL/ELLA (no el equipo)? ¿Detallado?
+4. R (Result): ¿Métrica concreta? ¿Impacto cuantificado?
+
+Respondé así:
+
+<b>📊 NOTA GENERAL: [X]/10</b>
+
+<b>🔍 ANÁLISIS STAR:</b>
+
+✅ <b>S-Situación ([X]/10):</b>
+[feedback detallado, 2-3 oraciones]
+
+⚠️ <b>T-Task ([X]/10):</b>
+[feedback detallado, 2-3 oraciones]
+
+✅ <b>A-Acción ([X]/10):</b>
+[feedback detallado, 2-3 oraciones]
+
+❌ <b>R-Resultado ([X]/10):</b>
+[feedback detallado, 2-3 oraciones]
+
+<b>💡 Tip de Oro:</b>
+[consejo específico y accionable]
+
+<b>🎯 Para la próxima:</b>
+[qué debería hacer diferente en la siguiente pregunta]"""
+        
+        chat_completion = await client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=config.GROQ_MODEL,
+            temperature=0.3,  # Más bajo para ser más estricto y consistente
+            max_tokens=800 if feedback_mode == "immediate" else 1200,
+        )
+        
+        content = chat_completion.choices[0].message.content
+        
+        # Parsear la respuesta de la IA para extraer estructura
+        result = parse_star_evaluation(content, feedback_mode)
+        return result
+        
+    except Exception as e:
+        logger.error("Error evaluando respuesta RRHH: %s", e)
+        return None
+
+
+def parse_star_evaluation(content: str, mode: str) -> Dict:
+    """
+    Parsea la evaluación de la IA para extraer scores estructurados.
+    
+    Args:
+        content: Texto de respuesta de la IA
+        mode: "immediate" o "detailed"
+        
+    Returns:
+        Dict con estructura parseada
+    """
+    import re
+    
+    result = {
+        "overall_score": 0,
+        "overall_feedback": "",
+        "star_breakdown": {
+            "Situation": {"score": 0, "feedback": ""},
+            "Task": {"score": 0, "feedback": ""},
+            "Action": {"score": 0, "feedback": ""},
+            "Result": {"score": 0, "feedback": ""}
+        },
+        "golden_tip": "",
+        "raw_text": content
+    }
+    
+    try:
+        # Extraer nota general
+        overall_match = re.search(r'Nota general:?\s*(\d+(?:\.\d+)?)/10', content, re.IGNORECASE)
+        if overall_match:
+            result["overall_score"] = float(overall_match.group(1))
+        
+        # Extraer componentes STAR
+        patterns = {
+            "Situation": r'[S\-]\s*Situaci[oó]n:?\s*(\d+(?:\.\d+)?)/?\d*\s*[-:]?\s*([^\n]+)',
+            "Task": r'[T\-]\s*Task:?\s*(\d+(?:\.\d+)?)/?\d*\s*[-:]?\s*([^\n]+)',
+            "Action": r'[A\-]\s*Acci[oó]n:?\s*(\d+(?:\.\d+)?)/?\d*\s*[-:]?\s*([^\n]+)',
+            "Result": r'[R\-]\s*Resultado:?\s*(\d+(?:\.\d+)?)/?\d*\s*[-:]?\s*([^\n]+)'
+        }
+        
+        for component, pattern in patterns.items():
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                result["star_breakdown"][component]["score"] = float(match.group(1))
+                result["star_breakdown"][component]["feedback"] = match.group(2).strip()
+        
+        # Extraer tip de oro
+        tip_match = re.search(r'Tip de [Oo]ro:?\s*([^\n]+(?:\n[^\n]+)?)', content)
+        if tip_match:
+            result["golden_tip"] = tip_match.group(1).strip()
+        
+        # Calcular overall si no lo tenemos pero tenemos componentes
+        if result["overall_score"] == 0:
+            scores = [v["score"] for v in result["star_breakdown"].values() if v["score"] > 0]
+            if scores:
+                result["overall_score"] = round(sum(scores) / len(scores), 1)
+        
+    except Exception as e:
+        logger.error("Error parseando evaluación STAR: %s", e)
+        # Si falla el parseo, devolver el texto crudo
+        result["overall_feedback"] = content
+    
+    return result
+
+
+def format_star_feedback(evaluation: Dict, mode: str = "immediate") -> str:
+    """
+    Formatea la evaluación STAR para mostrar al usuario.
+    
+    Args:
+        evaluation: Dict de evaluate_rrhh_answer_star
+        mode: "immediate" o "detailed"
+        
+    Returns:
+        Texto formateado para Telegram
+    """
+    if not evaluation:
+        return "⚠️ No pude evaluar esta respuesta."
+    
+    # Si tiene raw_text pero no estructura parseada, devolver raw
+    if evaluation.get("raw_text") and not evaluation.get("overall_score"):
+        return evaluation["raw_text"]
+    
+    star = evaluation["star_breakdown"]
+    
+    if mode == "immediate":
+        lines = [
+            f"<b>📝 Feedback:</b>\n",
+            f"✅ S-Situación: {star['Situation']['score']}/10 - {star['Situation']['feedback']}",
+            f"⚠️ T-Task: {star['Task']['score']}/10 - {star['Task']['feedback']}",
+            f"✅ A-Acción: {star['Action']['score']}/10 - {star['Action']['feedback']}",
+            f"❌ R-Resultado: {star['Result']['score']}/10 - {star['Result']['feedback']}",
+            f"",
+            f"📊 <b>Nota: {evaluation['overall_score']}/10</b>",
+            f"",
+            f"💡 <b>Tip de Oro:</b> {evaluation['golden_tip']}"
+        ]
+    else:  # detailed
+        lines = [
+            f"<b>📊 NOTA GENERAL: {evaluation['overall_score']}/10</b>\n",
+            f"<b>🔍 ANÁLISIS STAR:</b>\n",
+            f"✅ <b>S-Situación ({star['Situation']['score']}/10):</b> {star['Situation']['feedback']}",
+            f"⚠️ <b>T-Task ({star['Task']['score']}/10):</b> {star['Task']['feedback']}",
+            f"✅ <b>A-Acción ({star['Action']['score']}/10):</b> {star['Action']['feedback']}",
+            f"❌ <b>R-Resultado ({star['Result']['score']}/10):</b> {star['Result']['feedback']}",
+            f"",
+            f"💡 <b>Tip de Oro:</b> {evaluation['golden_tip']}",
+        ]
+    
+    return "\n".join(lines)
+

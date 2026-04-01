@@ -150,6 +150,7 @@ class Database:
                 "CREATE TABLE IF NOT EXISTS applications (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, job_title TEXT, company TEXT, url TEXT, status TEXT DEFAULT 'aplicado', notes TEXT, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS web_login_codes (code TEXT PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
+                "CREATE TABLE IF NOT EXISTS telegram_link_codes (code TEXT PRIMARY KEY, web_telegram_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
             ]
             for q in queries:
                 self._execute(q)
@@ -256,6 +257,13 @@ class Database:
                         expires_at  TEXT NOT NULL,
                         used_at     TEXT,
                         FOREIGN KEY(telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS telegram_link_codes (
+                        code            TEXT PRIMARY KEY,
+                        web_telegram_id INTEGER NOT NULL,
+                        created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                        expires_at      TEXT NOT NULL,
+                        used_at         TEXT
                     );
                 """)
                 # Migraciones para SQLite si faltan columnas
@@ -386,6 +394,22 @@ class Database:
                     )
                 except Exception:
                     # Si ya existe, ignoramos el error
+                    pass
+                
+                # Migración: columna para contar entrevistas usadas
+                try:
+                    conn.execute(
+                        "ALTER TABLE web_users ADD COLUMN interviews_used INTEGER DEFAULT 0"
+                    )
+                except Exception:
+                    pass
+                
+                # Migración: columna para límite de entrevistas
+                try:
+                    conn.execute(
+                        "ALTER TABLE web_users ADD COLUMN interviews_limit INTEGER DEFAULT 20"
+                    )
+                except Exception:
                     pass
             logger.info("✅ SQLite DB inicializada")
 
@@ -1032,6 +1056,23 @@ class Database:
             (telegram_id, email, password_hash),
         )
 
+    def generate_web_account_id(self) -> int:
+        """Genera un identificador interno para cuentas web sin Telegram vinculado."""
+        row = self._fetchone(
+            """
+            SELECT MIN(telegram_id) AS min_id
+            FROM (
+                SELECT telegram_id FROM users
+                UNION ALL
+                SELECT telegram_id FROM web_users
+            )
+            """
+        )
+        min_id = row.get("min_id") if row else None
+        if min_id is None or int(min_id) >= 0:
+            return -1
+        return int(min_id) - 1
+
     def get_web_user(self, telegram_id: int) -> Optional[Dict]:
         """Obtiene datos del usuario web."""
         return self._fetchone(
@@ -1099,6 +1140,203 @@ class Database:
             (code,),
         )
         return record
+
+    def create_telegram_link_code(self, web_telegram_id: int, code: str, expires_at: str):
+        """Guarda un codigo temporal para vincular una cuenta web con Telegram."""
+        self._execute(
+            "DELETE FROM telegram_link_codes WHERE web_telegram_id = ? OR expires_at <= CURRENT_TIMESTAMP",
+            (web_telegram_id,),
+        )
+        self._execute(
+            """INSERT INTO telegram_link_codes (code, web_telegram_id, expires_at)
+               VALUES (?, ?, ?)""",
+            (code, web_telegram_id, expires_at),
+        )
+
+    def consume_telegram_link_code(self, code: str) -> Optional[Dict]:
+        """Consume un codigo de vinculación Telegram y devuelve la cuenta web asociada."""
+        record = self._fetchone(
+            """SELECT code, web_telegram_id, expires_at, used_at
+               FROM telegram_link_codes
+               WHERE code = ?""",
+            (code,),
+        )
+        if not record:
+            return None
+
+        used_at = record.get("used_at")
+        expires_at = record.get("expires_at")
+        if used_at:
+            return None
+
+        try:
+            from datetime import datetime, timezone
+
+            expires_dt = datetime.fromisoformat(expires_at)
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            if expires_dt <= datetime.now(timezone.utc):
+                return None
+        except Exception:
+            return None
+
+        self._execute(
+            "UPDATE telegram_link_codes SET used_at = CURRENT_TIMESTAMP WHERE code = ?",
+            (code,),
+        )
+        return record
+
+    def link_web_account_to_telegram(
+        self,
+        web_telegram_id: int,
+        telegram_id: int,
+        telegram_name: str,
+    ) -> Dict:
+        """Migra una cuenta web temporal al telegram_id real del usuario."""
+        web_user = self.get_web_user(web_telegram_id)
+        if not web_user:
+            raise ValueError("Cuenta web no encontrada")
+
+        existing_link = self.get_web_user(telegram_id)
+        if existing_link and int(existing_link.get("telegram_id")) != int(web_telegram_id):
+            raise ValueError("Ese usuario de Telegram ya está vinculado a otra cuenta")
+
+        for column, definition in (
+            ("github_url", "TEXT DEFAULT ''"),
+            ("search_mode", "TEXT DEFAULT 'calidad'"),
+        ):
+            try:
+                self._execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
+            except Exception:
+                pass
+
+        self.create_user_if_not_exists(telegram_id, telegram_name or "Usuario")
+        source_user = self.get_user(web_telegram_id) or {}
+        target_user = self.get_user(telegram_id) or {}
+
+        def prefer_text(source_value, target_value, default_value=""):
+            source_value = source_value or ""
+            target_value = target_value or ""
+            if source_value and source_value != default_value:
+                return source_value
+            if target_value:
+                return target_value
+            return source_value or target_value or default_value
+
+        def prefer_numeric(source_value, target_value, default_value):
+            source_value = default_value if source_value is None else source_value
+            target_value = default_value if target_value is None else target_value
+            if source_value != default_value:
+                return source_value
+            if target_value != default_value:
+                return target_value
+            return source_value
+
+        merged_name = target_user.get("name") or source_user.get("name") or telegram_name or "Usuario"
+        merged_active_alerts = 1 if target_user.get("active_alerts") or source_user.get("active_alerts") else 0
+        merged_alert_channel = "telegram"
+        merged_cv_path = target_user.get("cv_path") or source_user.get("cv_path")
+        merged_location = prefer_text(source_user.get("location"), target_user.get("location"), "Buenos Aires Argentina")
+        merged_experience = prefer_text(source_user.get("experience_level"), target_user.get("experience_level"), "junior")
+        merged_role = prefer_text(source_user.get("role_type"), target_user.get("role_type"), "")
+        merged_technologies = prefer_text(source_user.get("technologies"), target_user.get("technologies"), "")
+        merged_modality = prefer_text(source_user.get("job_modality"), target_user.get("job_modality"), "cualquiera")
+        merged_max_age = prefer_numeric(source_user.get("max_job_age_days"), target_user.get("max_job_age_days"), 30)
+        merged_match_threshold = prefer_numeric(source_user.get("match_threshold"), target_user.get("match_threshold"), 70)
+        merged_interval = prefer_numeric(source_user.get("check_interval_hours"), target_user.get("check_interval_hours"), 6)
+        merged_start_hour = prefer_numeric(source_user.get("alert_start_hour"), target_user.get("alert_start_hour"), 8)
+        merged_end_hour = prefer_numeric(source_user.get("alert_end_hour"), target_user.get("alert_end_hour"), 22)
+        merged_timezone = prefer_text(source_user.get("timezone"), target_user.get("timezone"), "America/Buenos_Aires")
+        merged_weekly_goal = prefer_numeric(source_user.get("weekly_goal_apps"), target_user.get("weekly_goal_apps"), 5)
+        merged_blocked = prefer_text(source_user.get("blocked_companies"), target_user.get("blocked_companies"), "")
+        merged_preferred = prefer_text(source_user.get("preferred_companies"), target_user.get("preferred_companies"), "")
+        merged_digest = prefer_text(source_user.get("digest_mode"), target_user.get("digest_mode"), "realtime")
+        merged_last_check = target_user.get("last_check") or source_user.get("last_check")
+        merged_github = prefer_text(source_user.get("github_url"), target_user.get("github_url"), "")
+        merged_search_mode = prefer_text(source_user.get("search_mode"), target_user.get("search_mode"), "calidad")
+
+        self._execute(
+            """
+            UPDATE users SET
+                name = ?, active_alerts = ?, alert_channel = ?, cv_path = ?, location = ?,
+                experience_level = ?, role_type = ?, technologies = ?, job_modality = ?,
+                max_job_age_days = ?, match_threshold = ?, check_interval_hours = ?,
+                alert_start_hour = ?, alert_end_hour = ?, timezone = ?, weekly_goal_apps = ?,
+                blocked_companies = ?, preferred_companies = ?, digest_mode = ?,
+                last_check = ?, github_url = ?, search_mode = ?
+            WHERE telegram_id = ?
+            """,
+            (
+                merged_name,
+                merged_active_alerts,
+                merged_alert_channel,
+                merged_cv_path,
+                merged_location,
+                merged_experience,
+                merged_role,
+                merged_technologies,
+                merged_modality,
+                merged_max_age,
+                merged_match_threshold,
+                merged_interval,
+                merged_start_hour,
+                merged_end_hour,
+                merged_timezone,
+                merged_weekly_goal,
+                merged_blocked,
+                merged_preferred,
+                merged_digest,
+                merged_last_check,
+                merged_github,
+                merged_search_mode,
+                telegram_id,
+            ),
+        )
+
+        self._execute(
+            """INSERT OR IGNORE INTO keywords (telegram_id, keyword)
+               SELECT ?, keyword FROM keywords WHERE telegram_id = ?""",
+            (telegram_id, web_telegram_id),
+        )
+        self._execute("DELETE FROM keywords WHERE telegram_id = ?", (web_telegram_id,))
+
+        self._execute(
+            """INSERT OR IGNORE INTO jobs_seen (job_hash, telegram_id, source, title, company, url, seen_at)
+               SELECT job_hash, ?, source, title, company, url, seen_at
+               FROM jobs_seen WHERE telegram_id = ?""",
+            (telegram_id, web_telegram_id),
+        )
+        self._execute("DELETE FROM jobs_seen WHERE telegram_id = ?", (web_telegram_id,))
+
+        for table in (
+            "custom_feeds",
+            "applications",
+            "payments",
+            "ai_analyses",
+            "web_login_codes",
+            "pending_job_batches",
+            "batch_interactions",
+        ):
+            try:
+                self._execute(
+                    f"UPDATE {table} SET telegram_id = ? WHERE telegram_id = ?",
+                    (telegram_id, web_telegram_id),
+                )
+            except Exception:
+                continue
+
+        self._execute(
+            "UPDATE web_users SET telegram_id = ? WHERE telegram_id = ?",
+            (telegram_id, web_telegram_id),
+        )
+        self._execute("DELETE FROM users WHERE telegram_id = ?", (web_telegram_id,))
+        self._execute("DELETE FROM telegram_link_codes WHERE web_telegram_id = ?", (web_telegram_id,))
+
+        return {
+            "telegram_id": telegram_id,
+            "plan": self.get_user_plan(telegram_id),
+            "has_telegram_link": True,
+        }
 
     def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
         """Actualiza el plan del usuario."""
@@ -1168,7 +1406,9 @@ class Database:
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
                         searches_limit    = 5,
-                        job_tracker_enabled = 0
+                        job_tracker_enabled = 0,
+                        interviews_limit = 0,
+                        interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),
             )
@@ -1177,7 +1417,9 @@ class Database:
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
                         searches_limit    = 30,
-                        job_tracker_enabled = 1
+                        job_tracker_enabled = 1,
+                        interviews_limit = 0,
+                        interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),
             )
@@ -1186,7 +1428,9 @@ class Database:
                 """UPDATE web_users SET
                         ai_analyses_limit = 5,
                         searches_limit    = 80,
-                        job_tracker_enabled = 1
+                        job_tracker_enabled = 1,
+                        interviews_limit = 0,
+                        interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),
             )
@@ -1195,7 +1439,9 @@ class Database:
                 """UPDATE web_users SET
                         ai_analyses_limit = 30,
                         searches_limit    = 0,
-                        job_tracker_enabled = 1
+                        job_tracker_enabled = 1,
+                        interviews_limit = 20,
+                        interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),
             )

@@ -58,6 +58,10 @@ try:
         format_cv_analysis,
         generate_cover_letter,
         generate_interview_questions,
+        # Nuevas funciones para entrevistas RRHH
+        generate_rrhh_interview_questions,
+        evaluate_rrhh_answer_star,
+        format_star_feedback,
     )
 except ImportError:
     from job_bot.cv_analyzer import (
@@ -68,7 +72,19 @@ except ImportError:
         format_cv_analysis,
         generate_cover_letter,
         generate_interview_questions,
+        # Nuevas funciones para entrevistas RRHH
+        generate_rrhh_interview_questions,
+        evaluate_rrhh_answer_star,
+        format_star_feedback,
     )
+
+# Importar datos de entrevistas y servicio de empresas
+try:
+    from interview_data import InterviewType, FeedbackMode, RRHHQuestion
+    from glassdoor_service import glassdoor_service, GlassdoorService
+except ImportError:
+    from job_bot.interview_data import InterviewType, FeedbackMode, RRHHQuestion
+    from job_bot.glassdoor_service import glassdoor_service, GlassdoorService
 
 try:
     from company_service import get_company_by_domain, format_company_info
@@ -124,7 +140,14 @@ scraper = JobScraper()
     WAITING_MODALITY,
 ) = range(6)
 WAITING_INTERVAL, WAITING_START_HOUR, WAITING_END_HOUR = range(10, 13)
-WAITING_INTERVIEW_START, WAITING_INTERVIEW_ANSWER = range(20, 22)
+# Estados para entrevistas (nuevo sistema con selección de tipo)
+(
+    WAITING_INTERVIEW_TYPE,      # 20 - Seleccionar técnica o RRHH
+    WAITING_COMPANY_NAME,        # 21 - Preguntar nombre empresa (opcional)
+    WAITING_FEEDBACK_MODE,       # 22 - Seleccionar modo de feedback
+    WAITING_INTERVIEW_ANSWER,    # 23 - Responder pregunta
+    WAITING_RRHH_ANSWER,         # 24 - Responder pregunta RRHH
+) = range(20, 25)
 
 
 def _get_user_plan(telegram_id: int) -> str:
@@ -205,6 +228,49 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.create_user_if_not_exists(user.id, user.first_name or "Usuario")
+
+    if context.args:
+        first_arg = context.args[0].strip()
+        if first_arg.startswith("link_"):
+            code = first_arg.replace("link_", "", 1).strip().upper()
+            linked = await _link_telegram_account(update, code)
+            if linked:
+                return
+
+    # Verificar si es usuario Premium
+    plan = _get_user_plan(user.id)
+    
+    if plan == "premium":
+        # Mensaje de bienvenida especial para Premium
+        web_user = db.get_web_user(user.id)
+        if web_user:
+            expires = web_user.get('subscription_expires_at', '')
+            expires_str = expires[:10] if expires else 'N/A'
+            
+            await update.message.reply_text(
+                f"👋 ¡Hola {user.first_name}!\n\n"
+                f"💎 <b>BIENVENIDO A TU PLAN PREMIUM</b> 💎\n\n"
+                f"Tu suscripción está activa hasta el {expires_str}.\n\n"
+                f"🎯 <b>Beneficios incluidos:</b>\n"
+                f"• 150 búsquedas por día\n"
+                f"• 30 análisis IA de CV y ofertas por mes\n"
+                f"• Simulador de entrevistas con IA (20/mes)\n"
+                f"• Generador de cover letters (20/mes)\n"
+                f"• Job tracker completo sin límites\n\n"
+                f"📋 Comandos Premium disponibles:\n"
+                f"/entrevista — Simular entrevista técnica\n"
+                f"/carta [URL] — Generar cover letter personalizado\n"
+                f"/analizar_oferta [URL] — Análisis match con IA\n\n"
+                f"📊 Configuración:\n"
+                f"/preferencias — Configurar tu perfil\n"
+                f"/horarios — Elegir frecuencia de alertas\n"
+                f"/estado — Ver tu configuración y uso\n\n"
+                f"🚀 Empezá con /preferencias",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+    # Mensaje estándar para usuarios Free/Starter/Pro
     await update.message.reply_text(
         f"👋 ¡Hola {user.first_name}! Soy tu asistente de búsqueda laboral IT.\n\n"
         "🎯 Qué puedo hacer:\n"
@@ -224,6 +290,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/ayuda — Todos los comandos\n\n"
         "🚀 Empezá con /preferencias",
     )
+
+
+async def _link_telegram_account(update: Update, code: str) -> bool:
+    """Vincula una cuenta web existente con el Telegram actual usando un código."""
+    user = update.effective_user
+    if not user:
+        return False
+
+    record = db.consume_telegram_link_code(code)
+    if not record:
+        await update.message.reply_text(
+            "❌ Ese código es inválido o venció.\n"
+            "Volvé al dashboard web y generá uno nuevo desde Configuración.",
+        )
+        return True
+
+    try:
+        result = db.link_web_account_to_telegram(
+            int(record["web_telegram_id"]),
+            user.id,
+            user.first_name or "Usuario",
+        )
+    except ValueError as exc:
+        await update.message.reply_text(f"⚠️ {exc}")
+        return True
+    except Exception as exc:
+        logger.error("Error vinculando cuenta web %s con Telegram %s: %s", record["web_telegram_id"], user.id, exc)
+        await update.message.reply_text(
+            "❌ No pude completar la vinculación en este momento.\n"
+            "Intentá de nuevo en unos minutos.",
+        )
+        return True
+
+    base_url = (config.LANDING_URL or "https://jobbot.ar").rstrip("/")
+    await update.message.reply_text(
+        "✅ <b>Cuenta vinculada</b>\n\n"
+        "Tu dashboard web y tu usuario de Telegram ahora comparten la misma cuenta.\n"
+        f"Plan activo: <b>{str(result.get('plan', 'free')).capitalize()}</b>\n\n"
+        f"Podés entrar al panel cuando quieras con /web o abrir {base_url}",
+        parse_mode=ParseMode.HTML,
+    )
+    return True
 
 
 # ============================================================
@@ -298,6 +406,31 @@ async def estado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💼 Rol: {rol}\n"
         f"🛠 Tecnología: {tec}\n"
         f"⏳ Antigüedad máx: {profile.get('max_job_age_days', 30)} días\n\n"
+    )
+    
+    # Mostrar plan y beneficios si es Premium
+    plan = _get_user_plan(user.id)
+    if plan == "premium":
+        web_user = db.get_web_user(user.id)
+        if web_user:
+            ai_used = web_user.get('ai_analyses_used', 0)
+            ai_limit = web_user.get('ai_analyses_limit', 30)
+            searches_used = web_user.get('searches_used', 0)
+            searches_limit = web_user.get('searches_limit', 150)
+            expires = web_user.get('subscription_expires_at', '')
+            expires_str = expires[:10] if expires else 'N/A'
+            
+            msg += (
+                f"💎 <b>PLAN PREMIUM ACTIVO</b> 💎\n"
+                f"   ✨ Análisis IA: {ai_used}/{ai_limit} este mes\n"
+                f"   🔍 Búsquedas hoy: {searches_used}/{searches_limit}\n"
+                f"   🎯 Simulador entrevistas: disponible\n"
+                f"   📝 Cover letters IA: disponible\n"
+                f"   📊 Job tracker completo: activo\n"
+                f"   ⏰ Vence: {expires_str}\n\n"
+            )
+    
+    msg += (
         f"🔔 Alertas: {alertas}\n"
         f"📡 Canal: {canal_txt}\n"
         f"⏰ Frecuencia: cada {interval}h (de {start_h}:00 a {end_h}:00)\n"
@@ -1172,9 +1305,10 @@ async def borrar_datos(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
-# /entrevista — Simulador de Entrevista con IA
+# /entrevista — Simulador de Entrevista con IA (Mejorado)
 # ============================================================
 async def entrevista_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Punto de entrada del simulador - selección de tipo de entrevista."""
     user_id = update.effective_user.id
     plan = _get_user_plan(user_id)
     if plan != "premium":
@@ -1183,7 +1317,7 @@ async def entrevista_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Podés seguir usando el bot para buscar trabajos y analizar tu CV, "
             "y actualizarte a Premium para practicar entrevistas.",
         )
-        return
+        return ConversationHandler.END
 
     user_data = db.get_user(user_id)
 
@@ -1199,49 +1333,424 @@ async def entrevista_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ La IA no está configurada por el administrador."
         )
         return ConversationHandler.END
+    
+    # Verificar límite de entrevistas del mes
+    web_user = db.get_web_user(user_id)
+    if web_user:
+        interviews_used = web_user.get('interviews_used', 0)
+        interviews_limit = web_user.get('interviews_limit', 20)
+        if interviews_used >= interviews_limit:
+            await update.message.reply_text(
+                f"🔒 Ya usaste tus {interviews_limit} entrevistas del mes incluidas en Premium.\n"
+                "Podés seguir buscando trabajos y usando el resto de las features."
+            )
+            return ConversationHandler.END
 
-    status_msg = await update.message.reply_text(
-        "🧠 Generando preguntas de entrevista personalizadas..."
-    )
-    cv_text = parse_cv(user_data["cv_path"])
-
-    questions_text = await generate_interview_questions(
-        cv_text, user_data.get("role_type", "Developer")
-    )
-    if not questions_text:
-        await status_msg.edit_text("❌ Error al contactar con la IA.")
-        return ConversationHandler.END
-
-    # Parsear las 5 preguntas
-    import re
-
-    questions = re.findall(r"\d[\.\)]\s*(.*)", questions_text)
-    if not questions:
-        # Fallback si el regex falla por formato
-        questions = [q.strip() for q in questions_text.split("\n") if q.strip()][:5]
-
-    if len(questions) < 3:
-        await status_msg.edit_text(
-            "❌ No pude generar suficientes preguntas. Intentá de nuevo."
-        )
-        return ConversationHandler.END
-
-    context.user_data["interview_questions"] = questions
-    context.user_data["interview_index"] = 0
-    context.user_data["interview_cv_text"] = cv_text
-
-    await status_msg.edit_text(
-        "🎙 <b>¡Bienvenido al Simulador de Entrevistas JobBot!</b>\n\n"
-        "Voy a hacerte 5 preguntas (tecnología y soft skills) basadas en tu perfil.\n"
-        "Al final de cada una te daré feedback y una nota.\n\n"
-        "¿Estás listo? Empezamos con la primera...\n\n"
-        f"1️⃣ <b>{questions[0]}</b>",
+    # Paso 1: Preguntar qué tipo de entrevista quiere practicar
+    await update.message.reply_text(
+        "🎙 <b>Simulador de Entrevistas JobBot</b>\n\n"
+        "¿Qué tipo de entrevista querés practicar?\n\n"
+        "<b>[1] 🖥 TÉCNICA</b>\n"
+        "• Preguntas de código y algoritmos\n"
+        "• Stack tecnológico según tu perfil\n"
+        "• Desafíos de arquitectura\n\n"
+        "<b>[2] 👔 RRHH / COMPORTAMENTAL</b>\n"
+        "• Preguntas tipo STAR (método estructurado)\n"
+        "• Fortalezas, desafíos, motivación\n"
+        "• Feedback detallado por componente STAR\n"
+        "• Opcional: datos específicos de la empresa\n\n"
+        "Escribí <b>1</b> o <b>2</b>",
         parse_mode=ParseMode.HTML,
     )
-    return WAITING_INTERVIEW_ANSWER
+    return WAITING_INTERVIEW_TYPE
 
 
+async def entrevista_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Procesa la selección de tipo de entrevista."""
+    text = update.message.text.strip()
+    user_id = update.effective_user.id
+    
+    if text not in ["1", "2"]:
+        await update.message.reply_text(
+            "❌ Opción inválida. Escribí 1 (Técnica) o 2 (RRHH)."
+        )
+        return WAITING_INTERVIEW_TYPE
+    
+    # Guardar tipo seleccionado
+    interview_type = "technical" if text == "1" else "rrhh"
+    context.user_data["interview_type"] = interview_type
+    
+    if interview_type == "rrhh":
+        # Para RRHH, preguntar opcionalmente sobre empresa
+        await update.message.reply_text(
+            "👔 <b>Modo RRHH / Comportamental</b> activado\n\n"
+            "¿Sobre qué empresa querés prepararte? (opcional)\n\n"
+            "Escribí el nombre de la empresa (ej: Mercado Libre, Globant, Ualá) "
+            "o escribí <b>/saltear</b> para práctica general.",
+            parse_mode=ParseMode.HTML,
+        )
+        return WAITING_COMPANY_NAME
+    else:
+        # Para técnica, ir directo a feedback mode
+        return await _ask_feedback_mode(update, context)
+
+
+async def entrevista_company_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Procesa el nombre de empresa (opcional) para RRHH."""
+    text = update.message.text.strip()
+    
+    if text.lower() != "/saltear":
+        company_name = text
+        context.user_data["interview_company"] = company_name
+        
+        # Buscar datos de la empresa
+        status_msg = await update.message.reply_text(
+            f"🔍 Buscando info sobre {company_name}..."
+        )
+        
+        try:
+            company_data = await glassdoor_service.get_company_interview_data(company_name)
+            if company_data and company_data.get("found"):
+                context.user_data["interview_company_data"] = company_data
+                
+                # Mostrar info al usuario
+                info_text = glassdoor_service.format_company_info_for_user(company_data)
+                await status_msg.edit_text(info_text, parse_mode=ParseMode.HTML)
+                
+                # Preguntar si quiere ver todas las preguntas frecuentes
+                common_q = company_data.get("common_questions", [])
+                if len(common_q) > 3:
+                    await update.message.reply_text(
+                        f"¿Querés ver las {len(common_q)} preguntas frecuentes reportadas?\n"
+                        f"Escribí <b>/preguntas</b> o continuemos con la entrevista.",
+                        parse_mode=ParseMode.HTML,
+                    )
+            else:
+                await status_msg.edit_text(
+                    f"ℹ️ No tengo datos específicos de {company_name} en mi base, "
+                    f"pero podemos hacer la práctica general.\n\n"
+                    f"💡 <b>Tip:</b> Recomiendo que investigues sobre {company_name} "
+                    f"en LinkedIn y su web antes de la entrevista real.",
+                    parse_mode=ParseMode.HTML,
+                )
+        except Exception as e:
+            logger.error(f"Error buscando datos de empresa: {e}")
+            await status_msg.edit_text(
+                "⚠️ No pude obtener datos de la empresa, continuemos con práctica general."
+            )
+    
+    # Continuar a selección de modo de feedback
+    return await _ask_feedback_mode(update, context)
+
+
+async def _ask_feedback_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Pregunta el modo de feedback preferido."""
+    interview_type = context.user_data.get("interview_type", "technical")
+    
+    if interview_type == "rrhh":
+        msg = (
+            "⚙️ <b>Configuración del Simulador RRHH</b>\n\n"
+            "¿Cómo preferís recibir el feedback?\n\n"
+            "<b>[1] 📝 INMEDIATO</b>\n"
+            "Después de cada respuesta te doy feedback STAR\n"
+            "Más didáctico, mejor para aprender\n\n"
+            "<b>[2] 📊 AL FINAL</b>\n"
+            "Evaluación completa cuando termines las 5 preguntas\n"
+            "Más realista, como una entrevista verdadera\n\n"
+            "Escribí <b>1</b> o <b>2</b>"
+        )
+    else:
+        msg = (
+            "⚙️ <b>Configuración del Simulador Técnico</b>\n\n"
+            "¿Cómo preferís recibir el feedback?\n\n"
+            "<b>[1] 📝 INMEDIATO</b> - Feedback después de cada respuesta\n"
+            "<b>[2] 📊 AL FINAL</b> - Evaluación completa al terminar\n\n"
+            "Escribí <b>1</b> o <b>2</b>"
+        )
+    
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    return WAITING_FEEDBACK_MODE
+
+
+async def entrevista_feedback_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Procesa selección de modo de feedback y genera preguntas."""
+    text = update.message.text.strip()
+    user_id = update.effective_user.id
+    
+    if text not in ["1", "2"]:
+        await update.message.reply_text(
+            "❌ Opción inválida. Escribí 1 (Inmediato) o 2 (Al final)."
+        )
+        return WAITING_FEEDBACK_MODE
+    
+    feedback_mode = "immediate" if text == "1" else "final"
+    context.user_data["interview_feedback_mode"] = feedback_mode
+    
+    # Obtener datos del usuario
+    user_data = db.get_user(user_id)
+    cv_text = parse_cv(user_data["cv_path"])
+    interview_type = context.user_data.get("interview_type", "technical")
+    
+    # Generar preguntas según el tipo
+    status_msg = await update.message.reply_text(
+        "🧠 Generando preguntas personalizadas..."
+    )
+    
+    if interview_type == "rrhh":
+        # Generar preguntas RRHH
+        company_name = context.user_data.get("interview_company")
+        company_data = context.user_data.get("interview_company_data")
+        
+        questions = await generate_rrhh_interview_questions(
+            cv_text=cv_text,
+            role_type=user_data.get("role_type", "Developer"),
+            company_name=company_name,
+            company_data=company_data,
+            question_count=5
+        )
+        
+        if not questions:
+            await status_msg.edit_text("❌ Error al generar preguntas RRHH.")
+            return ConversationHandler.END
+        
+        context.user_data["interview_questions"] = questions
+        context.user_data["interview_rrhh_responses"] = []  # Para guardar respuestas si modo final
+        
+        # Preparar mensaje de inicio
+        intro = (
+            f"👔 <b>¡Comienza la Entrevista RRHH!</b>\n\n"
+            f"📋 <b>Reglas:</b>\n"
+            f"• 5 preguntas comportamentales\n"
+            f"• Usá el método STAR en tus respuestas:\n"
+            f"  <b>S</b>ituación → <b>T</b>area → <b>A</b>cción → <b>R</b>esultado\n"
+            f"• Sé específico, usa métricas cuando puedas\n\n"
+        )
+        
+        if company_name:
+            intro += f"🎯 Preparándote para: <b>{company_name}</b>\n\n"
+        
+        intro += f"Modo: {'Feedback inmediato' if feedback_mode == 'immediate' else 'Evaluación al final'}\n\n"
+        intro += f"1️⃣ <b>{questions[0]['text']}</b>"
+        
+        await status_msg.edit_text(intro, parse_mode=ParseMode.HTML)
+        return WAITING_RRHH_ANSWER
+        
+    else:
+        # Generar preguntas técnicas (código existente)
+        questions_text = await generate_interview_questions(
+            cv_text, user_data.get("role_type", "Developer")
+        )
+        
+        if not questions_text:
+            await status_msg.edit_text("❌ Error al contactar con la IA.")
+            return ConversationHandler.END
+        
+        # Parsear las 5 preguntas
+        import re
+        questions = re.findall(r"\d[\.\)]\s*(.*)", questions_text)
+        if not questions:
+            questions = [q.strip() for q in questions_text.split("\n") if q.strip()][:5]
+        
+        if len(questions) < 3:
+            await status_msg.edit_text(
+                "❌ No pude generar suficientes preguntas. Intentá de nuevo."
+            )
+            return ConversationHandler.END
+        
+        context.user_data["interview_questions"] = questions
+        context.user_data["interview_index"] = 0
+        context.user_data["interview_cv_text"] = cv_text
+        
+        intro = (
+            "🎙 <b>¡Bienvenido al Simulador de Entrevistas Técnicas!</b>\n\n"
+            "Voy a hacerte 5 preguntas técnicas basadas en tu perfil.\n"
+        )
+        
+        if feedback_mode == "immediate":
+            intro += "Al final de cada una te daré feedback.\n\n"
+        else:
+            intro += "Te daré una evaluación completa al finalizar.\n\n"
+        
+        intro += f"1️⃣ <b>{questions[0]}</b>"
+        
+        await status_msg.edit_text(intro, parse_mode=ParseMode.HTML)
+        return WAITING_INTERVIEW_ANSWER
+
+
+async def entrevista_rrhh_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja las respuestas en modo entrevista RRHH."""
+    user_id = update.effective_user.id
+    answer = update.message.text.strip()
+    questions = context.user_data.get("interview_questions", [])
+    idx = context.user_data.get("interview_rrhh_index", 0)
+    feedback_mode = context.user_data.get("interview_feedback_mode", "immediate")
+    cv_text = parse_cv(db.get_user(user_id)["cv_path"])
+    
+    if not questions or idx >= len(questions):
+        return ConversationHandler.END
+    
+    current_q = questions[idx]
+    
+    if feedback_mode == "immediate":
+        # Evaluar inmediatamente
+        status_msg = await update.message.reply_text("🧐 Analizando con método STAR...")
+        
+        evaluation = await evaluate_rrhh_answer_star(
+            question=current_q['text'],
+            answer=answer,
+            cv_text=cv_text,
+            star_focus=current_q['star_focus'],
+            feedback_mode="immediate"
+        )
+        
+        feedback_text = format_star_feedback(evaluation, "immediate")
+        
+        await status_msg.edit_text(
+            f"📝 <b>Feedback Pregunta {idx + 1}:</b>\n\n{feedback_text}",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        # Guardar para evaluación final
+        responses = context.user_data.get("interview_rrhh_responses", [])
+        responses.append({
+            "question": current_q,
+            "answer": answer
+        })
+        context.user_data["interview_rrhh_responses"] = responses
+        
+        await update.message.reply_text(
+            f"✅ Pregunta {idx + 1}/{len(questions)} guardada."
+        )
+    
+    # Pasar a la siguiente o terminar
+    next_idx = idx + 1
+    context.user_data["interview_rrhh_index"] = next_idx
+    
+    if next_idx < len(questions):
+        next_q = questions[next_idx]
+        
+        if feedback_mode == "final":
+            msg = f"{next_idx + 1}️⃣ <b>{next_q['text']}</b>"
+        else:
+            msg = (
+                f"Siguiente pregunta...\n\n"
+                f"{next_idx + 1}️⃣ <b>{next_q['text']}</b>"
+            )
+        
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return WAITING_RRHH_ANSWER
+    else:
+        # Terminar entrevista
+        if feedback_mode == "final":
+            # Dar evaluación completa
+            return await _finish_rrhh_interview_final(update, context)
+        else:
+            await update.message.reply_text(
+                "🏁 <b>¡Entrevista RRHH terminada!</b>\n\n"
+                "Espero que te haya servido para practicar el método STAR.\n"
+                "Recordá: siempre terminá tus respuestas con una métrica!\n\n"
+                "Podés volver a practicar cuando quieras con /entrevista",
+                parse_mode=ParseMode.HTML,
+            )
+            
+            # Incrementar contador de entrevistas usadas
+            _increment_interview_count(user_id)
+            
+            context.user_data.clear()
+            return ConversationHandler.END
+
+
+async def _finish_rrhh_interview_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Genera evaluación final completa del modo RRHH."""
+    user_id = update.effective_user.id
+    responses = context.user_data.get("interview_rrhh_responses", [])
+    cv_text = parse_cv(db.get_user(user_id)["cv_path"])
+    
+    if not responses:
+        await update.message.reply_text("⚠️ No hay respuestas para evaluar.")
+        return ConversationHandler.END
+    
+    status_msg = await update.message.reply_text(
+        "📊 Generando evaluación final completa..."
+    )
+    
+    # Evaluar todas las respuestas
+    evaluations = []
+    for resp in responses:
+        evaluation = await evaluate_rrhh_answer_star(
+            question=resp['question']['text'],
+            answer=resp['answer'],
+            cv_text=cv_text,
+            star_focus=resp['question']['star_focus'],
+            feedback_mode="detailed"
+        )
+        evaluations.append({
+            "question": resp['question'],
+            "evaluation": evaluation
+        })
+    
+    # Calcular nota final
+    total_score = sum(e['evaluation'].get('overall_score', 0) for e in evaluations)
+    final_score = round(total_score / len(evaluations), 1) if evaluations else 0
+    
+    # Generar mensaje de resultados
+    lines = [
+        "🏁 <b>ENTREVISTA RRHH FINALIZADA</b>\n",
+        f"📊 <b>NOTA FINAL: {final_score}/10</b>\n",
+        "🔍 <b>Evaluación detallada por pregunta:</b>\n"
+    ]
+    
+    for i, ev in enumerate(evaluations, 1):
+        score = ev['evaluation'].get('overall_score', 0)
+        q_short = ev['question']['text'][:50] + "..."
+        lines.append(f"\n<b>Pregunta {i}:</b> {q_short}")
+        lines.append(f"Nota: {score}/10")
+        
+        star = ev['evaluation'].get('star_breakdown', {})
+        if star:
+            lines.append(f"S:{star.get('Situation',{}).get('score',0)} | "
+                        f"T:{star.get('Task',{}).get('score',0)} | "
+                        f"A:{star.get('Action',{}).get('score',0)} | "
+                        f"R:{star.get('Result',{}).get('score',0)}")
+    
+    # Tips generales
+    lines.extend([
+        "\n💡 <b>Tips generales para mejorar:</b>",
+        "• Usá el método STAR estrictamente: Situación específica, Task claro, Actions tuyos, Result medible",
+        "• Siempre terminá con una métrica: 'Esto resultó en X% de mejora'",
+        "• Prepará 3-4 historias STAR de tus experiencias anteriores",
+        "• Practicá en voz alta, el tono y velocidad importan",
+        "",
+        "🚀 ¡Muchos éxitos en tus entrevistas reales!",
+        "Podés practicar nuevamente con /entrevista"
+    ])
+    
+    await status_msg.edit_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    
+    # Incrementar contador de entrevistas usadas
+    _increment_interview_count(user_id)
+    
+    context.user_data.clear()
+    return ConversationHandler.END
+
+
+def _increment_interview_count(user_id: int):
+    """Incrementa el contador de entrevistas usadas del usuario."""
+    try:
+        web_user = db.get_web_user(user_id)
+        if web_user:
+            current = web_user.get('interviews_used', 0)
+            db._execute(
+                "UPDATE web_users SET interviews_used = ? WHERE telegram_id = ?",
+                (current + 1, user_id)
+            )
+    except Exception as e:
+        logger.error(f"Error incrementando contador de entrevistas: {e}")
+
+
+# Funciones originales de entrevista técnica (mantener compatibilidad)
 async def entrevista_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja las respuestas en modo entrevista técnica (código original)."""
     user_id = update.effective_user.id
     answer = update.message.text.strip()
     questions = context.user_data.get("interview_questions")
@@ -1275,11 +1784,15 @@ async def entrevista_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_INTERVIEW_ANSWER
     else:
         await update.message.reply_text(
-            "🏁 <b>¡Entrevista terminada!</b>\n\n"
+            "🏁 <b>¡Entrevista técnica terminada!</b>\n\n"
             "Espero que te haya servido para practicar. Podés volver a jugar cuando quieras con /entrevista.\n\n"
             "¡Muchos éxitos en tus búsquedas reales! 🚀",
             parse_mode=ParseMode.HTML,
         )
+        
+        # Incrementar contador de entrevistas usadas
+        _increment_interview_count(user_id)
+        
         context.user_data.clear()
         return ConversationHandler.END
 
@@ -1289,6 +1802,14 @@ async def entrevista_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================
 async def carta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    plan = _get_user_plan(user_id)
+    if plan != "premium":
+        await update.message.reply_text(
+            "🔒 La generación de cartas personalizadas con IA es parte del plan Premium.\n"
+            "Podés seguir usando JobBot para buscar y comparar ofertas, y actualizarte cuando quieras para destrabar esta herramienta.",
+        )
+        return
+
     user_data = db.get_user(user_id)
 
     if not user_data or not user_data.get("cv_path"):
@@ -1359,6 +1880,7 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 Info:\n"
         "/estado — Tu configuración completa\n"
         "/web — Landing page del bot\n"
+        "/vincular CODIGO — Unir tu dashboard web con Telegram\n"
         "/ayuda — Este mensaje\n\n"
         "🌐 Fuentes: LinkedIn AR, Remotive, Arbeitnow, Jobicy, Himalayas, "
         "Google Jobs, Twitter/X, RSS personalizados.",
@@ -1402,6 +1924,25 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await web_login(update, context)
 
 
+async def vincular(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Vincula una cuenta web con el usuario actual de Telegram."""
+    if not context.args:
+        bot_username = (config.TELEGRAM_BOT_USERNAME or "jobs912bot").lstrip("@")
+        await update.message.reply_text(
+            "🔗 <b>Vincular dashboard con Telegram</b>\n\n"
+            "1. Entrá a tu dashboard web.\n"
+            "2. Andá a Configuración.\n"
+            "3. Generá un código de conexión.\n"
+            f"4. Volvé acá y enviá <code>/vincular TU_CODIGO</code>\n\n"
+            f"También podés abrir directamente: https://t.me/{bot_username}",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    code = context.args[0].strip().upper()
+    await _link_telegram_account(update, code)
+
+
 # ============================================================
 # JOB TRACKER (PRO — /track y /postulaciones)
 # ============================================================
@@ -1411,7 +1952,7 @@ async def track_job(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plan = _get_user_plan(tid)
     if plan == "free":
         await update.message.reply_text(
-            "🔒 El Job Tracker es parte de JobBot Pro.\n"
+            "🔒 El Job Tracker es parte de Starter en adelante.\n"
             "Actualizá tu plan para habilitar el pipeline de postulaciones.",
         )
         return
@@ -1439,7 +1980,7 @@ async def postulaciones(update: Update, context: ContextTypes.DEFAULT_TYPE):
     plan = _get_user_plan(tid)
     if plan == "free":
         await update.message.reply_text(
-            "🔒 El pipeline de postulaciones es parte de JobBot Pro.\n"
+            "🔒 El pipeline de postulaciones es parte de Starter en adelante.\n"
             "Actualizá tu plan para ver y gestionar tus aplicaciones desde JobBot.",
         )
         return
@@ -1786,12 +2327,39 @@ def main():
         allow_reentry=True,
     )
 
-    # ---- ConversationHandler para /entrevista ----
+    # ---- ConversationHandler para /entrevista (MEJORADO con RRHH) ----
     conv_entrevista = ConversationHandler(
         entry_points=[CommandHandler("entrevista", entrevista_start)],
         states={
+            # Paso 1: Selección de tipo de entrevista
+            WAITING_INTERVIEW_TYPE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, entrevista_type_selected
+                )
+            ],
+            # Paso 2 (opcional): Nombre de empresa para RRHH
+            WAITING_COMPANY_NAME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, entrevista_company_name
+                )
+            ],
+            # Paso 3: Modo de feedback
+            WAITING_FEEDBACK_MODE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, entrevista_feedback_mode
+                )
+            ],
+            # Entrevista técnica original
             WAITING_INTERVIEW_ANSWER: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, entrevista_logic)
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, entrevista_logic
+                )
+            ],
+            # Entrevista RRHH
+            WAITING_RRHH_ANSWER: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, entrevista_rrhh_logic
+                )
             ],
         },
         fallbacks=[CommandHandler("cancelar", cancelar)],
@@ -1826,6 +2394,7 @@ def main():
     app.add_handler(CommandHandler("web", web_login))
     app.add_handler(CommandHandler("web_login", web_login))
     app.add_handler(CommandHandler("dashboard", dashboard))
+    app.add_handler(CommandHandler("vincular", vincular))
     app.add_handler(CommandHandler("borrar_datos", borrar_datos))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     
