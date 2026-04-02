@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import Sidebar from "@/components/Sidebar"
@@ -13,18 +13,15 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isReady, setIsReady] = useState(false)
+  const token = getToken()
 
   useEffect(() => {
-    const token = getToken()
     if (!token) {
       router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`)
-      return
     }
-    setIsReady(true)
-  }, [pathname, router])
+  }, [pathname, router, token])
 
-  if (!isReady) {
+  if (!token) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
         Cargando tu dashboard...

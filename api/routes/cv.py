@@ -34,7 +34,7 @@ class CVProposalRequest(BaseModel):
     job_url: str
     job_title: str
     company_name: str
-    user_cv: str
+    user_cv: Optional[str] = None
 
 
 SECTION_PATTERNS = {
@@ -214,6 +214,17 @@ def _quota_snapshot(db: Database, telegram_id: int) -> dict:
         "remaining": max(0, ai_limit - ai_used),
         "ai_enabled": ai_limit > 0,
     }
+
+
+def _load_saved_cv_text(current_user: dict) -> str:
+    stored_path = (current_user.get("user") or {}).get("cv_path")
+    if not stored_path:
+        return ""
+
+    try:
+      return parse_cv(stored_path) or ""
+    except Exception:
+      return ""
 
 
 @router.post("/scan")
@@ -409,6 +420,12 @@ async def generate_proposal(
         )
 
     _consume_ai_quota(db, current_user["telegram_id"])
+    user_cv = _clean_text(request.user_cv) or _load_saved_cv_text(current_user)
+    if not user_cv:
+        raise HTTPException(
+            status_code=400,
+            detail="Necesitamos el texto de tu CV o uno cargado previamente en JobBot",
+        )
 
     prompt = f"""
 Genera una propuesta personalizada para el siguiente empleo:
@@ -417,7 +434,7 @@ Empresa: {request.company_name}
 Puesto: {request.job_title}
 
 CV del candidato:
-{request.user_cv}
+{user_cv}
 
 La propuesta debe:
 1. Ser de 2-3 parrafos maximo
@@ -468,12 +485,21 @@ async def get_application_tips(
 async def start_mock_interview(
     job_title: str,
     current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
 ):
     if current_user["plan"] != "premium":
         raise HTTPException(
             status_code=403,
             detail="Entrevistas mock requieren Plan Premium",
         )
+
+    if not db.check_usage_limit(current_user["telegram_id"], "interviews"):
+        raise HTTPException(
+            status_code=403,
+            detail="Alcanzaste el limite mensual de mock interviews para tu plan actual",
+        )
+
+    db.increment_usage(current_user["telegram_id"], "interviews")
 
     questions = {
         "Frontend Developer": [

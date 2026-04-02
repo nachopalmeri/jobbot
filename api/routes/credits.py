@@ -208,7 +208,7 @@ async def credit_webhook(
     
     # Procesar solo checkout.session.completed
     if event.get("type") == "checkout.session.completed":
-        session = event["data", "object"]
+        session = event["data"]["object"]
         metadata = session.get("metadata", {})
         
         telegram_id = int(metadata.get("telegram_id", 0))

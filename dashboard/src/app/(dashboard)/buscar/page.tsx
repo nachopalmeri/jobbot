@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { ExternalLink, Search } from "lucide-react"
 
 import { apiRequest } from "@/lib/api"
@@ -11,15 +11,27 @@ const modalityLabels: Record<string, string> = {
   onsite: "Presencial",
 }
 
+interface SearchJob {
+  id: string
+  title: string
+  company: string
+  location: string
+  modality: string
+  match_score: number
+  description: string
+  source: string
+  url?: string
+}
+
 export default function BuscarPage() {
   const [query, setQuery] = useState("")
   const [modality, setModality] = useState("all")
-  const [jobs, setJobs] = useState<any[]>([])
+  const [jobs, setJobs] = useState<SearchJob[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const runSearch = async (customQuery = query, customModality = modality) => {
+  const runSearch = useCallback(async (customQuery: string, customModality: string) => {
     try {
       setLoading(true)
       setError("")
@@ -32,7 +44,7 @@ export default function BuscarPage() {
       }
       params.set("limit", "20")
 
-      const data = await apiRequest<{ jobs: any[]; total: number }>(
+      const data = await apiRequest<{ jobs: SearchJob[]; total: number }>(
         `/jobs/search?${params.toString()}`,
         {},
         true,
@@ -48,11 +60,11 @@ export default function BuscarPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    void runSearch("")
-  }, [])
+    void runSearch("", "all")
+  }, [runSearch])
 
   return (
     <div className="p-6">
@@ -68,11 +80,11 @@ export default function BuscarPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void runSearch()
-                }
-              }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    void runSearch(query, modality)
+                  }
+                }}
               placeholder="Python, React, backend, data..."
               className="w-full rounded-lg border border-slate-200 py-3 pl-10 pr-4 outline-none focus:border-purple-500"
             />
@@ -88,7 +100,7 @@ export default function BuscarPage() {
             <option value="onsite">Presencial</option>
           </select>
           <button
-            onClick={() => void runSearch()}
+            onClick={() => void runSearch(query, modality)}
             disabled={loading}
             className="rounded-lg bg-purple-600 px-5 py-3 font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           >

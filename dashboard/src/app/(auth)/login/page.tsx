@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
-import { apiRequest, getApiBaseUrl, setToken } from "@/lib/api"
+import { apiRequest, setToken } from "@/lib/api"
 
 function LoginContent() {
   const router = useRouter()
@@ -51,30 +51,22 @@ function LoginContent() {
     setMessage("")
     
     try {
-      const apiBaseUrl = getApiBaseUrl()
-      if (!apiBaseUrl) {
-        throw new Error("La API productiva todavia no esta configurada para este dashboard.")
-      }
-
-      const res = await fetch(`${apiBaseUrl}/auth/token`, {
+      const data = await apiRequest<{ access_token: string }>("/auth/token", {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           username: email,
           password: password,
         }),
       })
-      
-      if (res.ok) {
-        const data = await res.json()
-        setToken(data.access_token)
-        router.replace(nextPath)
-      } else {
-        const data = await res.json()
-        setMessage(data.detail || "Credenciales inválidas")
-      }
+
+      setToken(data.access_token)
+      router.replace(nextPath)
     } catch (error) {
-      setMessage("Error de conexión")
+      const detail =
+        error && typeof error === "object" && "message" in error
+          ? String(error.message)
+          : "Error de conexión"
+      setMessage(detail)
     } finally {
       setLoading(false)
     }

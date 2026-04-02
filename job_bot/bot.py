@@ -1879,12 +1879,65 @@ async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/carta [text] — Generar carta de presentación\n\n"
         "📊 Info:\n"
         "/estado — Tu configuración completa\n"
-        "/web — Landing page del bot\n"
+        "/precios — Ver planes y diferencias\n"
+        "/suscripcion — Abrir pricing y upgrade\n"
+        "/creditos — Comprar créditos para CV Suite\n"
+        "/web — Entrar al dashboard web\n"
         "/vincular CODIGO — Unir tu dashboard web con Telegram\n"
         "/ayuda — Este mensaje\n\n"
         "🌐 Fuentes: LinkedIn AR, Remotive, Arbeitnow, Jobicy, Himalayas, "
         "Google Jobs, Twitter/X, RSS personalizados.",
         parse_mode=ParseMode.HTML,
+    )
+
+
+async def precios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "💳 <b>Planes JobBot</b>\n\n"
+        "🆓 <b>Free — $0/mes</b>\n"
+        "• 5 búsquedas por día\n"
+        "• Dashboard operativo\n"
+        "• Score ATS inicial de CV\n\n"
+        "🚀 <b>Starter — $4/mes</b>\n"
+        "• 30 búsquedas por día\n"
+        "• Resultados completos\n"
+        "• Pipeline de postulaciones\n"
+        "• Alertas automáticas por Telegram\n\n"
+        "🎯 <b>Pro — $8/mes</b>\n"
+        "• 80 búsquedas por día\n"
+        "• CV analysis con IA y match score\n"
+        "• Keywords faltantes + feedback recruiter\n"
+        "• Pipeline completo\n\n"
+        "💎 <b>Premium — $12/mes</b>\n"
+        "• Todo de Pro\n"
+        "• CV Intelligence Suite destacada\n"
+        "• Tailoring + cover letters\n"
+        "• Mock interviews con IA\n"
+        "• Búsquedas ilimitadas\n\n"
+        "🌐 Gestioná tu plan desde el dashboard:\n"
+        "https://app-jobbot.vercel.app/dashboard/suscripcion",
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+async def suscripcion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "⭐ <b>Gestioná tu suscripción</b>\n\n"
+        "Compará planes, activá Premium y administra el checkout desde el dashboard:\n"
+        "https://app-jobbot.vercel.app/dashboard/suscripcion",
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+
+
+async def creditos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "⭐ <b>CV Suite y créditos IA</b>\n\n"
+        "Comprá créditos, desbloqueá CV Suite y revisá tu balance desde:\n"
+        "https://app-jobbot.vercel.app/dashboard/creditos",
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
     )
 
 
@@ -2374,11 +2427,15 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("help", ayuda))
+    app.add_handler(CommandHandler("precios", precios))
+    app.add_handler(CommandHandler("suscripcion", suscripcion))
+    app.add_handler(CommandHandler("creditos", creditos))
     app.add_handler(CommandHandler("estado", estado))
     app.add_handler(conv_preferencias)
     app.add_handler(conv_horarios)
     app.add_handler(conv_entrevista)
     app.add_handler(CommandHandler("cargar_cv", cargar_cv_start))
+    app.add_handler(CommandHandler("analizar_cv", analizar_cv))
     app.add_handler(CommandHandler("analizar_oferta", analizar_oferta))
     app.add_handler(CommandHandler("empresa", empresa))
     app.add_handler(CommandHandler("detalle_job", detalle_job))

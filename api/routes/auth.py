@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import ExpiredSignatureError, JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel
+try:
+    from werkzeug.security import check_password_hash
+except ImportError:
+    check_password_hash = None
+from pydantic import BaseModel, EmailStr, Field
 
 try:
     from job_bot.database import Database
@@ -36,7 +40,20 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Try passlib first
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        pass
+
+    # Fallback to werkzeug for legacy hashes
+    if check_password_hash:
+        try:
+            return check_password_hash(hashed_password, plain_password)
+        except Exception:
+            pass
+
+    return False
 
 
 def get_password_hash(password: str) -> str:
@@ -97,37 +114,43 @@ def get_authenticated_user(
     base_user = db.get_user(telegram_id) or {}
     web_user = db.get_web_user(telegram_id) or {}
 
+    if not base_user and not web_user and email and "@" in email:
+        linked_web_user = db.get_web_user_by_email(email) or {}
+        if linked_web_user:
+            telegram_id = int(linked_web_user["telegram_id"])
+            base_user = db.get_user(telegram_id) or {}
+            web_user = linked_web_user
+
     return {
         "telegram_id": telegram_id,
         "email": email,
         "plan": db.get_user_plan(telegram_id),
         "is_admin": db.is_admin(telegram_id),
+        "has_telegram_link": telegram_id > 0,
         "name": base_user.get("name") or web_user.get("email") or "Usuario",
         "user": base_user,
         "web_user": web_user,
     }
 
 
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    telegram_id: Optional[int] = None
+    name: Optional[str] = Field(default="Usuario", max_length=120)
+
+
 @router.post("/register")
-async def register(user_data: dict, db: Database = Depends(get_db)):
-    email = (user_data.get("email") or "").strip().lower()
-    password = user_data.get("password")
-    telegram_id = user_data.get("telegram_id")
-    name = (user_data.get("name") or "Usuario").strip() or "Usuario"
+async def register(user_data: RegisterRequest, db: Database = Depends(get_db)):
+    email = str(user_data.email).strip().lower()
+    password = user_data.password
+    telegram_id = user_data.telegram_id
+    name = (user_data.name or "Usuario").strip() or "Usuario"
+    generated_web_only_account = False
 
-    if not email or not password or not telegram_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="email, password y telegram_id son requeridos",
-        )
-
-    try:
-        telegram_id = int(telegram_id)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="telegram_id invalido",
-        )
+    if telegram_id is None:
+        telegram_id = db.generate_web_account_id()
+        generated_web_only_account = True
 
     existing = db.get_web_user_by_email(email)
     if existing:
@@ -136,16 +159,18 @@ async def register(user_data: dict, db: Database = Depends(get_db)):
             detail="Ya existe una cuenta con ese email",
         )
 
-    existing_web_for_telegram = db.get_web_user(telegram_id)
-    if existing_web_for_telegram:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Ese Telegram ID ya esta vinculado a otra cuenta",
-        )
+    if not generated_web_only_account:
+        existing_web_for_telegram = db.get_web_user(telegram_id)
+        if existing_web_for_telegram:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ese Telegram ID ya esta vinculado a otra cuenta",
+            )
 
     hashed_pw = get_password_hash(password)
     db.create_user_if_not_exists(telegram_id, name)
     db.create_web_user(telegram_id, email, hashed_pw)
+    db.set_alert_channel(telegram_id, "telegram" if telegram_id > 0 else "web")
     db.update_user_plan(telegram_id, "free")
     access_token = create_access_token(data={"sub": email, "telegram_id": telegram_id})
     return {
@@ -153,6 +178,9 @@ async def register(user_data: dict, db: Database = Depends(get_db)):
         "telegram_id": telegram_id,
         "email": email,
         "is_admin": db.is_admin(telegram_id),
+        "has_telegram_link": telegram_id > 0,
+        "is_temp_account": generated_web_only_account,
+        "account_type": "telegram-linked" if telegram_id > 0 else "web-only",
         "access_token": access_token,
         "token_type": "bearer",
     }
@@ -203,6 +231,9 @@ async def get_current_user(current_user: dict = Depends(get_authenticated_user))
         "email": current_user["email"],
         "plan": current_user["plan"],
         "is_admin": current_user["is_admin"],
+        "has_telegram_link": current_user["has_telegram_link"],
+        "is_temp_account": current_user["telegram_id"] <= 0,
+        "account_type": "telegram-linked" if current_user["telegram_id"] > 0 else "web-only",
         "name": current_user["name"],
     }
 
@@ -224,11 +255,11 @@ class TelegramCodeLoginRequest(BaseModel):
 async def telegram_auth(request: TelegramAuthRequest):
     import time
 
-    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
     if not telegram_bot_token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="TELEGRAM_BOT_TOKEN no configurado",
+            detail="TELEGRAM_BOT_TOKEN/TELEGRAM_TOKEN no configurado",
         )
 
     if abs(int(time.time()) - int(request.auth_date)) > 300:
@@ -359,4 +390,39 @@ async def create_telegram_web_login_link(
         "code": code,
         "expires_in": 600,
         "login_url": f"{landing_url}/login?code={code}",
+    }
+
+
+@router.post("/telegram/link-code")
+async def create_telegram_link_code(
+    current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
+):
+    telegram_id = int(current_user["telegram_id"])
+    bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "jobs912bot").lstrip("@")
+    dashboard_url = (
+        os.getenv("DASHBOARD_URL")
+        or os.getenv("LANDING_URL")
+        or "https://app-jobbot.vercel.app"
+    ).rstrip("/")
+    if telegram_id > 0:
+        return {
+            "code": None,
+            "expires_in": 0,
+            "already_linked": True,
+            "telegram_bot_username": bot_username,
+            "dashboard_url": dashboard_url,
+        }
+
+    code = secrets.token_hex(3).upper()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
+    db.create_telegram_link_code(telegram_id, code, expires_at)
+
+    return {
+        "code": code,
+        "expires_in": 1200,
+        "already_linked": False,
+        "telegram_bot_username": bot_username,
+        "dashboard_url": dashboard_url,
+        "deep_link": f"https://t.me/{bot_username}?start=link_{code}",
+        "instructions": f"/vincular {code}",
     }

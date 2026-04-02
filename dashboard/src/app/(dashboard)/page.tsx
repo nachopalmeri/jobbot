@@ -1,138 +1,366 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Bell, FileText, Search, TrendingUp } from "lucide-react"
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Bell,
+  Briefcase,
+  Crown,
+  Search,
+  Sparkles,
+  Target,
+} from "lucide-react";
 
-import { apiRequest } from "@/lib/api"
+import ApplicationsPipeline from "@/components/ApplicationsPipeline";
+import ProductivityPanel from "@/components/ProductivityPanel";
+import { apiRequest } from "@/lib/api";
+import { JobApplication } from "@/lib/dashboard";
 
-const statIcons = [Search, FileText, TrendingUp, Bell]
+interface DashboardPayload {
+  plan: string;
+  weekly_goal: number;
+  weekly_applied: number;
+  digest_mode: string;
+  active_alerts: boolean;
+  funnel?: {
+    applied?: number;
+    interview?: number;
+    offer?: number;
+    rejected?: number;
+  };
+  applications: JobApplication[];
+}
+
+interface UsagePayload {
+  remaining_searches: number;
+  searches_limit: number;
+  searches_used: number;
+  remaining_interviews: number;
+  interviews_limit: number;
+}
+
+interface JobRecommendation {
+  id: string;
+  title: string;
+  company: string;
+  location: string;
+  modality: string;
+  match_score: number;
+  source: string;
+  url?: string;
+}
 
 export default function DashboardPage() {
-  const [dashboard, setDashboard] = useState<any | null>(null)
-  const [usage, setUsage] = useState<any | null>(null)
-  const [recommendedJobs, setRecommendedJobs] = useState<any[]>([])
-  const [error, setError] = useState("")
+  const [dashboard, setDashboard] = useState<DashboardPayload | null>(null);
+  const [usage, setUsage] = useState<UsagePayload | null>(null);
+  const [recommendedJobs, setRecommendedJobs] = useState<JobRecommendation[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const load = async () => {
       try {
         const [dashboardData, usageData, jobsData] = await Promise.all([
-          apiRequest<any>("/users/dashboard", {}, true),
-          apiRequest<any>("/users/usage", {}, true),
-          apiRequest<any>("/jobs/recommended", {}, true),
-        ])
-        setDashboard(dashboardData)
-        setUsage(usageData)
-        setRecommendedJobs(jobsData.jobs ?? [])
+          apiRequest<DashboardPayload>("/users/dashboard", {}, true),
+          apiRequest<UsagePayload>("/users/usage", {}, true),
+          apiRequest<{ jobs: JobRecommendation[] }>("/jobs/recommended", {}, true),
+        ]);
+
+        setDashboard(dashboardData);
+        setUsage(usageData);
+        setRecommendedJobs(jobsData.jobs ?? []);
       } catch (err) {
         const detail =
           err && typeof err === "object" && "message" in err
             ? String(err.message)
-            : "No se pudo cargar el dashboard."
-        setError(detail)
+            : "No se pudo cargar el dashboard.";
+        setError(detail);
       }
-    }
+    };
 
-    void load()
-  }, [])
+    void load();
+  }, []);
 
-  const stats = [
-    {
-      title: "Empleos trackeados",
-      value: String(dashboard?.applications?.length ?? 0),
-      change: `${dashboard?.funnel?.interview ?? 0} entrevistas activas`,
-      trend: "up",
-    },
-    {
-      title: "Objetivo semanal",
-      value: `${dashboard?.weekly_applied ?? 0}/${dashboard?.weekly_goal ?? 0}`,
-      change: "Aplicaciones esta semana",
-      trend: "up",
-    },
-    {
-      title: "Búsquedas disponibles",
-      value: usage?.searches_limit === 0 ? "Ilimitadas" : String(usage?.remaining_searches ?? 0),
-      change: usage?.searches_limit === 0 ? "Tu plan no tiene cap" : `${usage?.searches_used ?? 0} usadas hoy`,
-      trend: "neutral",
-    },
-    {
-      title: "Alertas",
-      value: dashboard?.active_alerts ? "Activas" : "Pausadas",
-      change: `Modo ${dashboard?.digest_mode ?? "realtime"}`,
-      trend: dashboard?.active_alerts ? "up" : "neutral",
-    },
-  ]
+  const stats = useMemo(
+    () => [
+      {
+        label: "Pipeline activo",
+        value: dashboard?.applications?.length ?? 0,
+        detail: `${dashboard?.funnel?.interview ?? 0} entrevistas abiertas`,
+      },
+      {
+        label: "Busquedas disponibles",
+        value:
+          usage?.searches_limit === 0
+            ? "Ilimitadas"
+            : String(usage?.remaining_searches ?? 0),
+        detail:
+          usage?.searches_limit === 0
+            ? "Tu plan ya no tiene tope diario"
+            : `${usage?.searches_used ?? 0} usadas hoy`,
+      },
+      {
+        label: "Alertas",
+        value: dashboard?.active_alerts ? "Encendidas" : "Pausadas",
+        detail: `Modo ${dashboard?.digest_mode ?? "realtime"}`,
+      },
+      {
+        label: "Entrevistas IA",
+        value:
+          usage?.interviews_limit === 0
+            ? "No incluidas"
+            : `${usage?.remaining_interviews ?? 0}`,
+        detail:
+          usage?.interviews_limit === 0
+            ? "Disponibles desde Premium"
+            : `${usage?.interviews_limit ?? 0} incluidas este mes`,
+      },
+    ],
+    [dashboard, usage],
+  );
 
   return (
-    <div className="p-6">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">¡Bienvenido de nuevo!</h1>
-        <p className="text-slate-600">Estas son las estadísticas reales de tu búsqueda de empleo</p>
-      </div>
+    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(168,85,247,0.12),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.1),_transparent_28%),linear-gradient(180deg,_#f8fafc,_#eef2ff_42%,_#f8fafc)] p-6 lg:p-8">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-6 shadow-sm backdrop-blur lg:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-600">
+                Dashboard Operativo
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
+                Todo tu job search en un solo tablero.
+              </h1>
+              <p className="mt-4 text-base leading-7 text-slate-600 lg:text-lg">
+                Segui tu pipeline, sostené tu objetivo semanal, enfocá bloques de trabajo
+                con pomodoro y dejá a mano la suite de CV para aplicar mejor.
+              </p>
+            </div>
 
-      {error ? (
-        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat, index) => {
-          const Icon = statIcons[index]
-          return (
-          <div key={stat.title} className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500 font-medium">{stat.title}</p>
-                <p className="text-3xl font-bold text-slate-900 mt-1">{stat.value}</p>
-                <p className={`text-sm mt-2 ${
-                  stat.trend === "up" ? "text-green-600" : 
-                  stat.trend === "down" ? "text-red-600" : "text-slate-500"
-                }`}>
-                  {stat.change}
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                <Icon className="text-purple-600" size={24} />
-              </div>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/dashboard/buscar"
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 font-medium text-white hover:bg-slate-800"
+              >
+                Buscar empleos
+                <ArrowRight size={18} />
+              </Link>
+              <Link
+                href="/dashboard/cv"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 font-medium text-slate-700 hover:border-violet-200 hover:text-violet-700"
+              >
+                CV Intelligence
+                <Sparkles size={18} />
+              </Link>
             </div>
           </div>
-        )})}
-      </div>
 
-      <div className="bg-white rounded-xl p-6 border border-slate-200">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Últimos empleos recomendados</h2>
-        <div className="space-y-4">
-          {recommendedJobs.length === 0 ? (
-            <div className="rounded-lg bg-slate-50 p-4 text-slate-600">
-              Configurá mejor tu perfil o hacé una búsqueda manual para empezar a recibir recomendaciones.
+          {error ? (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {error}
             </div>
-          ) : recommendedJobs.slice(0, 5).map((job) => (
-            <a
-              key={job.id}
-              href={job.url || "#"}
-              target="_blank"
-              rel="noreferrer"
-              className="flex justify-between items-center p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-            >
+          ) : null}
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            {stats.map((stat) => (
+              <article
+                key={stat.label}
+                className="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm"
+              >
+                <p className="text-sm font-medium text-slate-500">{stat.label}</p>
+                <div className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                  {stat.value}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{stat.detail}</p>
+              </article>
+            ))}
+          </div>
+
+          <ProductivityPanel
+            weeklyApplied={dashboard?.weekly_applied ?? 0}
+            weeklyGoal={dashboard?.weekly_goal ?? 0}
+          />
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="font-medium text-slate-900">{job.title}</h3>
-                <p className="text-sm text-slate-600">{job.company} • {job.location}</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Match {job.match_score}% • {job.source}
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  Pipeline
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                  Vista tipo Notion para tus postulaciones
+                </h2>
+              </div>
+              <Link
+                href="/dashboard/postulaciones"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-950"
+              >
+                Abrir pipeline
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+
+            <ApplicationsPipeline
+              applications={dashboard?.applications ?? []}
+              compact
+              subtitle="Segui tu pipeline en tablero o tabla sin salir del dashboard."
+            />
+          </div>
+
+          <div className="space-y-4">
+            <article className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-violet-100 p-3 text-violet-700">
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-600">
+                    CV Analysis
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                    Resume Score + ATS + Job Match
+                  </h3>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                Tu suite de CV ya vive dentro del dashboard: score ATS, keywords faltantes,
+                feedback IA, cover letters y mock interviews desde un mismo flujo.
+              </p>
+              <Link
+                href="/dashboard/cv"
+                className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-violet-600 px-4 py-2.5 font-medium text-white hover:bg-violet-700"
+              >
+                Ir a CV Suite
+                <ArrowRight size={16} />
+              </Link>
+            </article>
+
+            <article className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+                  <Crown size={20} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-600">
+                    Plan Actual
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                    {(dashboard?.plan || "free").toUpperCase()}
+                  </h3>
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                Si queres destrabar mock interviews, cover letters y CV Intelligence full,
+                tene todo centralizado desde la suscripcion.
+              </p>
+              <Link
+                href="/dashboard/suscripcion"
+                className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 font-medium text-amber-800 hover:bg-amber-100"
+              >
+                Ver planes premium
+                <ArrowRight size={16} />
+              </Link>
+            </article>
+          </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/85 p-6 shadow-sm backdrop-blur lg:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Recomendadas
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                Oportunidades para atacar hoy
+              </h2>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/dashboard/buscar"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-950"
+              >
+                <Search size={16} />
+                Abrir buscador
+              </Link>
+              <Link
+                href="/dashboard/configuracion"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-300 hover:text-slate-950"
+              >
+                <Bell size={16} />
+                Ajustar alertas
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {recommendedJobs.slice(0, 3).map((job) => (
+              <a
+                key={job.id}
+                href={job.url || "#"}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition-transform hover:-translate-y-0.5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    Match {job.match_score}%
+                  </span>
+                  <span className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                    {job.source}
+                  </span>
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-slate-950">{job.title}</h3>
+                <p className="mt-2 text-sm text-slate-600">{job.company}</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {job.location} · {job.modality}
+                </p>
+              </a>
+            ))}
+
+            {recommendedJobs.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm leading-6 text-slate-500 lg:col-span-3">
+                Completa tu configuracion y ejecuta una primera busqueda para poblar las recomendaciones.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Link
+              href="/dashboard/postulaciones"
+              className="flex items-center gap-3 rounded-3xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-700 hover:bg-slate-100"
+            >
+              <div className="rounded-2xl bg-slate-950 p-3 text-white">
+                <Briefcase size={20} />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-950">Tabla y tablero de seguimiento</p>
+                <p className="text-sm text-slate-500">
+                  Cambia estados, agrega notas y ordena tu pipeline.
                 </p>
               </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                job.modality === "remote" ? "bg-green-100 text-green-700" :
-                job.modality === "hybrid" ? "bg-amber-100 text-amber-700" :
-                "bg-slate-100 text-slate-700"
-              }`}>
-                {job.modality}
-              </span>
-            </a>
-          ))}
-        </div>
+            </Link>
+
+            <Link
+              href="/dashboard/cv"
+              className="flex items-center gap-3 rounded-3xl border border-violet-200 bg-violet-50 px-5 py-4 text-violet-800 hover:bg-violet-100"
+            >
+              <div className="rounded-2xl bg-violet-600 p-3 text-white">
+                <Target size={20} />
+              </div>
+              <div>
+                <p className="font-semibold text-slate-950">CV analysis estilo RankMyCV</p>
+                <p className="text-sm text-slate-600">
+                  Score, ATS, Job Match y feedback para cada vacante.
+                </p>
+              </div>
+            </Link>
+          </div>
+        </section>
       </div>
     </div>
-  )
+  );
 }

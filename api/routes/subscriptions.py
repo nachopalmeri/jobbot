@@ -97,10 +97,10 @@ async def get_plans():
                 "price": 0,
                 "currency": "USD",
                 "features": [
-                    "Scanner ATS basico en web",
                     "5 busquedas por dia",
                     "Hasta 5 resultados por consulta",
-                    "Dashboard y pipeline basico",
+                    "Dashboard basico",
+                    "Score ATS inicial de CV",
                 ],
             },
             {
@@ -113,7 +113,7 @@ async def get_plans():
                     "Resultados completos",
                     "Pipeline de postulaciones",
                     "Alertas automatizadas por Telegram",
-                    "Base CV score y quick wins",
+                    "CV score y quick wins",
                 ],
             },
             {
@@ -137,7 +137,8 @@ async def get_plans():
                 "currency": "USD",
                 "features": [
                     "Todo de Pro",
-                    "CV Tailoring",
+                    "CV Intelligence Suite destacada",
+                    "CV Tailoring y cover letters",
                     "Entrevistas mock con IA",
                     "Busquedas ilimitadas",
                     "Mayor cuota diaria de IA",

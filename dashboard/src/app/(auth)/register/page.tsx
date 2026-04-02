@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation"
 
 import { apiRequest, setToken } from "@/lib/api"
 
+interface RegisterResponse {
+  access_token: string
+  is_temp_account?: boolean
+}
+
 export default function RegisterPage() {
   const router = useRouter()
   const [name, setName] = useState("")
@@ -21,18 +26,23 @@ export default function RegisterPage() {
     setMessage("")
     
     try {
-      const data = await apiRequest<{ access_token: string }>("/auth/register", {
+      const trimmedTelegramId = telegramId.trim()
+      const data = await apiRequest<RegisterResponse>("/auth/register", {
         method: "POST",
         body: JSON.stringify({
           email,
           password,
-          telegram_id: parseInt(telegramId, 10),
+          telegram_id: trimmedTelegramId ? parseInt(trimmedTelegramId, 10) : null,
           name: name || "Usuario",
         }),
       })
 
       setToken(data.access_token)
-      router.replace("/dashboard")
+      router.replace(
+        data.is_temp_account ?? !trimmedTelegramId
+          ? "/dashboard/configuracion?linkTelegram=1"
+          : "/dashboard",
+      )
     } catch (error) {
       const detail =
         error && typeof error === "object" && "message" in error
@@ -48,7 +58,7 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 w-full max-w-md border border-white/20">
         <h1 className="text-3xl font-bold text-white mb-2 text-center">JobBot</h1>
-        <p className="text-white/60 text-center mb-6">Creá tu cuenta</p>
+        <p className="text-white/60 text-center mb-6">Creá tu cuenta y empezá desde web</p>
         {message ? (
           <div className="mb-4 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white">
             {message}
@@ -65,12 +75,14 @@ export default function RegisterPage() {
           />
           <input
             type="text"
-            placeholder="Tu ID de Telegram"
+            placeholder="Tu ID de Telegram (opcional)"
             value={telegramId}
             onChange={(e) => setTelegramId(e.target.value)}
             className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            required
           />
+          <p className="px-1 text-xs text-white/60">
+            Si querés alertas y login desde el bot, completalo ahora. Si no, podés arrancar igual con cuenta web.
+          </p>
           <input
             type="email"
             placeholder="Email"

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -39,10 +41,69 @@ class PreferencesUpdate(BaseModel):
     preferred_companies: str = ""
 
 
+def _parse_application_datetime(raw_value):
+    if not raw_value:
+        return None
+
+    if isinstance(raw_value, datetime):
+        dt = raw_value
+    elif isinstance(raw_value, str):
+        try:
+            dt = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _compute_application_streak(apps: list[dict]) -> int:
+    application_days = set()
+    for app in apps:
+        parsed = _parse_application_datetime(app.get("applied_at") or app.get("created_at"))
+        if parsed:
+            application_days.add(parsed.date())
+
+    if not application_days:
+        return 0
+
+    today = datetime.now(timezone.utc).date()
+    if today in application_days:
+        cursor = today
+    elif today - timedelta(days=1) in application_days:
+        cursor = today - timedelta(days=1)
+    else:
+        return 0
+
+    streak = 0
+    while cursor in application_days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
+def _build_daily_motivation(weekly_goal: int, weekly_applied: int, streak: int) -> str:
+    if weekly_goal > 0 and weekly_applied >= weekly_goal:
+        return "Ya cumpliste tu meta semanal. Ahora conviene priorizar calidad sobre ansiedad."
+    if streak >= 5:
+        return f"Llevas {streak} dias de constancia. Una buena rutina gana mas que un sprint."
+
+    remaining = max(weekly_goal - weekly_applied, 0)
+    if remaining > 0:
+        return f"Te faltan {remaining} postulaciones para cerrar tu meta semanal. Hoy una buena aplicacion ya suma."
+    return "No hace falta resolver toda la busqueda hoy. Enfocate en una mejora concreta."
+
+
 def _build_dashboard_payload(db: Database, telegram_id: int) -> dict:
     profile = db.get_user_profile(telegram_id)
     schedule = db.get_user_schedule(telegram_id)
     apps = db.get_user_applications(telegram_id)
+    weekly_goal = db.get_weekly_goal(telegram_id)
+    weekly_applied = db.get_weekly_applications_count(telegram_id)
+    application_streak = _compute_application_streak(apps)
     funnel = {
         "applied": len([a for a in apps if a.get("status") == "aplicado"]),
         "interview": len([a for a in apps if a.get("status") == "entrevista"]),
@@ -55,10 +116,19 @@ def _build_dashboard_payload(db: Database, telegram_id: int) -> dict:
         "telegram_id": str(telegram_id),
         "plan": db.get_user_plan(telegram_id),
         "is_admin": db.is_admin(telegram_id),
+        "has_telegram_link": telegram_id > 0,
+        "account_type": "telegram-linked" if telegram_id > 0 else "web-only",
         "user_level": profile.get("experience_level", "junior"),
         "user_role": profile.get("role_type", ""),
-        "weekly_goal": db.get_weekly_goal(telegram_id),
-        "weekly_applied": db.get_weekly_applications_count(telegram_id),
+        "weekly_goal": weekly_goal,
+        "weekly_applied": weekly_applied,
+        "weekly_remaining": max(weekly_goal - weekly_applied, 0),
+        "application_streak": application_streak,
+        "daily_motivation": _build_daily_motivation(
+            weekly_goal,
+            weekly_applied,
+            application_streak,
+        ),
         "funnel": funnel,
         "applications": apps,
         "digest_mode": db.get_digest_mode(telegram_id),
@@ -79,6 +149,13 @@ async def get_me(current_user: dict = Depends(get_authenticated_user)):
         "email": current_user["email"],
         "plan": current_user["plan"],
         "is_admin": current_user["is_admin"],
+        "has_telegram_link": current_user.get(
+            "has_telegram_link", current_user["telegram_id"] > 0
+        ),
+        "account_type": (
+            "telegram-linked" if current_user["telegram_id"] > 0 else "web-only"
+        ),
+        "is_temp_account": current_user["telegram_id"] <= 0,
         "name": current_user["name"],
     }
 

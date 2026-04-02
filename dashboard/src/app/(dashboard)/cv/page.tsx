@@ -15,7 +15,8 @@ import {
   FileText,
   Target,
   ArrowRight,
-  Coins
+  Coins,
+  MessageSquareQuote
 } from "lucide-react"
 
 import { apiRequest } from "@/lib/api"
@@ -118,22 +119,35 @@ export default function CVPage() {
   const [result, setResult] = useState<ScanResult | null>(null)
   const [credits, setCredits] = useState(0)
   const [unlockActive, setUnlockActive] = useState(false)
+  const [remainingAnalyses, setRemainingAnalyses] = useState(0)
+  const [currentPlan, setCurrentPlan] = useState("free")
 
   useEffect(() => {
-    // Cargar créditos disponibles
-    apiRequest<{ total_credits: number; unlock_active: boolean }>("/credits/balance", {}, true)
-      .then((data) => {
-        setCredits(data.total_credits || 0)
-        setUnlockActive(data.unlock_active)
+    Promise.all([
+      apiRequest<{ total_credits: number; unlock_active: boolean }>("/credits/balance", {}, true),
+      apiRequest<{ remaining_analyses: number }>("/users/usage", {}, true),
+      apiRequest<{ plan: string }>("/subscriptions/status", {}, true),
+    ])
+      .then(([balanceData, usageData, subscriptionData]) => {
+        setCredits(balanceData.total_credits || 0)
+        setUnlockActive(balanceData.unlock_active)
+        setRemainingAnalyses(usageData.remaining_analyses || 0)
+        setCurrentPlan(subscriptionData.plan || "free")
       })
       .catch(() => {
         setCredits(0)
         setUnlockActive(false)
+        setRemainingAnalyses(0)
+        setCurrentPlan("free")
       })
   }, [result]) // Recargar después de un scan
 
   const canSubmit = useMemo(() => Boolean(cvFile || cvText.trim()), [cvFile, cvText])
-  const needsCredits = mode === "pro" && credits === 0 && !unlockActive
+  const hasPlanQuota = remainingAnalyses > 0
+  const canUseProMode = credits > 0 || hasPlanQuota
+  const needsProUnlock = mode === "pro" && !canUseProMode
+  const canCreateCoverLetter = currentPlan === "premium"
+  const canRunMockInterview = currentPlan === "premium"
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -186,18 +200,25 @@ export default function CVPage() {
           <h1 className="text-3xl font-bold text-slate-900">CV Suite</h1>
         </div>
         <p className="text-slate-600 max-w-2xl">
-          Herramientas profesionales para optimizar tu CV y aumentar tus chances de conseguir entrevistas. 
-          Análisis ATS, match con ofertas, y feedback con IA.
+          La capa de CV Intelligence vive completa dentro del dashboard: Resume Score, ATS Checker,
+          Job Match, cover letters y mock interviews para aplicar con mas precision.
         </p>
       </div>
 
       {/* Tools Grid */}
       {!result && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8">
           <ToolCard
             icon={<BarChart3 className="text-purple-600" size={24} />}
             title="Resume Score"
             description="Score general de tu CV basado en estructura, contenido y formato."
+            href="#analyzer"
+            highlight
+          />
+          <ToolCard
+            icon={<Sparkles className="text-purple-600" size={24} />}
+            title="ATS Checker"
+            description="Detectá estructura, gaps y señales que frenan filtros automáticos."
             href="#analyzer"
             highlight
           />
@@ -209,18 +230,25 @@ export default function CVPage() {
             highlight
           />
           <ToolCard
+            icon={<FileText className="text-slate-600" size={24} />}
+            title="Cover Letter"
+            description="Generá cartas de presentación personalizadas con IA."
+            href="/dashboard/cv/cover-letter"
+            locked={!canCreateCoverLetter}
+          />
+          <ToolCard
+            icon={<MessageSquareQuote className="text-slate-600" size={24} />}
+            title="Mock Interview"
+            description="Practicá preguntas reales para llegar mas afilado a la entrevista."
+            href="/dashboard/cv/mock-interview"
+            locked={!canRunMockInterview}
+          />
+          <ToolCard
             icon={<History className="text-slate-600" size={24} />}
             title="Historial"
             description="Accedé a todos tus análisis previos y compará versiones."
             href="/dashboard/cv/historial"
             locked={!unlockActive}
-          />
-          <ToolCard
-            icon={<FileText className="text-slate-600" size={24} />}
-            title="Cover Letter"
-            description="Generá cartas de presentación personalizadas con IA."
-            href="/dashboard/cv/cover-letter"
-            locked={credits === 0}
           />
         </div>
       )}
@@ -234,7 +262,11 @@ export default function CVPage() {
           <div>
             <span className="font-semibold text-slate-900">{credits} créditos disponibles</span>
             <p className="text-sm text-slate-500">
-              {unlockActive ? "CV Suite desbloqueado" : "Comprá créditos para análisis IA"}
+              {hasPlanQuota
+                ? `Tu plan ${currentPlan.toUpperCase()} incluye ${remainingAnalyses} análisis IA restantes.`
+                : unlockActive
+                  ? "CV Suite desbloqueado para historial y scans guardados."
+                  : "Comprá créditos o subí de plan para análisis IA avanzados."}
             </p>
           </div>
         </div>
@@ -277,11 +309,11 @@ export default function CVPage() {
               <button
                 type="button"
                 onClick={() => setMode("pro")}
-                disabled={needsCredits}
+                disabled={needsProUnlock}
                 className={`flex-1 py-3 px-4 rounded-xl border-2 text-left transition-colors ${
                   mode === "pro"
                     ? "border-purple-500 bg-purple-50"
-                    : needsCredits
+                    : needsProUnlock
                       ? "border-slate-200 opacity-50 cursor-not-allowed"
                       : "border-slate-200 hover:border-purple-200"
                 }`}
@@ -291,11 +323,11 @@ export default function CVPage() {
                   <span className={`font-semibold ${mode === "pro" ? "text-purple-900" : "text-slate-700"}`}>
                     Pro (IA)
                   </span>
-                  {credits > 0 && (
+                  {credits > 0 || hasPlanQuota ? (
                     <span className="ml-auto bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">
-                      1⭐
+                      {credits > 0 ? "1⭐" : "Plan"}
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <p className="text-xs text-slate-500 mt-1 ml-6">
                   + Feedback personalizado con IA
@@ -303,12 +335,12 @@ export default function CVPage() {
               </button>
             </div>
             
-            {needsCredits && (
+            {needsProUnlock && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800 flex items-center gap-2">
                 <Crown size={16} />
-                <span>Necesitás créditos para análisis Pro.</span>
-                <Link href="/dashboard/creditos" className="underline font-medium">
-                  Conseguir ahora →
+                <span>Necesitás créditos o un plan con cuota IA para usar el análisis Pro.</span>
+                <Link href="/dashboard/suscripcion" className="underline font-medium">
+                  Ver planes →
                 </Link>
               </div>
             )}
@@ -385,23 +417,25 @@ export default function CVPage() {
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={loading || !canSubmit || (mode === "pro" && needsCredits)}
+              disabled={loading || !canSubmit || (mode === "pro" && needsProUnlock)}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
               {loading 
                 ? "Analizando..." 
                 : mode === "pro" 
-                  ? `Analizar con IA ${credits > 0 ? "(1⭐)" : ""}`
+                  ? `Analizar con IA ${credits > 0 ? "(1⭐)" : hasPlanQuota ? "(Plan)" : ""}`
                   : "Analizar CV"
               }
             </button>
             <p className="text-sm text-slate-500">
               {mode === "basic" 
                 ? "Análisis ATS gratuito. No consume créditos."
-                : credits > 0 
+                : credits > 0
                   ? "Consumirá 1 crédito de tu balance."
-                  : "Necesitás créditos para usar el modo Pro."
+                  : hasPlanQuota
+                    ? `Consumirá 1 uso de tu plan ${currentPlan.toUpperCase()}.`
+                    : "Necesitás créditos o una suscripción con cuota IA."
               }
             </p>
           </div>

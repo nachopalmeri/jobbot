@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Sparkles, Zap, Star, Crown, Check, CreditCard } from "lucide-react"
+import { Sparkles, Zap, Crown, Check, CreditCard } from "lucide-react"
 
 import { apiRequest } from "@/lib/api"
 
@@ -36,22 +36,36 @@ export default function CreditosPage() {
 
   useEffect(() => {
     const load = async () => {
-      try {
-        const [packsData, balanceData] = await Promise.all([
-          apiRequest<{ packs: CreditPack[] }>("/credits/packs", {}, true),
-          apiRequest<CreditBalance>("/credits/balance", {}, true),
-        ])
-        setPacks(packsData.packs || [])
-        setBalance(balanceData)
-      } catch (err) {
+      const [packsResult, balanceResult] = await Promise.allSettled([
+        apiRequest<{ packs: CreditPack[] }>("/credits/packs", {}, true),
+        apiRequest<CreditBalance>("/credits/balance", {}, true),
+      ])
+
+      if (packsResult.status === "fulfilled") {
+        setPacks(packsResult.value.packs || [])
+      } else {
+        const error = packsResult.reason
         setMessage(
-          err && typeof err === "object" && "message" in err
-            ? String(err.message)
-            : "No se pudieron cargar los datos.",
+          error && typeof error === "object" && "message" in error
+            ? String(error.message)
+            : "No se pudieron cargar los packs de creditos.",
         )
-      } finally {
-        setLoading(false)
       }
+
+      if (balanceResult.status === "fulfilled") {
+        setBalance(balanceResult.value)
+      } else {
+        setBalance({
+          total_credits: 0,
+          unlock_active: false,
+          active_packs: [],
+        })
+        setMessage((current) =>
+          current || "No pudimos leer tu balance actual, pero igual podes ver los packs disponibles.",
+        )
+      }
+
+      setLoading(false)
     }
 
     void load()
@@ -76,7 +90,7 @@ export default function CreditosPage() {
       }, true)
 
       if (data.checkout_url) {
-        window.location.href = data.checkout_url
+        window.location.assign(data.checkout_url)
       } else {
         setMessage(data.detail || "No se pudo iniciar el checkout.")
       }
