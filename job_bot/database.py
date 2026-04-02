@@ -154,12 +154,13 @@ class Database:
                 "CREATE TABLE IF NOT EXISTS jobs_seen (id BIGSERIAL PRIMARY KEY, job_hash TEXT, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, source TEXT, title TEXT, company TEXT, url TEXT, seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(job_hash, telegram_id))",
                 "CREATE TABLE IF NOT EXISTS custom_feeds (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, feed_url TEXT, feed_name TEXT)",
                 "CREATE TABLE IF NOT EXISTS applications (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, job_title TEXT, company TEXT, url TEXT, status TEXT DEFAULT 'aplicado', notes TEXT, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
-                "CREATE TABLE IF NOT EXISTS web_users (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, plan TEXT DEFAULT 'free', subscription_status TEXT, subscription_provider TEXT, subscription_id TEXT, subscription_expires_at TIMESTAMPTZ, ai_analyses_used INTEGER DEFAULT 0, ai_analyses_limit INTEGER DEFAULT 2, searches_used INTEGER DEFAULT 0, searches_limit INTEGER DEFAULT 5, interviews_used INTEGER DEFAULT 0, interviews_limit INTEGER DEFAULT 20, job_tracker_enabled SMALLINT DEFAULT 0, usage_period_start TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS web_users (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, plan TEXT DEFAULT 'free', subscription_status TEXT, subscription_provider TEXT, subscription_id TEXT, subscription_billing_cycle TEXT DEFAULT 'monthly', subscription_expires_at TIMESTAMPTZ, ai_analyses_used INTEGER DEFAULT 0, ai_analyses_limit INTEGER DEFAULT 2, searches_used INTEGER DEFAULT 0, searches_limit INTEGER DEFAULT 5, interviews_used INTEGER DEFAULT 0, interviews_limit INTEGER DEFAULT 20, job_tracker_enabled SMALLINT DEFAULT 0, usage_period_start TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS payments (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, provider TEXT NOT NULL, amount DOUBLE PRECISION NOT NULL, currency TEXT DEFAULT 'USD', status TEXT NOT NULL, provider_payment_id TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS ai_analyses (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, cv_analyzed SMALLINT DEFAULT 0, job_matched SMALLINT DEFAULT 0, prompt_tokens INTEGER, response_tokens INTEGER, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS web_login_codes (code TEXT PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS telegram_link_codes (code TEXT PRIMARY KEY, web_telegram_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
+                "CREATE TABLE IF NOT EXISTS password_reset_tokens (id BIGSERIAL PRIMARY KEY, email TEXT NOT NULL, token_hash TEXT UNIQUE NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS companies (domain TEXT PRIMARY KEY, data TEXT NOT NULL, cached_at BIGINT NOT NULL, expires_at BIGINT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS stock_data (ticker TEXT PRIMARY KEY, data TEXT NOT NULL, cached_at BIGINT NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS pending_job_batches (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, jobs_json TEXT NOT NULL, total_count INTEGER DEFAULT 0, high_match_count INTEGER DEFAULT 0, medium_match_count INTEGER DEFAULT 0, regular_match_count INTEGER DEFAULT 0, source TEXT DEFAULT 'manual', created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, viewed SMALLINT DEFAULT 0, fallback_sent SMALLINT DEFAULT 0)",
@@ -195,6 +196,10 @@ class Database:
                 (
                     "is_admin",
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin SMALLINT DEFAULT 0",
+                ),
+                (
+                    "subscription_billing_cycle",
+                    "ALTER TABLE web_users ADD COLUMN IF NOT EXISTS subscription_billing_cycle TEXT DEFAULT 'monthly'",
                 ),
             ]:
                 try:
@@ -325,6 +330,7 @@ class Database:
                         subscription_status TEXT,
                         subscription_provider TEXT,
                         subscription_id TEXT,
+                        subscription_billing_cycle TEXT DEFAULT 'monthly',
                         subscription_expires_at TEXT,
                         ai_analyses_used    INTEGER DEFAULT 0,
                         ai_analyses_limit   INTEGER DEFAULT 2,
@@ -365,6 +371,15 @@ class Database:
                         provider        TEXT NOT NULL,
                         event_type      TEXT NOT NULL,
                         processed_at    TEXT DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email           TEXT NOT NULL,
+                        token_hash      TEXT UNIQUE NOT NULL,
+                        created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+                        expires_at      TEXT NOT NULL,
+                        used_at         TEXT
                     );
                     
                     -- Tabla de cache de datos de empresas (LinkedIn Data API)
@@ -430,6 +445,13 @@ class Database:
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN interviews_limit INTEGER DEFAULT 20"
+                    )
+                except Exception:
+                    pass
+
+                try:
+                    conn.execute(
+                        "ALTER TABLE web_users ADD COLUMN subscription_billing_cycle TEXT DEFAULT 'monthly'"
                     )
                 except Exception:
                     pass
@@ -1128,7 +1150,107 @@ class Database:
 
     def get_web_user_by_email(self, email: str) -> Optional[Dict]:
         """Obtiene usuario web por email."""
-        return self._fetchone("SELECT * FROM web_users WHERE email = ?", (email,))
+        normalized_email = (email or "").strip().lower()
+        return self._fetchone("SELECT * FROM web_users WHERE email = ?", (normalized_email,))
+
+    def get_web_user_by_subscription_id(self, subscription_id: str) -> Optional[Dict]:
+        """Obtiene usuario web por ID de suscripción externa."""
+        if not subscription_id:
+            return None
+        return self._fetchone(
+            "SELECT * FROM web_users WHERE subscription_id = ?",
+            (subscription_id,),
+        )
+
+    def update_web_user_password(self, email: str, password_hash: str):
+        """Actualiza la password de una cuenta web."""
+        self._execute(
+            "UPDATE web_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?",
+            (password_hash, (email or "").strip().lower()),
+        )
+
+    def create_password_reset_token(self, email: str, token_hash: str, expires_at: str):
+        """Crea un token de recuperación de password."""
+        normalized_email = (email or "").strip().lower()
+        self._execute(
+            "DELETE FROM password_reset_tokens WHERE email = ? OR expires_at <= CURRENT_TIMESTAMP",
+            (normalized_email,),
+        )
+        self._execute(
+            """INSERT INTO password_reset_tokens (email, token_hash, expires_at)
+               VALUES (?, ?, ?)""",
+            (normalized_email, token_hash, expires_at),
+        )
+
+    def consume_password_reset_token(self, token_hash: str) -> Optional[Dict]:
+        """Consume un token de recuperación si sigue vigente."""
+        record = self._fetchone(
+            """SELECT id, email, token_hash, expires_at, used_at
+               FROM password_reset_tokens
+               WHERE token_hash = ?""",
+            (token_hash,),
+        )
+        if not record or record.get("used_at"):
+            return None
+
+        try:
+            from datetime import datetime, timezone
+
+            expires_dt = datetime.fromisoformat(record["expires_at"])
+            if expires_dt.tzinfo is None:
+                expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+            if expires_dt <= datetime.now(timezone.utc):
+                return None
+        except Exception:
+            return None
+
+        self._execute(
+            "UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE token_hash = ?",
+            (token_hash,),
+        )
+        return record
+
+    def clear_password_reset_tokens_for_email(self, email: str):
+        """Elimina tokens activos de recuperación para un email."""
+        self._execute(
+            "DELETE FROM password_reset_tokens WHERE email = ?",
+            ((email or "").strip().lower(),),
+        )
+
+    def set_subscription_metadata(
+        self,
+        telegram_id: int,
+        provider: str,
+        subscription_id: str,
+        billing_cycle: str = "monthly",
+        status: str = "active",
+        expires_at: str = None,
+    ):
+        """Guarda metadata del proveedor de billing en web_users."""
+        self._execute(
+            """UPDATE web_users SET
+                   subscription_provider = ?,
+                   subscription_id = ?,
+                   subscription_billing_cycle = ?,
+                   subscription_status = ?,
+                   subscription_expires_at = COALESCE(?, subscription_expires_at),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE telegram_id = ?""",
+            (provider, subscription_id, billing_cycle, status, expires_at, telegram_id),
+        )
+
+    def clear_subscription_metadata(self, telegram_id: int, status: str = "cancelled"):
+        """Limpia metadata de billing al finalizar/cancelar."""
+        self._execute(
+            """UPDATE web_users SET
+                   subscription_provider = NULL,
+                   subscription_id = NULL,
+                   subscription_billing_cycle = 'monthly',
+                   subscription_status = ?,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE telegram_id = ?""",
+            (status, telegram_id),
+        )
 
     def create_web_login_code(self, telegram_id: int, code: str, expires_at: str):
         """Guarda un codigo de login web de un solo uso generado desde Telegram."""
@@ -1502,7 +1624,23 @@ class Database:
         user = self.get_web_user(telegram_id)
         if not user:
             return "free"
-        return (user.get("plan") or "free").lower()
+
+        plan = (user.get("plan") or "free").lower()
+        expires_at = user.get("subscription_expires_at")
+        if plan != "free" and expires_at:
+            try:
+                from datetime import datetime, timezone
+
+                expires_dt = datetime.fromisoformat(expires_at)
+                if expires_dt.tzinfo is None:
+                    expires_dt = expires_dt.replace(tzinfo=timezone.utc)
+                if expires_dt <= datetime.now(timezone.utc):
+                    self.update_user_plan(telegram_id, "free")
+                    self.clear_subscription_metadata(telegram_id, status="expired")
+                    return "free"
+            except Exception:
+                pass
+        return plan
 
     def increment_usage(self, telegram_id: int, usage_type: str):
         """Incrementa el uso de un tipo específico."""

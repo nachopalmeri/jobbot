@@ -18,6 +18,11 @@ from .auth import get_authenticated_user, get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@jobbot.ar")
+PUBLIC_APP_URL = os.getenv(
+    "PUBLIC_APP_URL", os.getenv("DASHBOARD_URL", "https://app-jobbot.vercel.app")
+).rstrip("/")
+PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").rstrip("/")
 
 PLANS = {
     "starter": {
@@ -97,6 +102,22 @@ def _mp_price_id(plan: dict, billing_cycle: str) -> str:
         if yearly_price_id:
             return yearly_price_id
     return plan["mp_price_id"]
+
+
+def _billing_return_url() -> str:
+    return f"{PUBLIC_APP_URL}/dashboard/suscripcion"
+
+
+def _mp_external_reference(telegram_id: int, plan: str, billing_cycle: str) -> str:
+    return f"{telegram_id}|{plan}|{billing_cycle}"
+
+
+def _parse_mp_external_reference(external_reference: str) -> tuple[Optional[str], str, str]:
+    parts = (external_reference or "").split("|")
+    if len(parts) != 3:
+        return None, "pro", "monthly"
+    telegram_id, plan, billing_cycle = parts
+    return telegram_id, plan or "pro", billing_cycle or "monthly"
 
 
 def _request_ip(request: Request) -> str:
@@ -218,7 +239,13 @@ async def get_subscription_status(
     return {
         "plan": plan,
         "status": web_user.get("subscription_status") or ("active" if plan != "free" else None),
+        "provider": web_user.get("subscription_provider"),
+        "billing_cycle": web_user.get("subscription_billing_cycle") or "monthly",
         "expires_at": web_user.get("subscription_expires_at"),
+        "can_cancel": plan != "free",
+        "can_manage_billing": web_user.get("subscription_provider") == "stripe"
+        and bool(web_user.get("subscription_id")),
+        "support_email": SUPPORT_EMAIL,
     }
 
 
@@ -287,7 +314,7 @@ async def create_stripe_checkout(
 async def create_mercadopago_checkout(
     checkout: CheckoutRequest, user: dict, plan: dict, billing_cycle: str
 ):
-    import mercadopago
+    import requests
 
     access_token = os.getenv("MP_ACCESS_TOKEN", "")
     if not access_token:
@@ -296,37 +323,57 @@ async def create_mercadopago_checkout(
             detail="MercadoPago no configurado",
         )
 
-    sdk = mercadopago.SDK(access_token)
-    preference_payload = {
-        "items": [
-            {
-                "title": f"JobBot {plan['name']} ({'anual' if billing_cycle == 'yearly' else 'mensual'})",
-                "quantity": 1,
-                "unit_price": _plan_price(plan, billing_cycle),
-                "currency_id": "USD",
-            }
-        ],
-        "metadata": {
-            "telegram_id": str(user["telegram_id"]),
-            "plan": checkout.plan,
-            "billing_cycle": billing_cycle,
-            "mp_plan_price_id": _mp_price_id(plan, billing_cycle),
+    frequency = 12 if billing_cycle == "yearly" else 1
+    preapproval_payload = {
+        "reason": f"JobBot {plan['name']} ({'anual' if billing_cycle == 'yearly' else 'mensual'})",
+        "external_reference": _mp_external_reference(
+            int(user["telegram_id"]), checkout.plan, billing_cycle
+        ),
+        "back_url": checkout.success_url,
+        "status": "authorized",
+        "auto_recurring": {
+            "frequency": frequency,
+            "frequency_type": "months",
+            "transaction_amount": _plan_price(plan, billing_cycle),
+            "currency_id": "USD",
         },
-        "back_urls": {
-            "success": checkout.success_url,
-            "failure": checkout.cancel_url,
-            "pending": checkout.cancel_url,
-        },
-        "auto_return": "approved",
     }
+    if PUBLIC_API_URL:
+        preapproval_payload["notification_url"] = (
+            f"{PUBLIC_API_URL}/subscriptions/webhook/mercadopago"
+        )
     if user.get("email") and "@" in user["email"]:
-        preference_payload["payer"] = {"email": user["email"]}
+        preapproval_payload["payer_email"] = user["email"]
 
-    preference = sdk.preference().create(preference_payload)
+    response = requests.post(
+        "https://api.mercadopago.com/preapproval",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json=preapproval_payload,
+        timeout=20,
+    )
+    if response.status_code >= 400:
+        logger.error("[MP] Error creando preapproval: %s", response.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo iniciar MercadoPago",
+        )
+
+    preference = response.json()
+    checkout_url = preference.get("init_point") or preference.get("sandbox_init_point")
+    if not checkout_url:
+        logger.error("[MP] Respuesta sin init_point: %s", preference)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="MercadoPago no devolvió un checkout válido",
+        )
+
     return {
         "provider": "mercadopago",
-        "url": preference["response"]["init_point"],
-        "preference_id": preference["response"]["id"],
+        "url": checkout_url,
+        "preference_id": preference.get("id"),
         "billing_cycle": billing_cycle,
     }
 
@@ -338,6 +385,33 @@ async def create_crypto_checkout(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Checkout crypto no disponible en este despliegue",
     )
+
+
+def _mercadopago_access_token() -> str:
+    access_token = os.getenv("MP_ACCESS_TOKEN", "").strip()
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MercadoPago no configurado",
+        )
+    return access_token
+
+
+def _fetch_mercadopago_resource(path: str) -> dict:
+    import requests
+
+    response = requests.get(
+        f"https://api.mercadopago.com{path}",
+        headers={"Authorization": f"Bearer {_mercadopago_access_token()}"},
+        timeout=20,
+    )
+    if response.status_code >= 400:
+        logger.error("[MP] Error consultando %s: %s", path, response.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo validar la suscripción de MercadoPago",
+        )
+    return response.json()
 
 
 @router.post("/webhook/stripe")
@@ -375,10 +449,16 @@ async def stripe_webhook(
             metadata.get("billing_cycle", "monthly"),
             "stripe",
             session.get("subscription") or session.get("id"),
+            subscription_id=session.get("subscription") or session.get("id"),
         )
     elif event["type"] == "customer.subscription.deleted":
-        metadata = event["data"]["object"].get("metadata", {})
-        await deactivate_subscription(db, metadata.get("telegram_id"))
+        subscription = event["data"]["object"]
+        metadata = subscription.get("metadata", {})
+        telegram_id = metadata.get("telegram_id")
+        if not telegram_id:
+            linked_user = db.get_web_user_by_subscription_id(subscription.get("id"))
+            telegram_id = linked_user.get("telegram_id") if linked_user else None
+        await deactivate_subscription(db, telegram_id, clear_metadata=True)
 
     # Marcar como procesado
     if event_id:
@@ -390,18 +470,69 @@ async def stripe_webhook(
 @router.post("/webhook/mercadopago")
 async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
     _validate_mp_request(request)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
-    if body.get("type") == "payment":
-        payment = body.get("data", {}).get("resource", {})
-        payment_id = str(payment.get("id", ""))
-        
-        # Verificar idempotencia
-        if payment_id and db.is_webhook_processed(payment_id):
+    event_type = (
+        body.get("type")
+        or body.get("topic")
+        or request.query_params.get("type")
+        or request.query_params.get("topic")
+        or ""
+    )
+    data = body.get("data") or {}
+    resource_id = (
+        data.get("id")
+        or (data.get("resource") or {}).get("id")
+        or request.query_params.get("data.id")
+        or request.query_params.get("id")
+        or ""
+    )
+
+    if event_type == "preapproval" and resource_id:
+        preapproval = _fetch_mercadopago_resource(f"/preapproval/{resource_id}")
+        preapproval_id = str(preapproval.get("id", ""))
+        event_key = f"mp:preapproval:{preapproval_id}:{preapproval.get('status', '')}"
+        if preapproval_id and db.is_webhook_processed(event_key):
             return {"status": "already_processed"}
-        
+
+        telegram_id, plan, billing_cycle = _parse_mp_external_reference(
+            preapproval.get("external_reference", "")
+        )
+        if preapproval.get("status") in {"authorized", "pending"} and telegram_id:
+            await activate_subscription(
+                db,
+                telegram_id,
+                plan,
+                billing_cycle,
+                "mercadopago",
+                preapproval_id,
+                subscription_id=preapproval_id,
+            )
+        elif preapproval.get("status") in {"cancelled", "paused"}:
+            linked_user = db.get_web_user_by_subscription_id(preapproval_id)
+            if linked_user:
+                await deactivate_subscription(
+                    db,
+                    str(linked_user["telegram_id"]),
+                    notify=False,
+                    clear_metadata=True,
+                )
+
+        if preapproval_id:
+            db.mark_webhook_processed(event_key, "mercadopago", f"preapproval.{preapproval.get('status')}")
+
+    elif event_type == "payment" and resource_id:
+        payment = _fetch_mercadopago_resource(f"/v1/payments/{resource_id}")
+        payment_id = str(payment.get("id", ""))
+        event_key = f"mp:payment:{payment_id}:{payment.get('status', '')}"
+        if payment_id and db.is_webhook_processed(event_key):
+            return {"status": "already_processed"}
+
         if payment.get("status") == "approved":
-            metadata = payment.get("metadata", {})
+            metadata = payment.get("metadata", {}) or {}
             await activate_subscription(
                 db,
                 metadata.get("telegram_id"),
@@ -409,11 +540,10 @@ async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
                 metadata.get("billing_cycle", "monthly"),
                 "mercadopago",
                 payment_id,
+                subscription_id=metadata.get("subscription_id") or payment_id,
             )
-            
-            # Marcar como procesado
-            if payment_id:
-                db.mark_webhook_processed(payment_id, "mercadopago", "payment.approved")
+        if payment_id:
+            db.mark_webhook_processed(event_key, "mercadopago", f"payment.{payment.get('status')}")
 
     return {"status": "success"}
 
@@ -527,7 +657,13 @@ async def _notify_plan_change(
 
 
 async def activate_subscription(
-    db: Database, telegram_id: str, plan: str, billing_cycle: str, provider: str, payment_id: str
+    db: Database,
+    telegram_id: str,
+    plan: str,
+    billing_cycle: str,
+    provider: str,
+    payment_id: str,
+    subscription_id: Optional[str] = None,
 ):
     if not telegram_id:
         raise ValueError("telegram_id requerido")
@@ -536,6 +672,14 @@ async def activate_subscription(
     normalized_cycle = _validate_billing_cycle(billing_cycle)
     expiry = _subscription_expiry_iso(365 if normalized_cycle == "yearly" else 30)
     db.update_user_plan(telegram_id, plan, expiry)
+    db.set_subscription_metadata(
+        telegram_id,
+        provider,
+        subscription_id or payment_id,
+        normalized_cycle,
+        status="active",
+        expires_at=expiry,
+    )
     db.record_payment(
         telegram_id=telegram_id,
         provider=provider,
@@ -564,12 +708,92 @@ async def _notify_cancellation(telegram_id: int) -> bool:
     return await _send_telegram_notification(telegram_id, message)
 
 
-async def deactivate_subscription(db: Database, telegram_id: str, notify: bool = True):
+async def _notify_cancel_at_period_end(telegram_id: int, expiry: Optional[str]) -> bool:
+    expiry_label = expiry[:10] if expiry else "fin del ciclo actual"
+    message = (
+        "📋 <b>Cancelación programada</b>\n\n"
+        "Tu suscripción no se va a renovar y se cancelará al final del período actual.\n\n"
+        f"🗓️ Vas a mantener acceso hasta <b>{expiry_label}</b>.\n\n"
+        f"Si necesitás ayuda, escribinos a <b>{SUPPORT_EMAIL}</b>."
+    )
+    return await _send_telegram_notification(telegram_id, message)
+
+
+def _cancel_stripe_subscription(subscription_id: str) -> Optional[str]:
+    import stripe
+
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    if not stripe.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe no configurado",
+        )
+
+    subscription = stripe.Subscription.modify(
+        subscription_id,
+        cancel_at_period_end=True,
+    )
+    current_period_end = subscription.get("current_period_end")
+    if not current_period_end:
+        return None
+    return datetime.fromtimestamp(current_period_end, timezone.utc).isoformat()
+
+
+def _create_stripe_billing_portal(subscription_id: str) -> str:
+    import stripe
+
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
+    if not stripe.api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe no configurado",
+        )
+
+    subscription = stripe.Subscription.retrieve(subscription_id)
+    customer_id = subscription.get("customer")
+    if not customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No pudimos encontrar el customer de Stripe para esta cuenta",
+        )
+
+    session = stripe.billing_portal.Session.create(
+        customer=customer_id,
+        return_url=_billing_return_url(),
+    )
+    return session.url
+
+
+def _cancel_mercadopago_subscription(subscription_id: str):
+    import requests
+
+    response = requests.put(
+        f"https://api.mercadopago.com/preapproval/{subscription_id}",
+        headers={
+            "Authorization": f"Bearer {_mercadopago_access_token()}",
+            "Content-Type": "application/json",
+        },
+        json={"status": "cancelled"},
+        timeout=20,
+    )
+    if response.status_code >= 400:
+        logger.error("[MP] Error cancelando preapproval %s: %s", subscription_id, response.text)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No pudimos cancelar MercadoPago en este momento",
+        )
+
+
+async def deactivate_subscription(
+    db: Database, telegram_id: str, notify: bool = True, clear_metadata: bool = False
+):
     if not telegram_id:
         return
     
     tid = int(telegram_id)
     db.update_user_plan(tid, "free")
+    if clear_metadata:
+        db.clear_subscription_metadata(tid)
     
     if notify:
         await _notify_cancellation(tid)
@@ -581,9 +805,72 @@ async def cancel_subscription(
 ):
     if current_user["plan"] == "free":
         raise HTTPException(status_code=400, detail="No tienes suscripcion activa")
+    web_user = db.get_web_user(current_user["telegram_id"]) or {}
+    provider = web_user.get("subscription_provider")
+    subscription_id = web_user.get("subscription_id")
+    billing_cycle = web_user.get("subscription_billing_cycle") or "monthly"
+    expires_at = web_user.get("subscription_expires_at")
 
-    await deactivate_subscription(db, str(current_user["telegram_id"]), notify=True)
-    return {"message": "Suscripcion cancelada", "plan": "free", "expires_at": None}
+    if provider == "stripe" and subscription_id:
+        expires_at = _cancel_stripe_subscription(subscription_id) or expires_at
+        db.set_subscription_metadata(
+            current_user["telegram_id"],
+            provider,
+            subscription_id,
+            billing_cycle,
+            status="cancel_at_period_end",
+            expires_at=expires_at,
+        )
+        await _notify_cancel_at_period_end(current_user["telegram_id"], expires_at)
+        return {
+            "message": "La cancelacion quedó programada al final del período actual",
+            "plan": current_user["plan"],
+            "status": "cancel_at_period_end",
+            "expires_at": expires_at,
+        }
+
+    if provider == "mercadopago" and subscription_id:
+        _cancel_mercadopago_subscription(subscription_id)
+        db.set_subscription_metadata(
+            current_user["telegram_id"],
+            provider,
+            subscription_id,
+            billing_cycle,
+            status="cancelled",
+            expires_at=expires_at,
+        )
+        await _notify_cancel_at_period_end(current_user["telegram_id"], expires_at)
+        return {
+            "message": "La cancelacion quedó registrada y no se volverá a cobrar",
+            "plan": current_user["plan"],
+            "status": "cancelled",
+            "expires_at": expires_at,
+        }
+
+    await deactivate_subscription(db, str(current_user["telegram_id"]), notify=True, clear_metadata=True)
+    return {"message": "Suscripcion cancelada", "plan": "free", "status": "cancelled", "expires_at": None}
+
+
+@router.post("/manage-billing")
+async def manage_billing(
+    current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
+):
+    web_user = db.get_web_user(current_user["telegram_id"]) or {}
+    provider = web_user.get("subscription_provider")
+    subscription_id = web_user.get("subscription_id")
+
+    if provider == "stripe" and subscription_id:
+        return {
+            "provider": "stripe",
+            "url": _create_stripe_billing_portal(subscription_id),
+        }
+
+    return {
+        "provider": provider,
+        "url": None,
+        "detail": f"Para gestionar facturación escribinos a {SUPPORT_EMAIL}",
+        "support_email": SUPPORT_EMAIL,
+    }
 
 
 @router.post("/upgrade")

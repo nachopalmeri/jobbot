@@ -187,24 +187,24 @@ async def credit_webhook(
     
     if not stripe_key:
         raise HTTPException(status_code=503, detail="Stripe no configurado")
+    if not webhook_secret:
+        raise HTTPException(status_code=503, detail="Webhook de créditos no configurado")
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Firma de Stripe requerida")
     
     import stripe
     stripe.api_key = stripe_key
     
     payload = await request.body()
     
-    # Verificar firma si está configurada
-    if webhook_secret and stripe_signature:
-        try:
-            event = stripe.Webhook.construct_event(
-                payload, stripe_signature, webhook_secret
-            )
-        except stripe.error.SignatureVerificationError:
-            raise HTTPException(status_code=400, detail="Firma inválida")
-    else:
-        # Sin verificación de firma (solo para desarrollo)
-        import json
-        event = json.loads(payload)
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, stripe_signature, webhook_secret
+        )
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Firma inválida")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Payload inválido")
     
     # Procesar solo checkout.session.completed
     if event.get("type") == "checkout.session.completed":

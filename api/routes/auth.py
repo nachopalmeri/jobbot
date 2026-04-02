@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 import hashlib
 import hmac
 import os
 import secrets
+import smtplib
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -37,6 +40,71 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY") or (
 )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@jobbot.ar")
+PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", os.getenv("DASHBOARD_URL", "https://app-jobbot.vercel.app"))
+
+
+def _password_reset_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _smtp_configured() -> bool:
+    return bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_FROM_EMAIL"))
+
+
+def _send_email_message(to_email: str, subject: str, text_content: str, html_content: str):
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_from = os.getenv("SMTP_FROM_EMAIL", "").strip()
+    if not smtp_host or not smtp_from:
+        raise RuntimeError("SMTP no configurado")
+
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "").strip()
+    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").strip().lower() != "false"
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = smtp_from
+    message["To"] = to_email
+    message.set_content(text_content)
+    message.add_alternative(html_content, subtype="html")
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp:
+        smtp.ehlo()
+        if smtp_use_tls:
+            smtp.starttls()
+            smtp.ehlo()
+        if smtp_username:
+            smtp.login(smtp_username, smtp_password)
+        smtp.send_message(message)
+
+
+def _send_password_reset_email(email: str, reset_url: str):
+    subject = "Restablecé tu password de JobBot"
+    text_content = (
+        "Recibimos una solicitud para restablecer tu password de JobBot.\n\n"
+        f"Abrí este enlace: {reset_url}\n\n"
+        "Si no fuiste vos, podés ignorar este email.\n"
+        f"Si necesitás ayuda, escribinos a {SUPPORT_EMAIL}."
+    )
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1c1917;">
+      <h2>Restablecé tu password de JobBot</h2>
+      <p>Recibimos una solicitud para cambiar tu password.</p>
+      <p>
+        <a href="{reset_url}" style="display:inline-block;padding:12px 20px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:12px;">
+          Crear nueva password
+        </a>
+      </p>
+      <p>Si el botón no funciona, copiá este enlace:</p>
+      <p><a href="{reset_url}">{reset_url}</a></p>
+      <p>Si no fuiste vos, podés ignorar este email.</p>
+      <p>Soporte: <a href="mailto:{SUPPORT_EMAIL}">{SUPPORT_EMAIL}</a></p>
+    </div>
+    """
+    _send_email_message(email, subject, text_content, html_content)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -140,6 +208,15 @@ class RegisterRequest(BaseModel):
     name: Optional[str] = Field(default="Usuario", max_length=120)
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    password: str = Field(min_length=8, max_length=128)
+
+
 @router.post("/register")
 async def register(user_data: RegisterRequest, db: Database = Depends(get_db)):
     email = str(user_data.email).strip().lower()
@@ -217,6 +294,63 @@ async def login(
         "telegram_id": user["telegram_id"],
         "is_admin": db.is_admin(int(user["telegram_id"])),
     }
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    payload: PasswordResetRequest, db: Database = Depends(get_db)
+):
+    normalized_email = str(payload.email).strip().lower()
+
+    if APP_ENV == "production" and not _smtp_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Recuperacion de password no disponible temporalmente",
+        )
+
+    user = db.get_web_user_by_email(normalized_email)
+    if user:
+        token = secrets.token_urlsafe(32)
+        token_hash = _password_reset_token_hash(token)
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(minutes=PASSWORD_RESET_TOKEN_TTL_MINUTES)
+        ).isoformat()
+        db.create_password_reset_token(normalized_email, token_hash, expires_at)
+
+        reset_url = f"{PUBLIC_APP_URL.rstrip('/')}/reset-password?token={quote(token)}"
+        if _smtp_configured():
+            _send_password_reset_email(normalized_email, reset_url)
+        else:
+            print(f"[DEV] Password reset link for {normalized_email}: {reset_url}")
+
+    return {
+        "message": "Si existe una cuenta con ese email, te enviamos un enlace para restablecer tu password."
+    }
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest, db: Database = Depends(get_db)
+):
+    record = db.consume_password_reset_token(_password_reset_token_hash(payload.token))
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El enlace de recuperacion es invalido o ya expiró",
+        )
+
+    email = record["email"]
+    web_user = db.get_web_user_by_email(email)
+    if not web_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No encontramos una cuenta asociada a este enlace",
+        )
+
+    db.update_web_user_password(email, get_password_hash(payload.password))
+    db.clear_password_reset_tokens_for_email(email)
+
+    return {"message": "Password actualizada correctamente"}
 
 
 @router.post("/link")
