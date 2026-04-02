@@ -15,6 +15,7 @@ import {
   Coins,
   Crown,
   ArrowUpRight,
+  Shield,
 } from "lucide-react"
 
 import { apiRequest, clearToken } from "@/lib/api"
@@ -29,15 +30,21 @@ const navItems = [
   { href: "/dashboard/configuracion", icon: Settings, label: "Configuración" },
 ]
 
+const ADMIN_EMAIL = "admin@jobbot.com"
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [planLabel, setPlanLabel] = useState("Free")
   const [credits, setCredits] = useState(0)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
-    // Cargar plan
-    apiRequest<{ plan: string }>("/subscriptions/status", {}, true)
-      .then((data) => setPlanLabel((data.plan || "free").toUpperCase()))
+    // Cargar plan y verificar si es admin
+    apiRequest<{ plan: string; email: string; is_admin: boolean }>("/auth/me", {}, true)
+      .then((data) => {
+        setPlanLabel((data.plan || "free").toUpperCase())
+        setIsAdmin(data.email === ADMIN_EMAIL)
+      })
       .catch(() => setPlanLabel("Free"))
     
     // Cargar créditos
@@ -126,6 +133,24 @@ export default function Sidebar() {
             </Link>
           )
         })}
+        
+        {/* Admin Panel Link - Solo para admin@jobbot.com */}
+        {isAdmin && (
+          <Link
+            href="/dashboard/admin"
+            className={`mb-1.5 flex items-center gap-3 rounded-2xl px-4 py-3 ${
+              pathname === "/dashboard/admin"
+                ? "bg-indigo-500 text-white font-medium"
+                : "text-indigo-300 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <Shield size={20} />
+            <span>Admin Panel</span>
+            <span className="ml-auto rounded-full bg-red-400 px-2 py-0.5 text-[10px] font-bold text-white">
+              ADMIN
+            </span>
+          </Link>
+        )}
       </nav>
 
       <div className="mx-4 mb-4 rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">

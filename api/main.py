@@ -15,7 +15,7 @@ from .rate_limit import (
     LOGIN_WINDOW_SECONDS,
     rate_limiter,
 )
-from .routes import auth, credits, cv, jobs, public, subscriptions, users
+from .routes import admin, auth, credits, cv, jobs, public, subscriptions, users
 
 
 logger = logging.getLogger("jobbot.api")
@@ -160,6 +160,7 @@ app.include_router(subscriptions.router, prefix="/subscriptions", tags=["subscri
 app.include_router(credits.router, prefix="/credits", tags=["credits"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(cv.router, prefix="/cv", tags=["cv"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 app.include_router(public.router, tags=["public"])
 
 if os.getenv("ENABLE_TMP_ROUTES", "false").lower() == "true":
