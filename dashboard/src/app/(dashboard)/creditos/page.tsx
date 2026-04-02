@@ -120,7 +120,7 @@ export default function CreditosPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold text-slate-900 mb-2">⭐ Créditos & CV Suite</h1>
       <p className="text-slate-600 mb-6">
-        Pagá una vez, usá para siempre. Los créditos nunca expiran.
+        Pagá por uso o desbloqueá la capa CV sin sumar otra suscripción. Los créditos nunca expiran.
       </p>
 
       {message && (
@@ -186,6 +186,11 @@ export default function CreditosPage() {
                 <span className="text-4xl font-bold text-purple-600">${unlockPack.price_usd}</span>
                 <span className="text-slate-500">USD · pago único</span>
               </div>
+
+              <p className="mb-6 max-w-2xl text-sm leading-6 text-slate-600">
+                Ideal si querés usar Resume Score, ATS Checker, Job Match, cover letters e historial
+                sin comprometerte con un plan mensual. Después podés sumar créditos extra solo cuando los necesites.
+              </p>
 
               <button
                 onClick={() => handlePurchase(unlockPack.id)}
@@ -267,6 +272,10 @@ export default function CreditosPage() {
           <li>• El <strong>CV Suite Unlock</strong> incluye 50 créditos + acceso lifetime</li>
           <li>• Los análisis básicos ATS son <strong>gratis siempre</strong></li>
         </ul>
+        <p className="mt-4 text-sm text-slate-600">
+          Si querés búsquedas, tracker y alertas todos los días, te conviene una suscripción.
+          Si lo tuyo es CV Suite y uso puntual de IA, los créditos son la vía más flexible.
+        </p>
       </div>
     </div>
   )

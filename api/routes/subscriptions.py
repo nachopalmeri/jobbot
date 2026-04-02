@@ -22,21 +22,30 @@ router = APIRouter()
 PLANS = {
     "starter": {
         "price_usd": 4,
+        "yearly_price_usd": 40,
         "name": "Starter",
         "stripe_price_id": os.getenv("STRIPE_STARTER_PRICE_ID", "price_starter"),
+        "stripe_yearly_price_id": os.getenv("STRIPE_STARTER_YEARLY_PRICE_ID", ""),
         "mp_price_id": os.getenv("MP_STARTER_PRICE_ID", "starter"),
+        "mp_yearly_price_id": os.getenv("MP_STARTER_YEARLY_PRICE_ID", ""),
     },
     "pro": {
         "price_usd": 8,
+        "yearly_price_usd": 80,
         "name": "Pro",
         "stripe_price_id": os.getenv("STRIPE_PRO_PRICE_ID", "price_pro"),
+        "stripe_yearly_price_id": os.getenv("STRIPE_PRO_YEARLY_PRICE_ID", ""),
         "mp_price_id": os.getenv("MP_PRO_PRICE_ID", "pro"),
+        "mp_yearly_price_id": os.getenv("MP_PRO_YEARLY_PRICE_ID", ""),
     },
     "premium": {
         "price_usd": 12,
+        "yearly_price_usd": 120,
         "name": "Premium",
         "stripe_price_id": os.getenv("STRIPE_PREMIUM_PRICE_ID", "price_premium"),
+        "stripe_yearly_price_id": os.getenv("STRIPE_PREMIUM_YEARLY_PRICE_ID", ""),
         "mp_price_id": os.getenv("MP_PREMIUM_PRICE_ID", "premium"),
+        "mp_yearly_price_id": os.getenv("MP_PREMIUM_YEARLY_PRICE_ID", ""),
     },
 }
 
@@ -44,12 +53,50 @@ PLANS = {
 class CheckoutRequest(BaseModel):
     provider: str
     plan: str
+    billing_cycle: str = "monthly"
     success_url: str = "https://app-jobbot.vercel.app/dashboard/suscripcion"
     cancel_url: str = "https://app-jobbot.vercel.app/dashboard/suscripcion"
 
 
 def _subscription_expiry_iso(days: int = 30) -> str:
     return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+
+
+def _validate_billing_cycle(billing_cycle: str) -> str:
+    normalized = (billing_cycle or "monthly").strip().lower()
+    if normalized not in {"monthly", "yearly"}:
+        raise HTTPException(status_code=400, detail="Ciclo de facturacion no valido")
+    return normalized
+
+
+def _plan_price(plan: dict, billing_cycle: str) -> float:
+    return plan["yearly_price_usd"] if billing_cycle == "yearly" else plan["price_usd"]
+
+
+def _stripe_price_id(plan: dict, billing_cycle: str) -> str:
+    if billing_cycle == "yearly":
+        yearly_price_id = (plan.get("stripe_yearly_price_id") or "").strip()
+        if not yearly_price_id:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Stripe anual no configurado todavia",
+            )
+        return yearly_price_id
+    monthly_price_id = (plan.get("stripe_price_id") or "").strip()
+    if not monthly_price_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe mensual no configurado todavia",
+        )
+    return monthly_price_id
+
+
+def _mp_price_id(plan: dict, billing_cycle: str) -> str:
+    if billing_cycle == "yearly":
+        yearly_price_id = (plan.get("mp_yearly_price_id") or "").strip()
+        if yearly_price_id:
+            return yearly_price_id
+    return plan["mp_price_id"]
 
 
 def _request_ip(request: Request) -> str:
@@ -107,6 +154,10 @@ async def get_plans():
                 "id": "starter",
                 "name": "Starter",
                 "price": 4,
+                "monthly_price": 4,
+                "yearly_price": 40,
+                "yearly_monthly_equivalent": 3.33,
+                "yearly_savings_percent": 17,
                 "currency": "USD",
                 "features": [
                     "12 busquedas por dia",
@@ -120,6 +171,10 @@ async def get_plans():
                 "id": "pro",
                 "name": "Pro",
                 "price": 8,
+                "monthly_price": 8,
+                "yearly_price": 80,
+                "yearly_monthly_equivalent": 6.67,
+                "yearly_savings_percent": 17,
                 "currency": "USD",
                 "features": [
                     "40 busquedas por dia",
@@ -135,6 +190,10 @@ async def get_plans():
                 "id": "premium",
                 "name": "Premium",
                 "price": 12,
+                "monthly_price": 12,
+                "yearly_price": 120,
+                "yearly_monthly_equivalent": 10,
+                "yearly_savings_percent": 17,
                 "currency": "USD",
                 "features": [
                     "Todo de Pro",
@@ -171,6 +230,7 @@ async def create_checkout_session(
 ):
     if checkout.plan not in PLANS:
         raise HTTPException(status_code=400, detail="Plan no valido")
+    billing_cycle = _validate_billing_cycle(checkout.billing_cycle)
 
     plan = PLANS[checkout.plan]
     web_user = db.get_web_user(current_user["telegram_id"]) or {}
@@ -178,15 +238,17 @@ async def create_checkout_session(
     payer = {**current_user, "email": payer_email}
 
     if checkout.provider == "stripe":
-        return await create_stripe_checkout(checkout, payer, plan)
+        return await create_stripe_checkout(checkout, payer, plan, billing_cycle)
     if checkout.provider == "mercadopago":
-        return await create_mercadopago_checkout(checkout, payer, plan)
+        return await create_mercadopago_checkout(checkout, payer, plan, billing_cycle)
     if checkout.provider == "crypto":
-        return await create_crypto_checkout(checkout, current_user, plan)
+        return await create_crypto_checkout(checkout, current_user, plan, billing_cycle)
     raise HTTPException(status_code=400, detail="Proveedor no valido")
 
 
-async def create_stripe_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
+async def create_stripe_checkout(
+    checkout: CheckoutRequest, user: dict, plan: dict, billing_cycle: str
+):
     import stripe
 
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
@@ -196,22 +258,35 @@ async def create_stripe_checkout(checkout: CheckoutRequest, user: dict, plan: di
             detail="Stripe no configurado",
         )
 
+    metadata = {
+        "telegram_id": str(user["telegram_id"]),
+        "plan": checkout.plan,
+        "billing_cycle": billing_cycle,
+    }
     session_payload = {
         "payment_method_types": ["card"],
-        "line_items": [{"price": plan["stripe_price_id"], "quantity": 1}],
+        "line_items": [{"price": _stripe_price_id(plan, billing_cycle), "quantity": 1}],
         "mode": "subscription",
         "success_url": checkout.success_url + "?session_id={CHECKOUT_SESSION_ID}",
         "cancel_url": checkout.cancel_url,
-        "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
+        "metadata": metadata,
+        "subscription_data": {"metadata": metadata},
     }
     if user.get("email") and "@" in user["email"]:
         session_payload["customer_email"] = user["email"]
 
     session = stripe.checkout.Session.create(**session_payload)
-    return {"provider": "stripe", "url": session.url, "session_id": session.id}
+    return {
+        "provider": "stripe",
+        "url": session.url,
+        "session_id": session.id,
+        "billing_cycle": billing_cycle,
+    }
 
 
-async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
+async def create_mercadopago_checkout(
+    checkout: CheckoutRequest, user: dict, plan: dict, billing_cycle: str
+):
     import mercadopago
 
     access_token = os.getenv("MP_ACCESS_TOKEN", "")
@@ -225,13 +300,18 @@ async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, pla
     preference_payload = {
         "items": [
             {
-                "title": f"JobBot {plan['name']}",
+                "title": f"JobBot {plan['name']} ({'anual' if billing_cycle == 'yearly' else 'mensual'})",
                 "quantity": 1,
-                "unit_price": plan["price_usd"],
+                "unit_price": _plan_price(plan, billing_cycle),
                 "currency_id": "USD",
             }
         ],
-        "metadata": {"telegram_id": str(user["telegram_id"]), "plan": checkout.plan},
+        "metadata": {
+            "telegram_id": str(user["telegram_id"]),
+            "plan": checkout.plan,
+            "billing_cycle": billing_cycle,
+            "mp_plan_price_id": _mp_price_id(plan, billing_cycle),
+        },
         "back_urls": {
             "success": checkout.success_url,
             "failure": checkout.cancel_url,
@@ -247,10 +327,13 @@ async def create_mercadopago_checkout(checkout: CheckoutRequest, user: dict, pla
         "provider": "mercadopago",
         "url": preference["response"]["init_point"],
         "preference_id": preference["response"]["id"],
+        "billing_cycle": billing_cycle,
     }
 
 
-async def create_crypto_checkout(checkout: CheckoutRequest, user: dict, plan: dict):
+async def create_crypto_checkout(
+    checkout: CheckoutRequest, user: dict, plan: dict, billing_cycle: str
+):
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Checkout crypto no disponible en este despliegue",
@@ -289,6 +372,7 @@ async def stripe_webhook(
             db,
             metadata.get("telegram_id"),
             metadata.get("plan", "pro"),
+            metadata.get("billing_cycle", "monthly"),
             "stripe",
             session.get("subscription") or session.get("id"),
         )
@@ -322,6 +406,7 @@ async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
                 db,
                 metadata.get("telegram_id"),
                 metadata.get("plan", "pro"),
+                metadata.get("billing_cycle", "monthly"),
                 "mercadopago",
                 payment_id,
             )
@@ -357,6 +442,7 @@ async def crypto_webhook(
             db,
             metadata.get("telegram_id"),
             metadata.get("plan", "pro"),
+            metadata.get("billing_cycle", "monthly"),
             "crypto",
             charge.get("id"),
         )
@@ -400,15 +486,23 @@ async def _send_telegram_notification(telegram_id: int, message: str) -> bool:
         return False
 
 
-async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
+async def _notify_plan_change(
+    telegram_id: int, plan: str, expiry: str, billing_cycle: str = "monthly"
+) -> bool:
     """Notify user about subscription plan change."""
     plan_names = {
-        "starter": "Starter ($4/mes)",
-        "pro": "Pro ($8/mes)",
-        "premium": "Premium ($12/mes)",
+        "starter": "Starter",
+        "pro": "Pro",
+        "premium": "Premium",
         "free": "Free"
     }
+    billing_labels = {
+        "monthly": "mensual",
+        "yearly": "anual",
+    }
     plan_name = plan_names.get(plan, plan)
+    plan_price = _plan_price(PLANS.get(plan, {"price_usd": 0, "yearly_price_usd": 0}), billing_cycle)
+    plan_label = f"{plan_name} (${plan_price}/{ 'año' if billing_cycle == 'yearly' else 'mes'})"
     
     # Parse expiry date for display
     try:
@@ -419,14 +513,13 @@ async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
     
     message = (
         "✅ <b>¡Suscripción Activada!</b>\n\n"
-        f"Tu plan <b>{plan_name}</b> está ahora activo.\n\n"
+        f"Tu plan <b>{plan_label}</b> en modalidad <b>{billing_labels.get(billing_cycle, billing_cycle)}</b> está ahora activo.\n\n"
         f"📅 Válido hasta: <b>{expiry_formatted}</b>\n\n"
-        "🚀 Ahora tienes acceso a todas las funciones premium:\n"
-        "• Búsquedas ilimitadas\n"
-        "• Alertas automáticas cada hora\n"
-        "• Análisis de CV con IA\n"
-        "• Simulador de entrevistas\n"
-        "• Empresas preferidas\n\n"
+        "🚀 Ahora tenés acceso a un flujo mucho más fuerte:\n"
+        "• Más búsquedas y resultados completos\n"
+        "• Tracker y alertas automáticas\n"
+        "• CV Intelligence dentro del dashboard\n"
+        "• Match, cover letters o mock interviews según tu plan\n\n"
         "¡Gracias por confiar en JobBot! 🎯"
     )
     
@@ -434,25 +527,26 @@ async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
 
 
 async def activate_subscription(
-    db: Database, telegram_id: str, plan: str, provider: str, payment_id: str
+    db: Database, telegram_id: str, plan: str, billing_cycle: str, provider: str, payment_id: str
 ):
     if not telegram_id:
         raise ValueError("telegram_id requerido")
 
     telegram_id = int(telegram_id)
-    expiry = _subscription_expiry_iso()
+    normalized_cycle = _validate_billing_cycle(billing_cycle)
+    expiry = _subscription_expiry_iso(365 if normalized_cycle == "yearly" else 30)
     db.update_user_plan(telegram_id, plan, expiry)
     db.record_payment(
         telegram_id=telegram_id,
         provider=provider,
-        amount=PLANS.get(plan, {}).get("price_usd", 0),
+        amount=_plan_price(PLANS.get(plan, {"price_usd": 0, "yearly_price_usd": 0}), normalized_cycle),
         currency="USD",
         status="paid",
         provider_payment_id=payment_id,
     )
     
     # Notify user about subscription activation
-    await _notify_plan_change(telegram_id, plan, expiry)
+    await _notify_plan_change(telegram_id, plan, expiry, normalized_cycle)
 
 
 async def _notify_cancellation(telegram_id: int) -> bool:
@@ -461,9 +555,9 @@ async def _notify_cancellation(telegram_id: int) -> bool:
         "📋 <b>Suscripción Cancelada</b>\n\n"
         "Tu suscripción ha sido cancelada y volviste al plan <b>Free</b>.\n\n"
         "🔄 Ahora tenés:\n"
-        "• 5 búsquedas por día\n"
-        "• Alertas cada 6 horas\n"
-        "• Acceso al dashboard\n\n"
+        "• 3 búsquedas guiadas por día\n"
+        "• ATS básico de CV\n"
+        "• Acceso al dashboard liviano\n\n"
         "💡 ¿Querés volver a Pro? Escribí /precios en el bot."
     )
     

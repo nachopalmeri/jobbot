@@ -9,6 +9,10 @@ interface Plan {
   id: string;
   name: string;
   price: number;
+  monthly_price?: number;
+  yearly_price?: number;
+  yearly_monthly_equivalent?: number;
+  yearly_savings_percent?: number;
   currency: string;
   features: string[];
   eyebrow?: string;
@@ -18,9 +22,9 @@ interface Plan {
 }
 
 const providers = [
-  { name: "Stripe", icon: CreditCard, color: "bg-stone-950" },
-  { name: "MercadoPago", icon: Wallet, color: "bg-sky-600" },
-  { name: "Crypto", icon: Bitcoin, color: "bg-amber-500" },
+  { name: "Stripe", icon: CreditCard, color: "bg-stone-950", available: true, note: "Suscripción mensual o anual" },
+  { name: "MercadoPago", icon: Wallet, color: "bg-sky-600", available: true, note: "Pago único del ciclo elegido" },
+  { name: "Crypto", icon: Bitcoin, color: "bg-amber-500", available: false, note: "Próximamente" },
 ];
 
 const planOverrides: Record<
@@ -85,6 +89,7 @@ export default function SuscripcionPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [currentPlan, setCurrentPlan] = useState("free");
   const [selectedPlan, setSelectedPlan] = useState("premium");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -119,6 +124,15 @@ export default function SuscripcionPage() {
   }, []);
 
   const paidPlans = useMemo(() => plans.filter((plan) => plan.id !== "free"), [plans]);
+  const selectedPlanData = useMemo(
+    () => plans.find((plan) => plan.id === selectedPlan),
+    [plans, selectedPlan],
+  );
+
+  const displayedPrice = (plan: Plan) =>
+    billingCycle === "yearly" && plan.yearly_price ? plan.yearly_price : plan.price;
+
+  const displayedPeriod = billingCycle === "yearly" ? "/año" : "/mes";
 
   const handleUpgrade = async (provider: string) => {
     try {
@@ -127,7 +141,7 @@ export default function SuscripcionPage() {
         "/subscriptions/create-checkout",
         {
           method: "POST",
-          body: JSON.stringify({ provider, plan: selectedPlan }),
+          body: JSON.stringify({ provider, plan: selectedPlan, billing_cycle: billingCycle }),
         },
         true,
       );
@@ -160,6 +174,34 @@ export default function SuscripcionPage() {
             Bajamos el free para que sea una entrada genuina, no un plan que promete demasiado.
             El valor fuerte aparece cuando realmente empezás a operar mejor: tracker, CV suite y preparación.
           </p>
+
+          <div className="mt-6 inline-flex rounded-full border border-stone-200 bg-stone-100 p-1">
+            <button
+              type="button"
+              onClick={() => setBillingCycle("monthly")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                billingCycle === "monthly"
+                  ? "bg-white text-stone-950 shadow-sm"
+                  : "text-stone-600 hover:text-stone-950"
+              }`}
+            >
+              Mensual
+            </button>
+            <button
+              type="button"
+              onClick={() => setBillingCycle("yearly")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                billingCycle === "yearly"
+                  ? "bg-stone-950 text-white shadow-sm"
+                  : "text-stone-600 hover:text-stone-950"
+              }`}
+            >
+              Anual
+              <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                2 meses off
+              </span>
+            </button>
+          </div>
 
           {message ? (
             <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
@@ -214,10 +256,17 @@ export default function SuscripcionPage() {
 
                   <div className="mt-4 flex items-end gap-2">
                     <span className="text-5xl font-semibold tracking-tight text-stone-950">
-                      ${plan.price}
+                      ${displayedPrice(plan)}
                     </span>
-                    <span className="pb-2 text-stone-500">/mes</span>
+                    <span className="pb-2 text-stone-500">{displayedPeriod}</span>
                   </div>
+
+                  {billingCycle === "yearly" && plan.yearly_price ? (
+                    <p className="mt-2 text-sm text-stone-500">
+                      Equivale a ${plan.yearly_monthly_equivalent?.toFixed(2) ?? "0"}/mes y te ahorra
+                      {` ${plan.yearly_savings_percent ?? 0}%`} frente al mensual.
+                    </p>
+                  ) : null}
 
                   {plan.spotlight ? (
                     <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
@@ -261,9 +310,27 @@ export default function SuscripcionPage() {
             <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
               <h2 className="text-xl font-semibold text-stone-950">Checkout del plan</h2>
               <p className="mt-2 text-sm leading-6 text-stone-600">
-                Estás por activar <strong>{selectedPlan.toUpperCase()}</strong>. Elegí el medio
-                de pago que prefieras.
+                Estás por activar <strong>{selectedPlan.toUpperCase()}</strong> en ciclo{" "}
+                <strong>{billingCycle === "yearly" ? "anual" : "mensual"}</strong>. Elegí el medio
+                de pago que prefieras o comprá créditos si querés pagar solo por uso.
               </p>
+
+              {selectedPlanData ? (
+                <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Total del ciclo</span>
+                    <strong className="text-stone-950">
+                      ${displayedPrice(selectedPlanData)} {selectedPlanData.currency}
+                    </strong>
+                  </div>
+                  {billingCycle === "yearly" && selectedPlanData.yearly_monthly_equivalent ? (
+                    <div className="mt-2 flex items-center justify-between gap-3 text-stone-500">
+                      <span>Promedio mensual</span>
+                      <span>${selectedPlanData.yearly_monthly_equivalent.toFixed(2)}/mes</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="mt-5 space-y-3">
                 {providers.map((provider) => (
@@ -271,16 +338,24 @@ export default function SuscripcionPage() {
                     key={provider.name}
                     type="button"
                     onClick={() => handleUpgrade(provider.name.toLowerCase())}
-                    disabled={!paidPlans.some((plan) => plan.id === selectedPlan)}
-                    className={`${provider.color} flex w-full items-center justify-between rounded-2xl px-4 py-3 font-medium text-white hover:opacity-90 disabled:opacity-60`}
+                    disabled={!provider.available || !paidPlans.some((plan) => plan.id === selectedPlan)}
+                    className={`${provider.color} flex w-full items-center justify-between rounded-2xl px-4 py-3 font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60`}
                   >
                     <span className="inline-flex items-center gap-2">
                       <provider.icon size={18} />
-                      {provider.name}
+                      <span>{provider.name}</span>
                     </span>
-                    <span className="text-sm opacity-80">Continuar</span>
+                    <span className="text-sm opacity-80">{provider.note}</span>
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
+                Si preferís no suscribirte, podés ir por <strong>créditos</strong>: desbloqueás la CV
+                Suite o comprás packs para usar IA cuando realmente la necesites.
+                <a href="/dashboard/creditos" className="ml-2 font-semibold underline underline-offset-4">
+                  Ver créditos
+                </a>
               </div>
             </section>
 
@@ -295,11 +370,29 @@ export default function SuscripcionPage() {
                 ].map((item) => (
                   <div
                     key={item}
-                    className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
-                  >
-                    {item}
-                  </div>
-                ))}
+                  className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+
+            <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-stone-950">¿Suscripción o créditos?</h2>
+              <div className="mt-4 space-y-3 text-sm leading-6 text-stone-600">
+                <p>
+                  <strong className="text-stone-950">Mensual o anual</strong> si querés usar JobBot todas
+                  las semanas, con tracker, alertas y rutina completa.
+                </p>
+                <p>
+                  <strong className="text-stone-950">Créditos</strong> si tu uso fuerte está en CV,
+                  cover letters o entrevistas y preferís pagar por bloques.
+                </p>
+                <p>
+                  <strong className="text-stone-950">Unlock lifetime</strong> si querés la capa CV
+                  desbloqueada sin sumar otra suscripción mensual.
+                </p>
               </div>
             </section>
           </div>

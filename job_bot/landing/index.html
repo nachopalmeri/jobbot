@@ -3953,6 +3953,13 @@
       margin-top: 1rem;
     }
 
+    .plan-billing-note {
+      margin-top: 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
     /* Pricing Comparison Table */
     .pricing-comparison {
       max-width: 700px;
@@ -5348,13 +5355,13 @@
             </div>
             <p class="plan-desc">Para empezar a explorar</p>
             <ul class="plan-features">
-              <li><i class="fas fa-check"></i> <strong>5 empleos/día</strong> de búsqueda</li>
-              <li><i class="fas fa-check"></i> Búsqueda básica por keywords</li>
-              <li><i class="fas fa-check"></i> <strong>1 alerta</strong> configurada</li>
-              <li><i class="fas fa-check"></i> Notificaciones vía Telegram</li>
-              <li><i class="fas fa-times"></i> Match con tu CV</li>
+              <li><i class="fas fa-check"></i> <strong>3 búsquedas guiadas/día</strong></li>
+              <li><i class="fas fa-check"></i> Hasta 3 resultados visibles por búsqueda</li>
+              <li><i class="fas fa-check"></i> Dashboard liviano</li>
+              <li><i class="fas fa-check"></i> Score ATS inicial de CV</li>
+              <li><i class="fas fa-times"></i> Match avanzado con tu CV</li>
               <li><i class="fas fa-times"></i> Pipeline de postulaciones</li>
-              <li><i class="fas fa-times"></i> Análisis de mercado</li>
+              <li><i class="fas fa-times"></i> Mock interviews</li>
             </ul>
             <a href="https://app-jobbot.vercel.app/register" class="btn btn-ghost btn-full">Empezar gratis</a>
           </div>
@@ -5362,38 +5369,43 @@
           <div class="pricing-card pro popular gs-fade">
             <div class="plan-badge pro">Más popular</div>
             <div class="plan-price">
-              <span class="currency">$</span><span class="amount">3</span><span class="period">/mes</span>
+              <span class="currency">$</span><span class="amount">8</span><span class="period">/mes</span>
             </div>
-            <p class="plan-desc">Para quienes buscan en serio</p>
+            <p class="plan-billing-note">o $80/año, ahorrando 2 meses</p>
+            <p class="plan-desc">Para quienes ya buscan con intención</p>
             <ul class="plan-features">
-              <li><i class="fas fa-check"></i> <strong>Búsqueda ilimitada</strong> en 5 fuentes</li>
-              <li><i class="fas fa-check"></i> <strong>Match %</strong> con tu CV (IA)</li>
+              <li><i class="fas fa-check"></i> <strong>40 búsquedas por día</strong></li>
+              <li><i class="fas fa-check"></i> <strong>4 análisis IA</strong> de CV por mes</li>
+              <li><i class="fas fa-check"></i> <strong>Match score</strong> + keywords faltantes</li>
               <li><i class="fas fa-check"></i> <strong>Alertas automáticas</strong> por Telegram</li>
-              <li><i class="fas fa-check"></i> <strong>Analizador de CV</strong> con Groq</li>
-              <li><i class="fas fa-check"></i> Filtros (remoto, seniority, zona)</li>
-              <li><i class="fas fa-check"></i> Historial de búsquedas</li>
-              <li><i class="fas fa-times"></i> Entrenamiento entrevistas</li>
+              <li><i class="fas fa-check"></i> <strong>Pipeline completo</strong></li>
+              <li><i class="fas fa-check"></i> Filtros y resultados completos</li>
+              <li><i class="fas fa-times"></i> Cover letters premium</li>
+              <li><i class="fas fa-times"></i> Mock interviews</li>
             </ul>
             <a href="https://app-jobbot.vercel.app/suscripcion" class="btn btn-primary btn-full">Obtener Pro</a>
-            <p class="plan-note">Menos de un café por día</p>
+            <p class="plan-note">El mejor equilibrio entre volumen, tracker y CV Suite.</p>
           </div>
 
           <div class="pricing-card premium gs-fade">
             <div class="plan-badge premium">Premium</div>
             <div class="plan-price">
-              <span class="currency">$</span><span class="amount">5</span><span class="period">/mes</span>
+              <span class="currency">$</span><span class="amount">12</span><span class="period">/mes</span>
             </div>
-            <p class="plan-desc">Todo para maximizar tus chances</p>
+            <p class="plan-billing-note">o $120/año, ahorrando 2 meses</p>
+            <p class="plan-desc">La capa completa de CV Intelligence</p>
             <ul class="plan-features">
               <li><i class="fas fa-check"></i> <strong>Todo de Pro</strong></li>
-              <li><i class="fas fa-check"></i> <strong>Simulador de entrevistas</strong> con IA</li>
-              <li><i class="fas fa-check"></i> <strong>Análisis de CV</strong> avanzado</li>
-              <li><i class="fas fa-check"></i> <strong>Alertas ilimitadas</strong></li>
-              <li><i class="fas fa-check"></i> Exportar datos (CSV/JSON)</li>
-              <li><i class="fas fa-check"></i> Soporte prioritario</li>
-              <li><i class="fas fa-check"></i> Acceso anticipado a features</li>
+              <li><i class="fas fa-check"></i> <strong>20 análisis IA</strong> de CV por mes</li>
+              <li><i class="fas fa-check"></i> <strong>10 mock interviews</strong> por mes</li>
+              <li><i class="fas fa-check"></i> <strong>Cover letters</strong> personalizadas</li>
+              <li><i class="fas fa-check"></i> Historial completo y workflow de CV</li>
+              <li><i class="fas fa-check"></i> <strong>120 búsquedas por día</strong></li>
+              <li><i class="fas fa-check"></i> Priorización para aplicar mejor</li>
+              <li><i class="fas fa-check"></i> Mejor experiencia operativa web + bot</li>
             </ul>
             <a href="https://app-jobbot.vercel.app/suscripcion" class="btn btn-ghost btn-full">Obtener Premium</a>
+            <p class="plan-note">También podés ir por créditos si solo querés usar CV Suite bajo demanda.</p>
           </div>
         </div>
 
@@ -5430,11 +5442,12 @@
         </div>
 
         <div class="payment-methods gs-fade">
-          <p>Métodos de pago aceptados:</p>
+          <p>Podés elegir mensual, anual o comprar créditos one-time para CV Suite. Stripe y MercadoPago quedan como prioridad; Crypto va en segunda etapa.</p>
           <div class="methods-icons">
             <span class="method-badge"><i class="fab fa-stripe"></i> Stripe</span>
             <span class="method-badge"><i class="fas fa-credit-card"></i> MercadoPago</span>
-            <span class="method-badge"><i class="fab fa-bitcoin"></i> Crypto</span>
+            <span class="method-badge"><i class="fas fa-layer-group"></i> Créditos one-time</span>
+            <span class="method-badge"><i class="fab fa-bitcoin"></i> Crypto (próximamente)</span>
           </div>
         </div>
       </div>
@@ -6127,10 +6140,10 @@
         <div class="demo-cta gs-fade">
           <p>¿Te gusta lo que ves?</p>
           <a href="https://app-jobbot.vercel.app/suscripcion" class="btn btn-primary btn-lg">
-            <span>Activar plan Pro - $3/mes</span>
+            <span>Activar plan Pro - $8/mes o $80/año</span>
             <i class="fas fa-arrow-right"></i>
           </a>
-          <p class="demo-note">Menos de un café por día. Cancelás cuando quieras.</p>
+          <p class="demo-note">Elegí mensual, anual o créditos según cómo busques trabajo.</p>
         </div>
       </div>
     </section>
@@ -7529,7 +7542,7 @@
           let response = '¡Gracias por tu mensaje! 🚀\n\nJobBot te alerta sobre 30-50 puestos por semana automáticamente. ¿Te gustaría saber más sobre el plan Pro, cómo funciona el matching, o consejos para tu CV?';
           
           if (lowerText.includes('precio') || lowerText.includes('plan') || lowerText.includes('pro')) {
-            response = '💎 Plan Pro: $3 USD/mes\n\n✅ Búsqueda ilimitada en 5 fuentes\n✅ Matching IA avanzado\n✅ Alertas automáticas por Telegram\n✅ Análisis de CV con IA (Groq)\n\n📊 Comparación: Sin JobBot: 2-3 empleos/semana. Con JobBot: 30-50 alertas/semana';
+            response = '💎 Plan Pro: $8 USD/mes o $80 USD/año\n\n✅ 40 búsquedas por día\n✅ Match score + keywords faltantes\n✅ Alertas automáticas por Telegram\n✅ 4 análisis IA de CV por mes\n\n🪙 También podés comprar créditos si solo querés usar CV Suite bajo demanda.';
           } else if (lowerText.includes('match') || lowerText.includes('funciona')) {
             response = '🎯 Nuestro matching inteligente:\n\n1. Analizá tu CV y experiencia\n2. Buscamos en 5 fuentes (Remotive, Arbeitnow, Jobicy, Himalayas, LinkedIn)\n3. Filtramos por compatibilidad >75%\n4. Te alertamos automáticamente cuando hay matches\n\n⚡ Resultado: 10x más empleos encontrados con mejor calidad';
           } else if (lowerText.includes('cv') || lowerText.includes('curriculum')) {

@@ -122,36 +122,62 @@ export default function DashboardPage() {
   return (
     <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(79,70,229,0.08),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(217,119,6,0.08),_transparent_28%),linear-gradient(180deg,_#fafaf9,_#f5f5f4_42%,_#ffffff)] p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-10">
-        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-8">
+          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">
                 Dashboard Operativo
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
-                Todo tu job search en un solo tablero.
+                Tu búsqueda laboral merece un tablero que empuje, no que drene energía.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600 lg:text-lg">
-                Segui tu pipeline, sostené tu objetivo semanal, enfocá bloques de trabajo
-                con pomodoro y dejá a mano la suite de CV para aplicar mejor.
+                Seguí tu pipeline, sostené tu objetivo semanal, enfocá bloques de trabajo
+                con pomodoro y dejá a mano la suite de CV para aplicar con más precisión.
               </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Link
+                  href="/dashboard/buscar"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 font-medium text-white hover:bg-slate-800"
+                >
+                  Buscar empleos
+                  <ArrowRight size={18} />
+                </Link>
+                <Link
+                  href="/dashboard/cv"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-5 py-3 font-medium text-stone-700 hover:border-indigo-200 hover:text-indigo-700"
+                >
+                  CV Intelligence
+                  <Sparkles size={18} />
+                </Link>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/dashboard/buscar"
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 font-medium text-white hover:bg-slate-800"
-              >
-                Buscar empleos
-                <ArrowRight size={18} />
-              </Link>
-              <Link
-                href="/dashboard/cv"
-                className="inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-5 py-3 font-medium text-stone-700 hover:border-indigo-200 hover:text-indigo-700"
-              >
-                CV Intelligence
-                <Sparkles size={18} />
-              </Link>
+            <div className="rounded-[1.75rem] border border-indigo-200 bg-[linear-gradient(135deg,_rgba(79,70,229,0.08),_rgba(245,158,11,0.08))] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
+                Momentum del día
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                  <p className="text-sm font-medium text-stone-500">Meta</p>
+                  <p className="mt-2 text-lg font-semibold text-stone-950">
+                    1 búsqueda buena + 1 postulación cuidada
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                  <p className="text-sm font-medium text-stone-500">Mindset</p>
+                  <p className="mt-2 text-lg font-semibold text-stone-950">
+                    Consistencia mata ansiedad.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                  <p className="text-sm font-medium text-stone-500">Palanca</p>
+                  <p className="mt-2 text-lg font-semibold text-stone-950">
+                    CV Suite + pipeline = mejores decisiones.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
