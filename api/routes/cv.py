@@ -223,9 +223,15 @@ async def scan_cv(
     job_description: str = Form(default=""),
     job_title: str = Form(default=""),
     company_name: str = Form(default=""),
+    mode: str = Form(default="basic"),  # 'basic' o 'pro'
     current_user: dict = Depends(get_authenticated_user),
     db: Database = Depends(get_db),
 ):
+    """
+    Analiza un CV. 
+    - mode='basic': Análisis ATS gratuito (siempre disponible)
+    - mode='pro': Incluye análisis IA (consume 1 crédito o usa límite del plan)
+    """
     uploaded_text = _extract_uploaded_cv_text(cv_file)
     final_cv_text = _clean_text(cv_text) or uploaded_text
     final_job_description = _clean_text(job_description)
@@ -235,17 +241,61 @@ async def scan_cv(
     if not final_cv_text:
         raise HTTPException(status_code=400, detail="Necesitamos el texto o archivo de tu CV")
 
+    # Score básico siempre disponible
     quality = _score_cv_quality(final_cv_text)
     comparison = (
         compare_cv_with_offer(final_cv_text, final_job_description)
         if final_job_description
         else None
     )
-    quota = _quota_snapshot(db, current_user["telegram_id"])
-
+    
+    # Determinar si puede usar análisis IA
+    telegram_id = current_user["telegram_id"]
+    quota = _quota_snapshot(db, telegram_id)
+    credits_balance = db.get_user_credits_balance(telegram_id)
+    
     ai_feedback = None
     consumed_ai = False
-    if quota["ai_enabled"] and db.check_usage_limit(current_user["telegram_id"], "ai_analyses"):
+    used_credits = False
+    
+    if mode == "pro":
+        # Intentar usar créditos primero, luego límite del plan
+        has_credits = credits_balance["total_credits"] > 0
+        has_plan_quota = quota["ai_enabled"] and db.check_usage_limit(telegram_id, "ai_analyses")
+        
+        if has_credits:
+            # Consumir crédito
+            consume_result = db.consume_credits(
+                telegram_id=telegram_id,
+                credits_to_consume=1,
+                description=f"CV Analysis Pro: {final_job_title or 'General'}",
+                related_entity_type="cv_scan",
+                related_entity_id=None
+            )
+            if consume_result["success"]:
+                used_credits = True
+            else:
+                raise HTTPException(
+                    status_code=403,
+                    detail="No se pudieron consumir créditos. Intenta nuevamente."
+                )
+        elif has_plan_quota:
+            # Usar límite del plan (Pro/Premium)
+            _consume_ai_quota(db, telegram_id)
+        else:
+            # Sin créditos ni plan
+            if credits_balance["unlock_active"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Te quedaste sin créditos. Comprá más en /dashboard/creditos"
+                )
+            else:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Análisis Pro requiere créditos o Plan Pro/Premium. Desbloqueá CV Suite en /dashboard/creditos"
+                )
+        
+        # Generar feedback IA
         prompt = f"""
 Analizá este CV como si fueras una mezcla de ATS + recruiter.
 
@@ -268,14 +318,18 @@ Devolvé:
 3. Una recomendación final sobre si este CV está listo para aplicar hoy
 """
         ai_feedback = await analyze_with_groq(prompt)
-        _consume_ai_quota(db, current_user["telegram_id"])
-        db.record_ai_analysis(current_user["telegram_id"], cv_analyzed=True, job_matched=bool(final_job_description))
-        quota = _quota_snapshot(db, current_user["telegram_id"])
+        db.record_ai_analysis(telegram_id, cv_analyzed=True, job_matched=bool(final_job_description))
+        quota = _quota_snapshot(db, telegram_id)
         consumed_ai = True
+        
+        # Actualizar balance de créditos si se usaron
+        if used_credits:
+            credits_balance = db.get_user_credits_balance(telegram_id)
 
     return {
         "job_title": final_job_title,
         "company_name": final_company_name,
+        "mode": mode,
         "ats_score": quality["ats_score"],
         "match_score": comparison["score"] if comparison else None,
         "matching_keywords": comparison["matching"] if comparison else [],
@@ -291,8 +345,13 @@ Devolvé:
             "metric_hits": quality["metric_hits"],
         },
         "quota": quota,
+        "credits": {
+            "total": credits_balance["total_credits"],
+            "unlock_active": credits_balance["unlock_active"],
+        } if mode == "pro" else None,
         "ai_feedback": ai_feedback,
         "ai_feedback_included": consumed_ai,
+        "used_credits": used_credits,
     }
 
 
@@ -432,4 +491,112 @@ async def start_mock_interview(
     return {
         "job_title": job_title,
         "questions": questions.get(job_title, questions["Default"]),
+    }
+
+
+@router.get("/history")
+async def get_cv_history(
+    limit: int = 50,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    """
+    Obtiene el historial de análisis de CV del usuario.
+    Requiere CV Suite Unlock para acceder al historial completo.
+    """
+    telegram_id = current_user.get("telegram_id")
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="Usuario sin telegram_id")
+    
+    # Verificar acceso al historial
+    credits = db.get_user_credits_balance(telegram_id)
+    if not credits["unlock_active"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Desbloqueá CV Suite para ver tu historial completo en /dashboard/creditos"
+        )
+    
+    # Obtener análisis de la tabla ai_analyses
+    if db.db_type == "supabase":
+        query = """
+            SELECT id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at
+            FROM ai_analyses
+            WHERE telegram_id = %s AND cv_analyzed = 1
+            ORDER BY created_at DESC
+            LIMIT %s
+        """
+    else:
+        query = """
+            SELECT id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at
+            FROM ai_analyses
+            WHERE telegram_id = ? AND cv_analyzed = 1
+            ORDER BY created_at DESC
+            LIMIT ?
+        """
+    
+    rows = db._fetchall(query, (telegram_id, limit))
+    
+    history = []
+    for row in rows:
+        history.append({
+            "id": row["id"],
+            "type": "cv_analysis",
+            "has_job_match": bool(row["job_matched"]),
+            "tokens_used": (row["prompt_tokens"] or 0) + (row["response_tokens"] or 0),
+            "created_at": row["created_at"],
+        })
+    
+    return {
+        "history": history,
+        "count": len(history),
+        "unlock_active": credits["unlock_active"],
+    }
+
+
+@router.get("/history/{analysis_id}")
+async def get_cv_analysis_detail(
+    analysis_id: int,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    """Obtiene el detalle de un análisis específico."""
+    telegram_id = current_user.get("telegram_id")
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="Usuario sin telegram_id")
+    
+    # Verificar acceso
+    credits = db.get_user_credits_balance(telegram_id)
+    if not credits["unlock_active"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Desbloqueá CV Suite para ver detalles en /dashboard/creditos"
+        )
+    
+    # Obtener el análisis específico
+    if db.db_type == "supabase":
+        query = """
+            SELECT id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at
+            FROM ai_analyses
+            WHERE id = %s AND telegram_id = %s
+        """
+    else:
+        query = """
+            SELECT id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at
+            FROM ai_analyses
+            WHERE id = ? AND telegram_id = ?
+        """
+    
+    row = db._fetchone(query, (analysis_id, telegram_id))
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    
+    return {
+        "id": row["id"],
+        "type": "cv_analysis",
+        "has_job_match": bool(row["job_matched"]),
+        "prompt_tokens": row["prompt_tokens"],
+        "response_tokens": row["response_tokens"],
+        "total_tokens": (row["prompt_tokens"] or 0) + (row["response_tokens"] or 0),
+        "created_at": row["created_at"],
     }

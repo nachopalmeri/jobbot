@@ -15,7 +15,7 @@ from .rate_limit import (
     LOGIN_WINDOW_SECONDS,
     rate_limiter,
 )
-from .routes import auth, cv, jobs, public, subscriptions, users
+from .routes import auth, credits, cv, jobs, public, subscriptions, users
 
 
 logger = logging.getLogger("jobbot.api")
@@ -157,6 +157,7 @@ async def http_exception_handler(_: Request, exc: HTTPException):
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(subscriptions.router, prefix="/subscriptions", tags=["subscriptions"])
+app.include_router(credits.router, prefix="/credits", tags=["credits"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(cv.router, prefix="/cv", tags=["cv"])
 app.include_router(public.router, tags=["public"])

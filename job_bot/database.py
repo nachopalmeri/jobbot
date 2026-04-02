@@ -202,6 +202,9 @@ class Database:
                 except Exception:
                     pass
             logger.info("✅ Supabase DB inicializada")
+            
+            # Inicializar tablas de créditos (CV Suite)
+            self._init_credit_tables()
         else:
             conn = self._get_conn()
             context = conn if self.db_path == ":memory:" else conn
@@ -430,6 +433,10 @@ class Database:
                     )
                 except Exception:
                     pass
+                
+            # Inicializar tablas de créditos (CV Suite)
+            self._init_credit_tables()
+            
             logger.info("✅ SQLite DB inicializada")
 
             logger.info("✅ Base de datos inicializada: %s", self.db_path)
@@ -1910,4 +1917,471 @@ class Database:
                     (batch_id, row["telegram_id"], action, int(time.time()))
                 )
             except Exception:
-                pass  # No critico, ignorar errores
+                pass
+
+    # =========================================================================
+    # CREDIT PACKS SYSTEM - CV SUITE (One-time purchases, never expires)
+    # =========================================================================
+    
+    def _init_credit_tables(self):
+        """Inicializa tablas de créditos si no existen (defensivo)."""
+        # Tabla de packs de créditos comprados
+        create_credit_packs = """
+            CREATE TABLE IF NOT EXISTS credit_packs (
+                id BIGSERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                pack_type TEXT NOT NULL,
+                credits_total INTEGER NOT NULL,
+                credits_remaining INTEGER NOT NULL,
+                purchase_price DECIMAL(10,2) NOT NULL,
+                currency TEXT DEFAULT 'USD',
+                purchased_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMPTZ,
+                payment_provider TEXT,
+                payment_id TEXT,
+                status TEXT DEFAULT 'active',
+                metadata JSONB
+            )
+        """ if self.db_type == "supabase" else """
+            CREATE TABLE IF NOT EXISTS credit_packs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                pack_type TEXT NOT NULL,
+                credits_total INTEGER NOT NULL,
+                credits_remaining INTEGER NOT NULL,
+                purchase_price REAL NOT NULL,
+                currency TEXT DEFAULT 'USD',
+                purchased_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT,
+                payment_provider TEXT,
+                payment_id TEXT,
+                status TEXT DEFAULT 'active',
+                metadata TEXT
+            )
+        """
+        
+        # Tabla de transacciones de créditos (uso)
+        create_credit_transactions = """
+            CREATE TABLE IF NOT EXISTS credit_transactions (
+                id BIGSERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                pack_id BIGINT REFERENCES credit_packs(id),
+                transaction_type TEXT NOT NULL,
+                credits_change INTEGER NOT NULL,
+                credits_balance INTEGER NOT NULL,
+                description TEXT,
+                related_entity_type TEXT,
+                related_entity_id BIGINT,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """ if self.db_type == "supabase" else """
+            CREATE TABLE IF NOT EXISTS credit_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                pack_id INTEGER REFERENCES credit_packs(id),
+                transaction_type TEXT NOT NULL,
+                credits_change INTEGER NOT NULL,
+                credits_balance INTEGER NOT NULL,
+                description TEXT,
+                related_entity_type TEXT,
+                related_entity_id INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        
+        try:
+            self._execute(create_credit_packs)
+            self._execute(create_credit_transactions)
+            
+            # Crear índices para performance
+            if self.db_type == "supabase":
+                self._execute("CREATE INDEX IF NOT EXISTS idx_credit_packs_user ON credit_packs(telegram_id, status)")
+                self._execute("CREATE INDEX IF NOT EXISTS idx_credit_packs_active ON credit_packs(telegram_id) WHERE status = 'active'")
+                self._execute("CREATE INDEX IF NOT EXISTS idx_credit_transactions_user ON credit_transactions(telegram_id, created_at)")
+            else:
+                self._execute("CREATE INDEX IF NOT EXISTS idx_credit_packs_user ON credit_packs(telegram_id, status)")
+                self._execute("CREATE INDEX IF NOT EXISTS idx_credit_transactions_user ON credit_transactions(telegram_id, created_at)")
+                
+        except Exception as e:
+            logger.error(f"[CREDITS] Error inicializando tablas: {e}")
+    
+    def get_user_credits_balance(self, telegram_id: int) -> dict:
+        """
+        Obtiene el balance total de créditos de un usuario.
+        
+        Returns:
+            {
+                'total_credits': int,  # Suma de todos los créditos activos
+                'active_packs': list,  # Detalle de packs activos
+                'unlock_active': bool  # Si tiene CV Suite desbloqueado
+            }
+        """
+        import time
+        
+        current_time = int(time.time()) if self.db_type != "supabase" else "NOW()"
+        
+        # Sumar créditos de packs activos (sin expirar)
+        if self.db_type == "supabase":
+            query = """
+                SELECT COALESCE(SUM(credits_remaining), 0) as total
+                FROM credit_packs 
+                WHERE telegram_id = %s 
+                  AND status = 'active'
+                  AND (expires_at IS NULL OR expires_at > NOW())
+            """
+        else:
+            query = """
+                SELECT COALESCE(SUM(credits_remaining), 0) as total
+                FROM credit_packs 
+                WHERE telegram_id = ? 
+                  AND status = 'active'
+                  AND (expires_at IS NULL OR expires_at > datetime('now'))
+            """
+        
+        result = self._fetchone(query, (telegram_id,))
+        total_credits = int(result["total"]) if result else 0
+        
+        # Verificar si tiene CV Suite desbloqueado (pack tipo 'unlock_suite')
+        unlock_query = """
+            SELECT 1 FROM credit_packs 
+            WHERE telegram_id = {} 
+              AND pack_type = 'unlock_suite'
+              AND status = 'active'
+              LIMIT 1
+        """.format("%s" if self.db_type == "supabase" else "?")
+        
+        unlock_result = self._fetchone(unlock_query, (telegram_id,))
+        has_unlock = unlock_result is not None
+        
+        # Obtener detalle de packs activos
+        packs_query = """
+            SELECT id, pack_type, credits_total, credits_remaining, 
+                   purchase_price, purchased_at, expires_at
+            FROM credit_packs 
+            WHERE telegram_id = {}
+              AND status = 'active'
+              AND (expires_at IS NULL OR expires_at > {})
+            ORDER BY purchased_at DESC
+        """.format(
+            "%s" if self.db_type == "supabase" else "?",
+            "NOW()" if self.db_type == "supabase" else "datetime('now')"
+        )
+        
+        packs_rows = self._fetchall(packs_query, (telegram_id,))
+        active_packs = []
+        for row in packs_rows:
+            active_packs.append({
+                "id": row["id"],
+                "pack_type": row["pack_type"],
+                "credits_total": row["credits_total"],
+                "credits_remaining": row["credits_remaining"],
+                "purchase_price": float(row["purchase_price"]),
+                "purchased_at": row["purchased_at"],
+                "expires_at": row["expires_at"]
+            })
+        
+        return {
+            "total_credits": total_credits,
+            "active_packs": active_packs,
+            "unlock_active": has_unlock
+        }
+    
+    def consume_credits(self, telegram_id: int, credits_to_consume: int, 
+                       description: str = None, related_entity_type: str = None,
+                       related_entity_id: int = None) -> dict:
+        """
+        Consume créditos del usuario (FIFO - primero los más antiguos).
+        
+        Returns:
+            {
+                'success': bool,
+                'credits_consumed': int,
+                'credits_remaining': int,
+                'packs_used': list  # Qué packs se consumieron
+            }
+        """
+        import time
+        
+        # Verificar balance primero
+        balance = self.get_user_credits_balance(telegram_id)
+        if balance["total_credits"] < credits_to_consume:
+            return {
+                "success": False,
+                "credits_consumed": 0,
+                "credits_remaining": balance["total_credits"],
+                "packs_used": [],
+                "error": "Insufficient credits"
+            }
+        
+        # Obtener packs activos ordenados por fecha (FIFO)
+        if self.db_type == "supabase":
+            packs_query = """
+                SELECT id, credits_remaining 
+                FROM credit_packs 
+                WHERE telegram_id = %s 
+                  AND status = 'active'
+                  AND credits_remaining > 0
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                ORDER BY purchased_at ASC
+                FOR UPDATE
+            """
+        else:
+            packs_query = """
+                SELECT id, credits_remaining 
+                FROM credit_packs 
+                WHERE telegram_id = ? 
+                  AND status = 'active'
+                  AND credits_remaining > 0
+                  AND (expires_at IS NULL OR expires_at > datetime('now'))
+                ORDER BY purchased_at ASC
+            """
+        
+        packs = self._fetchall(packs_query, (telegram_id,))
+        
+        credits_needed = credits_to_consume
+        credits_consumed = 0
+        packs_used = []
+        
+        conn = self._get_conn()
+        cursor = conn.cursor()
+        
+        try:
+            for pack in packs:
+                if credits_needed <= 0:
+                    break
+                
+                pack_id = pack["id"]
+                pack_available = pack["credits_remaining"]
+                
+                consume_from_pack = min(credits_needed, pack_available)
+                new_remaining = pack_available - consume_from_pack
+                
+                # Actualizar el pack
+                if self.db_type == "supabase":
+                    update_query = """
+                        UPDATE credit_packs 
+                        SET credits_remaining = %s,
+                            status = CASE WHEN %s = 0 THEN 'consumed' ELSE status END
+                        WHERE id = %s
+                    """
+                    cursor.execute(update_query, (new_remaining, new_remaining, pack_id))
+                else:
+                    new_status = 'consumed' if new_remaining == 0 else 'active'
+                    cursor.execute(
+                        "UPDATE credit_packs SET credits_remaining = ?, status = ? WHERE id = ?",
+                        (new_remaining, new_status, pack_id)
+                    )
+                
+                credits_needed -= consume_from_pack
+                credits_consumed += consume_from_pack
+                packs_used.append({
+                    "pack_id": pack_id,
+                    "credits_consumed": consume_from_pack,
+                    "credits_remaining_in_pack": new_remaining
+                })
+            
+            # Registrar transacción
+            new_balance = balance["total_credits"] - credits_consumed
+            
+            if self.db_type == "supabase":
+                transaction_query = """
+                    INSERT INTO credit_transactions 
+                    (telegram_id, transaction_type, credits_change, credits_balance, description,
+                     related_entity_type, related_entity_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(transaction_query, (
+                    telegram_id, 'consumption', -credits_consumed, new_balance,
+                    description, related_entity_type, related_entity_id
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO credit_transactions 
+                    (telegram_id, transaction_type, credits_change, credits_balance, description,
+                     related_entity_type, related_entity_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    telegram_id, 'consumption', -credits_consumed, new_balance,
+                    description, related_entity_type, related_entity_id
+                ))
+            
+            if self.db_path != ":memory:":
+                conn.commit()
+            
+            return {
+                "success": True,
+                "credits_consumed": credits_consumed,
+                "credits_remaining": new_balance,
+                "packs_used": packs_used
+            }
+            
+        except Exception as e:
+            logger.error(f"[CREDITS] Error consumiendo créditos: {e}")
+            if self.db_path != ":memory:":
+                conn.rollback()
+            return {
+                "success": False,
+                "credits_consumed": 0,
+                "credits_remaining": balance["total_credits"],
+                "packs_used": [],
+                "error": str(e)
+            }
+        finally:
+            if self.db_path != ":memory:":
+                conn.close()
+    
+    def add_credit_pack(self, telegram_id: int, pack_type: str, credits: int,
+                       price: float, currency: str = 'USD',
+                       payment_provider: str = None, payment_id: str = None,
+                       metadata: dict = None) -> int:
+        """
+        Agrega un pack de créditos a un usuario (después de pago exitoso).
+        
+        Returns:
+            pack_id: ID del pack creado
+        """
+        import json
+        import time
+        
+        # Los créditos nunca expiran por defecto (NULL)
+        expires_at = None
+        
+        # Para packs de promo, podrían tener expiración
+        if metadata and isinstance(metadata, dict):
+            if metadata.get('expires_in_days'):
+                if self.db_type == "supabase":
+                    expires_at = f"NOW() + INTERVAL '{metadata['expires_in_days']} days'"
+                else:
+                    expires_at = f"datetime('now', '+{metadata['expires_in_days']} days')"
+        
+        if self.db_type == "supabase":
+            query = """
+                INSERT INTO credit_packs 
+                (telegram_id, pack_type, credits_total, credits_remaining, purchase_price,
+                 currency, payment_provider, payment_id, status, metadata, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """
+            # Para PostgreSQL, metadata va como JSONB
+            meta_json = json.dumps(metadata) if metadata else None
+            
+            if expires_at and expires_at.startswith("NOW()"):
+                # Usar expresión SQL directamente
+                query = query.replace("%s", "{}").format(
+                    "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", expires_at
+                )
+                result = self._fetchone(query, (
+                    telegram_id, pack_type, credits, credits, price, currency,
+                    payment_provider, payment_id, 'active', meta_json
+                ))
+            else:
+                result = self._fetchone(query, (
+                    telegram_id, pack_type, credits, credits, price, currency,
+                    payment_provider, payment_id, 'active', meta_json, expires_at
+                ))
+        else:
+            query = """
+                INSERT INTO credit_packs 
+                (telegram_id, pack_type, credits_total, credits_remaining, purchase_price,
+                 currency, payment_provider, payment_id, status, metadata, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            meta_json = json.dumps(metadata) if metadata else None
+            
+            conn = self._get_conn()
+            cursor = conn.cursor()
+            cursor.execute(query, (
+                telegram_id, pack_type, credits, credits, price, currency,
+                payment_provider, payment_id, 'active', meta_json, expires_at
+            ))
+            pack_id = cursor.lastrowid
+            if self.db_path != ":memory:":
+                conn.commit()
+                conn.close()
+            return pack_id
+        
+        return result["id"] if result else None
+    
+    def get_credit_transactions(self, telegram_id: int, limit: int = 50) -> list:
+        """Obtiene el historial de transacciones de créditos de un usuario."""
+        query = """
+            SELECT t.*, p.pack_type
+            FROM credit_transactions t
+            LEFT JOIN credit_packs p ON t.pack_id = p.id
+            WHERE t.telegram_id = {}
+            ORDER BY t.created_at DESC
+            LIMIT {}
+        """.format(
+            "%s" if self.db_type == "supabase" else "?",
+            "%s" if self.db_type == "supabase" else "?"
+        )
+        
+        rows = self._fetchall(query, (telegram_id, limit))
+        transactions = []
+        for row in rows:
+            transactions.append({
+                "id": row["id"],
+                "transaction_type": row["transaction_type"],
+                "credits_change": row["credits_change"],
+                "credits_balance": row["credits_balance"],
+                "description": row["description"],
+                "related_entity_type": row["related_entity_type"],
+                "related_entity_id": row["related_entity_id"],
+                "created_at": row["created_at"],
+                "pack_type": row.get("pack_type")
+            })
+        return transactions
+    
+    def has_feature_access(self, telegram_id: int, feature: str) -> dict:
+        """
+        Verifica si un usuario tiene acceso a una feature específica.
+        
+        Features:
+        - 'cv_basic': Análisis básico (siempre disponible)
+        - 'cv_ai': Análisis IA (requiere crédito o plan Pro/Premium)
+        - 'cv_history': Historial completo (requiere unlock_suite)
+        - 'cover_letter': Carta de presentación (requiere crédito)
+        
+        Returns:
+            {
+                'has_access': bool,
+                'requires_credits': int,  # Cuántos créditos necesita
+                'user_credits': int,      # Cuántos tiene
+                'can_use': bool           # Tiene suficientes
+            }
+        """
+        # Obtener plan actual
+        plan = self.get_user_plan(telegram_id).lower()
+        credits = self.get_user_credits_balance(telegram_id)
+        
+        # Definir requisitos por feature
+        feature_requirements = {
+            'cv_basic': {'credits': 0, 'plan_free': True},
+            'cv_ai': {'credits': 1, 'plan_free': False},
+            'cv_history': {'credits': 0, 'plan_free': False, 'requires_unlock': True},
+            'cover_letter': {'credits': 1, 'plan_free': False},
+            'interview_prep': {'credits': 2, 'plan_free': False},
+        }
+        
+        req = feature_requirements.get(feature, {'credits': 0, 'plan_free': True})
+        
+        # Verificar acceso
+        has_access = req.get('plan_free', False)
+        
+        if not has_access and plan in ['starter', 'pro', 'premium']:
+            # Planes pagos tienen acceso base
+            has_access = True
+        
+        if req.get('requires_unlock') and not credits['unlock_active']:
+            has_access = False
+        
+        required_credits = req['credits']
+        user_credits = credits['total_credits']
+        
+        return {
+            'has_access': has_access,
+            'requires_credits': required_credits,
+            'user_credits': user_credits,
+            'can_use': has_access and (required_credits == 0 or user_credits >= required_credits),
+            'has_unlock': credits['unlock_active']
+        }  # No critico, ignorar errores
