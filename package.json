@@ -1,0 +1,11 @@
+{
+  "name": "workspace-root",
+  "version": "1.0.0",
+  "description": "Workspace root configuration with global dependencies",
+  "dependencies": {
+    "@chenglou/pretext": "latest"
+  },
+  "scripts": {
+    "postinstall": "echo 'Global workspace dependencies installed. Pretext is available in all sub-projects.'"
+  }
+}

@@ -1,0 +1,45 @@
+"""
+Coverage Configuration for JobBot API Tests
+"""
+
+[run]
+source = 
+    jobbot/api
+    job_bot
+
+omit = 
+    */tests/*
+    */test_*.py
+    */venv/*
+    */.venv/*
+    */__pycache__/*
+    */site-packages/*
+    */migrations/*
+    */scripts/*
+    */legacy/*
+    */docs/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\\bProtocol\\):
+    @(abc\\.)?abstractmethod
+
+show_missing = True
+skip_covered = False
+
+# Coverage targets
+fail_under = 85
+
+[html]
+directory = coverage_html_report
+
+[xml]
+output = coverage.xml
