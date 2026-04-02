@@ -1,13 +1,18 @@
 import os
+import re
+import tempfile
+from pathlib import Path
 from typing import Optional
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 try:
+    from job_bot.cv_analyzer import compare_cv_with_offer, extract_keywords, parse_cv
     from job_bot.database import Database
 except ImportError:
+    from cv_analyzer import compare_cv_with_offer, extract_keywords, parse_cv
     from database import Database
 
 from .auth import get_authenticated_user, get_db
@@ -30,6 +35,33 @@ class CVProposalRequest(BaseModel):
     job_title: str
     company_name: str
     user_cv: str
+
+
+SECTION_PATTERNS = {
+    "contact": [r"@", r"\+?\d[\d\s().-]{7,}", r"linkedin", r"github"],
+    "summary": [r"\bsummary\b", r"\bperfil\b", r"\babout\b", r"\bresumen\b"],
+    "experience": [r"\bexperience\b", r"\bexperiencia\b", r"\bwork\b"],
+    "education": [r"\beducation\b", r"\beducaci[oó]n\b", r"\bestudios\b"],
+    "skills": [r"\bskills\b", r"\bhabilidades\b", r"\btecnolog", r"\bstack\b"],
+}
+
+ACTION_VERBS = {
+    "built",
+    "created",
+    "improved",
+    "led",
+    "launched",
+    "optimized",
+    "reduced",
+    "increased",
+    "implemented",
+    "developed",
+    "designed",
+    "automated",
+    "migrated",
+    "managed",
+    "collaborated",
+}
 
 
 async def analyze_with_groq(prompt: str) -> str:
@@ -77,6 +109,191 @@ def _consume_ai_quota(db: Database, telegram_id: int):
             detail="Limite de analisis alcanzado para tu plan actual",
         )
     db.increment_usage(telegram_id, "ai_analyses")
+
+
+def _clean_text(value: str | None) -> str:
+    return (value or "").strip()
+
+
+def _extract_uploaded_cv_text(file: UploadFile | None) -> str:
+    if not file or not file.filename:
+        return ""
+
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".pdf", ".txt"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se admiten CVs en formato PDF o TXT",
+        )
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = tmp.name
+
+    try:
+        parsed = parse_cv(tmp_path)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if not parsed:
+        raise HTTPException(status_code=400, detail="No se pudo leer el contenido del CV")
+
+    return parsed
+
+
+def _detect_sections(cv_text: str) -> dict[str, bool]:
+    text = cv_text.lower()
+    return {
+        section: any(re.search(pattern, text) for pattern in patterns)
+        for section, patterns in SECTION_PATTERNS.items()
+    }
+
+
+def _extract_quick_wins(cv_text: str, sections: dict[str, bool]) -> list[str]:
+    quick_wins: list[str] = []
+    if not sections["summary"]:
+        quick_wins.append("Agregá un resumen profesional corto al inicio para contextualizar tu perfil.")
+    if not sections["skills"]:
+        quick_wins.append("Incluí una sección de skills explícita con tus tecnologías clave.")
+    if not re.search(r"\d+[%+]", cv_text):
+        quick_wins.append("Sumá métricas concretas: impacto, % de mejora, tiempos o volumen.")
+    if "linkedin" not in cv_text.lower():
+        quick_wins.append("Añadí tu LinkedIn para reforzar credibilidad y contexto profesional.")
+    return quick_wins[:4]
+
+
+def _score_cv_quality(cv_text: str) -> dict:
+    sections = _detect_sections(cv_text)
+    word_count = len(re.findall(r"\b\w+\b", cv_text))
+    keyword_count = len(extract_keywords(cv_text)["tech"])
+    action_verb_hits = sum(1 for verb in ACTION_VERBS if re.search(rf"\b{re.escape(verb)}\b", cv_text.lower()))
+    metric_hits = len(re.findall(r"\b\d+(?:[%+]|k\b|m\b)?", cv_text.lower()))
+
+    score = 0
+    score += 18 if sections["contact"] else 0
+    score += 14 if sections["summary"] else 0
+    score += 18 if sections["experience"] else 0
+    score += 12 if sections["education"] else 0
+    score += 16 if sections["skills"] else 0
+    score += 10 if 180 <= word_count <= 950 else 4
+    score += min(6, action_verb_hits * 2)
+    score += min(6, metric_hits * 2)
+
+    strengths: list[str] = []
+    if sections["contact"]:
+        strengths.append("Tus datos de contacto parecen estar presentes.")
+    if sections["experience"]:
+        strengths.append("El CV muestra experiencia profesional identificable.")
+    if sections["skills"]:
+        strengths.append("Hay una base técnica reconocible para matching ATS.")
+    if metric_hits >= 2:
+        strengths.append("Ya usás métricas, algo valioso para recruiters y ATS.")
+
+    return {
+        "ats_score": min(score, 100),
+        "sections": sections,
+        "word_count": word_count,
+        "keyword_count": keyword_count,
+        "action_verb_hits": action_verb_hits,
+        "metric_hits": metric_hits,
+        "strengths": strengths[:4],
+        "quick_wins": _extract_quick_wins(cv_text, sections),
+    }
+
+
+def _quota_snapshot(db: Database, telegram_id: int) -> dict:
+    web_user = db.get_web_user(telegram_id) or {}
+    ai_used = int(web_user.get("ai_analyses_used") or 0)
+    ai_limit = int(web_user.get("ai_analyses_limit") or 0)
+    return {
+        "used": ai_used,
+        "limit": ai_limit,
+        "remaining": max(0, ai_limit - ai_used),
+        "ai_enabled": ai_limit > 0,
+    }
+
+
+@router.post("/scan")
+async def scan_cv(
+    cv_file: UploadFile | None = File(default=None),
+    cv_text: str = Form(default=""),
+    job_description: str = Form(default=""),
+    job_title: str = Form(default=""),
+    company_name: str = Form(default=""),
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    uploaded_text = _extract_uploaded_cv_text(cv_file)
+    final_cv_text = _clean_text(cv_text) or uploaded_text
+    final_job_description = _clean_text(job_description)
+    final_job_title = _clean_text(job_title)
+    final_company_name = _clean_text(company_name)
+
+    if not final_cv_text:
+        raise HTTPException(status_code=400, detail="Necesitamos el texto o archivo de tu CV")
+
+    quality = _score_cv_quality(final_cv_text)
+    comparison = (
+        compare_cv_with_offer(final_cv_text, final_job_description)
+        if final_job_description
+        else None
+    )
+    quota = _quota_snapshot(db, current_user["telegram_id"])
+
+    ai_feedback = None
+    consumed_ai = False
+    if quota["ai_enabled"] and db.check_usage_limit(current_user["telegram_id"], "ai_analyses"):
+        prompt = f"""
+Analizá este CV como si fueras una mezcla de ATS + recruiter.
+
+Objetivo:
+- dar feedback corto, accionable y brutalmente claro
+- priorizar impacto, legibilidad, keywords y ajuste al puesto
+- responder en español
+
+Puesto objetivo: {final_job_title or "No especificado"}
+Empresa objetivo: {final_company_name or "No especificada"}
+Job description:
+{final_job_description or "No provista"}
+
+CV:
+{final_cv_text[:5000]}
+
+Devolvé:
+1. Diagnóstico general en 2-3 líneas
+2. 3 mejoras prioritarias
+3. Una recomendación final sobre si este CV está listo para aplicar hoy
+"""
+        ai_feedback = await analyze_with_groq(prompt)
+        _consume_ai_quota(db, current_user["telegram_id"])
+        db.record_ai_analysis(current_user["telegram_id"], cv_analyzed=True, job_matched=bool(final_job_description))
+        quota = _quota_snapshot(db, current_user["telegram_id"])
+        consumed_ai = True
+
+    return {
+        "job_title": final_job_title,
+        "company_name": final_company_name,
+        "ats_score": quality["ats_score"],
+        "match_score": comparison["score"] if comparison else None,
+        "matching_keywords": comparison["matching"] if comparison else [],
+        "missing_keywords": comparison["missing"] if comparison else [],
+        "extra_keywords": comparison["extra"] if comparison else quality["strengths"],
+        "suggestions": comparison["suggestions"] if comparison else quality["quick_wins"],
+        "strengths": quality["strengths"],
+        "sections": quality["sections"],
+        "metrics": {
+            "word_count": quality["word_count"],
+            "keyword_count": quality["keyword_count"],
+            "action_verb_hits": quality["action_verb_hits"],
+            "metric_hits": quality["metric_hits"],
+        },
+        "quota": quota,
+        "ai_feedback": ai_feedback,
+        "ai_feedback_included": consumed_ai,
+    }
 
 
 @router.post("/analyze")

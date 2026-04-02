@@ -9,6 +9,7 @@ import {
   FileText, 
   CreditCard, 
   Settings, 
+  Sparkles,
   Zap,
   LogOut
 } from "lucide-react"
@@ -18,6 +19,7 @@ import { apiRequest, clearToken } from "@/lib/api"
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Inicio" },
   { href: "/dashboard/buscar", icon: Search, label: "Buscar" },
+  { href: "/dashboard/cv", icon: Sparkles, label: "Rank my CV" },
   { href: "/dashboard/postulaciones", icon: FileText, label: "Postulaciones" },
   { href: "/dashboard/suscripcion", icon: CreditCard, label: "Suscripción" },
   { href: "/dashboard/configuracion", icon: Settings, label: "Configuración" },

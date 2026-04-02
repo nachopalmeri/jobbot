@@ -21,19 +21,19 @@ router = APIRouter()
 
 PLANS = {
     "starter": {
-        "price_usd": 3,
+        "price_usd": 4,
         "name": "Starter",
         "stripe_price_id": os.getenv("STRIPE_STARTER_PRICE_ID", "price_starter"),
         "mp_price_id": os.getenv("MP_STARTER_PRICE_ID", "starter"),
     },
     "pro": {
-        "price_usd": 5,
+        "price_usd": 8,
         "name": "Pro",
         "stripe_price_id": os.getenv("STRIPE_PRO_PRICE_ID", "price_pro"),
         "mp_price_id": os.getenv("MP_PRO_PRICE_ID", "pro"),
     },
     "premium": {
-        "price_usd": 15,
+        "price_usd": 12,
         "name": "Premium",
         "stripe_price_id": os.getenv("STRIPE_PREMIUM_PRICE_ID", "price_premium"),
         "mp_price_id": os.getenv("MP_PREMIUM_PRICE_ID", "premium"),
@@ -97,6 +97,7 @@ async def get_plans():
                 "price": 0,
                 "currency": "USD",
                 "features": [
+                    "Scanner ATS basico en web",
                     "5 busquedas por dia",
                     "Hasta 5 resultados por consulta",
                     "Dashboard y pipeline basico",
@@ -105,32 +106,34 @@ async def get_plans():
             {
                 "id": "starter",
                 "name": "Starter",
-                "price": 3,
+                "price": 4,
                 "currency": "USD",
                 "features": [
                     "30 busquedas por dia",
                     "Resultados completos",
                     "Pipeline de postulaciones",
                     "Alertas automatizadas por Telegram",
+                    "Base CV score y quick wins",
                 ],
             },
             {
                 "id": "pro",
                 "name": "Pro",
-                "price": 5,
+                "price": 8,
                 "currency": "USD",
                 "features": [
                     "80 busquedas por dia",
                     "Resultados completos y filtros avanzados",
-                    "Analisis de CV con IA",
+                    "Analisis de CV con IA y match score",
                     "Pipeline de postulaciones",
                     "Alertas automatizadas por Telegram",
+                    "Keywords faltantes y feedback recruiter",
                 ],
             },
             {
                 "id": "premium",
                 "name": "Premium",
-                "price": 15,
+                "price": 12,
                 "currency": "USD",
                 "features": [
                     "Todo de Pro",
@@ -138,6 +141,7 @@ async def get_plans():
                     "Entrevistas mock con IA",
                     "Busquedas ilimitadas",
                     "Mayor cuota diaria de IA",
+                    "Workflow completo para aplicar mejor",
                 ],
             },
         ]

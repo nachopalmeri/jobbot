@@ -65,7 +65,8 @@ export default function SuscripcionPage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-slate-900 mb-2">Tu Suscripción</h1>
-      <p className="text-slate-600 mb-8">Planes y límites alineados con el backend y el bot.</p>
+      <p className="text-slate-600 mb-2">Planes y límites alineados con el backend, el bot y el nuevo scanner de CV.</p>
+      <p className="text-sm text-slate-500 mb-8">Los unlocks one-time y packs de créditos para CV intelligence quedan como siguiente mejora comercial.</p>
       {message ? <div className="mb-6 rounded-lg bg-slate-100 px-4 py-3 text-slate-700">{message}</div> : null}
       
       <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
