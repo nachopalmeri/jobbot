@@ -58,14 +58,14 @@ export default function ProductivityPanel({
 
   return (
     <aside className="space-y-5">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-2xl bg-slate-900 p-3 text-white">
             <Clock3 size={20} />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Fecha y hora</p>
-            <p className="text-xl font-semibold text-slate-900">
+            <p className="text-sm font-medium text-stone-500">Fecha y hora</p>
+            <p className="text-xl font-semibold text-stone-950">
               {now.toLocaleTimeString("es-AR", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -74,7 +74,7 @@ export default function ProductivityPanel({
             </p>
           </div>
         </div>
-        <p className="mt-4 text-sm text-slate-600">
+        <p className="mt-4 text-sm text-stone-600">
           {now.toLocaleDateString("es-AR", {
             weekday: "long",
             day: "numeric",
@@ -83,42 +83,42 @@ export default function ProductivityPanel({
         </p>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
           <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
             <Trophy size={20} />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Objetivo semanal</p>
-            <p className="text-xl font-semibold text-slate-900">
+            <p className="text-sm font-medium text-stone-500">Objetivo semanal</p>
+            <p className="text-xl font-semibold text-stone-950">
               {weeklyApplied}/{weeklyGoal || 0}
             </p>
           </div>
         </div>
 
-        <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-3 overflow-hidden rounded-full bg-stone-100">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-500"
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-indigo-500 to-amber-500"
             style={{ width: `${percent}%` }}
           />
         </div>
 
-        <p className="mt-4 text-sm leading-6 text-slate-600">
+        <p className="mt-4 text-sm leading-6 text-stone-600">
           {buildGoalMessage(weeklyApplied, weeklyGoal)}
         </p>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
-          <div className="rounded-2xl bg-violet-100 p-3 text-violet-700">
+          <div className="rounded-2xl bg-indigo-100 p-3 text-indigo-700">
             <Quote size={20} />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">Frase del día</p>
-            <p className="text-xl font-semibold text-slate-900">Mantener ritmo</p>
+            <p className="text-sm font-medium text-stone-500">Frase del día</p>
+            <p className="text-xl font-semibold text-stone-950">Mantener ritmo</p>
           </div>
         </div>
-        <p className="text-sm leading-7 text-slate-700">“{getDailyQuote(now)}”</p>
+        <p className="text-sm leading-7 text-stone-700">“{getDailyQuote(now)}”</p>
       </section>
 
       <section className="rounded-[28px] border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">

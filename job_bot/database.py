@@ -1452,7 +1452,7 @@ class Database:
             self._execute(
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
-                        searches_limit    = 5,
+                        searches_limit    = 3,
                         job_tracker_enabled = 0,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1463,7 +1463,7 @@ class Database:
             self._execute(
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
-                        searches_limit    = 30,
+                        searches_limit    = 12,
                         job_tracker_enabled = 1,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1473,8 +1473,8 @@ class Database:
         elif normalized_plan == "pro":
             self._execute(
                 """UPDATE web_users SET
-                        ai_analyses_limit = 5,
-                        searches_limit    = 80,
+                        ai_analyses_limit = 4,
+                        searches_limit    = 40,
                         job_tracker_enabled = 1,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1484,10 +1484,10 @@ class Database:
         elif normalized_plan == "premium":
             self._execute(
                 """UPDATE web_users SET
-                        ai_analyses_limit = 30,
-                        searches_limit    = 0,
+                        ai_analyses_limit = 20,
+                        searches_limit    = 120,
                         job_tracker_enabled = 1,
-                        interviews_limit = 20,
+                        interviews_limit = 10,
                         interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),

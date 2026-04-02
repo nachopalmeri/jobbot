@@ -241,7 +241,7 @@ async def search_jobs(
 
     serialized.sort(key=lambda item: item["match_score"], reverse=True)
     total = len(serialized)
-    effective_limit = min(limit, 5) if current_user["plan"] == "free" else limit
+    effective_limit = min(limit, 3) if current_user["plan"] == "free" else limit
     paginated = serialized[offset : offset + effective_limit]
     db.increment_usage(telegram_id, "searches")
 

@@ -3,17 +3,18 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, 
-  Search, 
-  FileText, 
-  CreditCard, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Search,
+  FileText,
+  CreditCard,
+  Settings,
   Sparkles,
   Zap,
   LogOut,
   Coins,
-  Crown
+  Crown,
+  ArrowUpRight,
 } from "lucide-react"
 
 import { apiRequest, clearToken } from "@/lib/api"
@@ -51,32 +52,74 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-screen">
-      <div className="p-6">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-          JobBot
-        </h1>
+    <aside className="flex h-screen w-72 flex-col border-r border-stone-900/10 bg-stone-950 text-white">
+      <div className="border-b border-white/10 px-6 py-6">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-indigo-300">
+          JobBot AR
+        </p>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">Dashboard</h1>
+            <p className="mt-1 text-sm text-stone-400">
+              Buscar, aplicar y mejorar tu CV sin perder foco.
+            </p>
+          </div>
+          <span className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-200">
+            {planLabel}
+          </span>
+        </div>
       </div>
-      
-      <nav className="px-4 flex-1">
+
+      <div className="px-6 py-5">
+        {credits > 0 ? (
+          <div className="rounded-[1.5rem] border border-amber-400/20 bg-gradient-to-br from-amber-400/15 to-indigo-500/10 p-4">
+            <div className="flex items-center gap-2 text-amber-200">
+              <Crown size={18} />
+              <span className="text-sm font-semibold">{credits} créditos listos</span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-stone-300">
+              Usalos en CV Suite para scans pro, cover letters y mejoras con IA.
+            </p>
+          </div>
+        ) : (
+          <Link
+            href="/dashboard/suscripcion"
+            className="block rounded-[1.5rem] border border-white/10 bg-white/5 p-4 hover:border-indigo-400/30 hover:bg-indigo-500/10"
+          >
+            <div className="flex items-center gap-2 text-indigo-200">
+              <Zap size={18} />
+              <span className="text-sm font-semibold">Subí de plan</span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-stone-300">
+              Desbloqueá pipeline completo, búsquedas mejores y CV Intelligence.
+            </p>
+            <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-white">
+              Ver planes
+              <ArrowUpRight size={14} />
+            </span>
+          </Link>
+        )}
+      </div>
+
+      <nav className="flex-1 px-4">
         {navItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-1 ${
+              className={`mb-1.5 flex items-center gap-3 rounded-2xl px-4 py-3 ${
                 isActive 
-                  ? "bg-purple-50 text-purple-700 font-medium" 
+                  ? "bg-white text-stone-950 font-medium"
                   : item.highlight
-                    ? "text-pink-600 hover:bg-pink-50 font-medium"
-                    : "text-slate-600 hover:bg-slate-50"
+                    ? "text-amber-200 hover:bg-white/5 font-medium"
+                    : "text-stone-300 hover:bg-white/5 hover:text-white"
               }`}
             >
               <item.icon size={20} />
               <span>{item.label}</span>
               {item.highlight && credits > 0 && (
-                <span className="ml-auto bg-pink-100 text-pink-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                <span className="ml-auto rounded-full bg-amber-300 px-2 py-0.5 text-xs font-bold text-stone-950">
                   {credits}
                 </span>
               )}
@@ -85,33 +128,10 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-slate-200">
-        {/* Credit balance card */}
-        {credits > 0 ? (
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl p-4 text-white mb-3">
-            <div className="flex items-center gap-2">
-              <Crown size={18} />
-              <span className="font-semibold">{credits} créditos</span>
-            </div>
-            <p className="text-xs mt-1 opacity-90">Disponibles para usar</p>
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl p-4 text-white mb-3">
-            <div className="flex items-center gap-2">
-              <Zap size={18} />
-              <span className="font-semibold">Plan {planLabel}</span>
-            </div>
-            <p className="text-xs mt-1 opacity-90">
-              <Link href="/dashboard/creditos" className="underline hover:no-underline">
-                Conseguí créditos →
-              </Link>
-            </p>
-          </div>
-        )}
-        
+      <div className="border-t border-white/10 p-4">
         <button 
           onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 w-full text-slate-600 hover:bg-slate-50 rounded-lg"
+          className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-stone-300 hover:bg-white/5 hover:text-white"
         >
           <LogOut size={20} />
           <span>Cerrar sesión</span>

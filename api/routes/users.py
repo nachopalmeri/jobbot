@@ -15,10 +15,10 @@ router = APIRouter()
 
 
 PLAN_LIMITS = {
-    "free": {"ai_analyses_limit": 0, "searches_limit": 5, "interviews_limit": 0},
-    "starter": {"ai_analyses_limit": 0, "searches_limit": 30, "interviews_limit": 0},
-    "pro": {"ai_analyses_limit": 5, "searches_limit": 80, "interviews_limit": 0},
-    "premium": {"ai_analyses_limit": 30, "searches_limit": 0, "interviews_limit": 20},
+    "free": {"ai_analyses_limit": 0, "searches_limit": 3, "interviews_limit": 0},
+    "starter": {"ai_analyses_limit": 0, "searches_limit": 12, "interviews_limit": 0},
+    "pro": {"ai_analyses_limit": 4, "searches_limit": 40, "interviews_limit": 0},
+    "premium": {"ai_analyses_limit": 20, "searches_limit": 120, "interviews_limit": 10},
 }
 
 

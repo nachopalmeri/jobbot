@@ -143,9 +143,9 @@ export default function PostulacionesPage() {
   };
 
   return (
-    <div className="min-h-full bg-[linear-gradient(180deg,_#f8fafc,_#f1f5f9_35%,_#ffffff)] p-6 lg:p-8">
+    <div className="min-h-full bg-[linear-gradient(180deg,_#fafaf9,_#f5f5f4_35%,_#ffffff)] p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
@@ -179,22 +179,19 @@ export default function PostulacionesPage() {
           <div className="mt-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-1 flex-col gap-3 md:flex-row">
               <label className="relative flex-1">
-                <Search
-                  size={18}
-                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                />
+                <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Buscar por puesto o empresa..."
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-4 outline-none focus:border-slate-400"
+                  className="w-full rounded-2xl border border-stone-200 bg-white py-3 pl-11 pr-4 text-stone-950 outline-none focus:border-indigo-400"
                 />
               </label>
 
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-slate-400"
+                className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
               >
                 {statusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -204,7 +201,7 @@ export default function PostulacionesPage() {
               </select>
             </div>
 
-            <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+            <div className="inline-flex rounded-2xl border border-stone-200 bg-stone-50 p-1">
               <button
                 type="button"
                 onClick={() => setView("table")}
@@ -236,7 +233,7 @@ export default function PostulacionesPage() {
         ) : view === "board" ? (
           <ApplicationsKanban applications={filteredApplications} />
         ) : (
-          <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white/90 shadow-sm">
+          <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white/90 shadow-sm">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50 text-left text-slate-500">
@@ -275,7 +272,7 @@ export default function PostulacionesPage() {
                               void handleStatusChange(application.id, event.target.value)
                             }
                             disabled={updatingId === application.id}
-                            className={`rounded-full border px-3 py-2 text-xs font-semibold outline-none ${meta.chip}`}
+                            className="rounded-full border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-900 outline-none focus:border-indigo-400"
                           >
                             {APPLICATION_FLOW.map((status) => (
                               <option key={status} value={status}>
@@ -325,7 +322,7 @@ export default function PostulacionesPage() {
           </section>
         )}
 
-        <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-5 shadow-sm">
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-950">
@@ -346,20 +343,24 @@ export default function PostulacionesPage() {
 
         {isModalOpen ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="w-full max-w-xl rounded-[2rem] border border-stone-200 bg-white p-6 shadow-xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
                     Nueva postulacion
                   </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                  <h2 className="mt-2 text-2xl font-semibold text-stone-950">
                     Carga una oportunidad a tu pipeline
                   </h2>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Guardá la vacante con datos mínimos y movela después entre aplicado,
+                    entrevista, oferta o descartado.
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-500 hover:border-slate-300 hover:text-slate-800"
+                  className="rounded-full border border-stone-200 px-3 py-1.5 text-sm text-stone-600 hover:border-stone-300 hover:text-stone-900"
                 >
                   Cerrar
                 </button>
@@ -367,52 +368,52 @@ export default function PostulacionesPage() {
 
               <form onSubmit={handleCreateApplication} className="mt-6 space-y-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Puesto</span>
+                  <span className="mb-2 block text-sm font-medium text-stone-900">Puesto</span>
                   <input
                     required
                     value={form.job_title}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, job_title: event.target.value }))
                     }
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+                    className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
                     placeholder="Backend Developer"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Empresa</span>
+                  <span className="mb-2 block text-sm font-medium text-stone-900">Empresa</span>
                   <input
                     required
                     value={form.company}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, company: event.target.value }))
                     }
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+                    className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
                     placeholder="Mercado Libre"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">URL</span>
+                  <span className="mb-2 block text-sm font-medium text-stone-900">URL</span>
                   <input
                     value={form.url}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, url: event.target.value }))
                     }
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+                    className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
                     placeholder="https://..."
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Notas</span>
+                  <span className="mb-2 block text-sm font-medium text-stone-900">Notas</span>
                   <textarea
                     value={form.notes}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, notes: event.target.value }))
                     }
                     rows={4}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-400"
+                    className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
                     placeholder="Recruiter, salary range, proximo paso..."
                   />
                 </label>

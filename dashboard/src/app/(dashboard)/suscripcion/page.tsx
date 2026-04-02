@@ -18,7 +18,7 @@ interface Plan {
 }
 
 const providers = [
-  { name: "Stripe", icon: CreditCard, color: "bg-slate-950" },
+  { name: "Stripe", icon: CreditCard, color: "bg-stone-950" },
   { name: "MercadoPago", icon: Wallet, color: "bg-sky-600" },
   { name: "Crypto", icon: Bitcoin, color: "bg-amber-500" },
 ];
@@ -37,46 +37,46 @@ const planOverrides: Record<
   free: {
     price: 0,
     features: [
-      "5 busquedas por dia",
-      "Scanner ATS basico",
-      "Dashboard operativo",
-      "Objetivo semanal y pomodoro",
+      "3 búsquedas guiadas por día",
+      "Hasta 3 resultados visibles por consulta",
+      "Dashboard liviano",
+      "Scanner ATS básico",
     ],
+    eyebrow: "Explorar",
   },
   starter: {
     price: 4,
     features: [
-      "30 busquedas por dia",
+      "12 búsquedas por día",
+      "Resultados completos",
       "Pipeline de postulaciones",
       "Alertas automáticas por Telegram",
-      "Dashboard completo con tracker",
     ],
-    eyebrow: "Base de traccion",
+    eyebrow: "Base de tracción",
   },
   pro: {
     price: 8,
     features: [
-      "80 busquedas por dia",
-      "Resume Score + ATS + Job Match",
-      "5 analisis IA por mes",
+      "40 búsquedas por día",
+      "4 análisis IA de CV por mes",
+      "Match score y keywords faltantes",
       "Pipeline y alertas avanzadas",
     ],
-    eyebrow: "Mas elegido",
+    eyebrow: "Más equilibrado",
     recommended: true,
   },
   premium: {
     price: 12,
     features: [
       "Todo lo de Pro",
-      "CV Intelligence destacada",
+      "20 análisis IA + 10 mock interviews por mes",
       "Cover letters personalizadas",
-      "Mock interviews con IA",
-      "30 analisis IA + 20 entrevistas por mes",
-      "Busquedas ilimitadas",
+      "Historial completo y workflow de CV",
+      "120 búsquedas por día",
     ],
-    eyebrow: "Feature premium",
+    eyebrow: "CV Intelligence",
     spotlight:
-      "Resume Score, ATS Checker, Job Matcher, Cover Letter y Mock Interviews en un solo flujo.",
+      "La suite completa de CV vive acá: score, ATS, match, cover letters, historial y preparación de entrevista.",
     featured: true,
   },
 };
@@ -105,7 +105,7 @@ export default function SuscripcionPage() {
         setPlans(decoratedPlans);
         const activePlan = statusData.plan || "free";
         setCurrentPlan(activePlan);
-        setSelectedPlan(activePlan === "free" ? "premium" : activePlan);
+        setSelectedPlan(activePlan === "free" ? "pro" : activePlan);
       } catch (err) {
         setMessage(
           err && typeof err === "object" && "message" in err
@@ -147,22 +147,22 @@ export default function SuscripcionPage() {
   };
 
   return (
-    <div className="min-h-full bg-[linear-gradient(180deg,_#f8fafc,_#eef2ff_36%,_#ffffff)] p-6 lg:p-8">
+    <div className="min-h-full bg-[linear-gradient(180deg,_#fafaf9,_#f5f5f4_36%,_#ffffff)] p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm lg:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-violet-600">
+        <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-600">
             Pricing
           </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-            Planes claros, con el motor de CV como feature premium estrella.
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
+            Planes más realistas y con una escalera que sí se entiende.
           </h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600">
-            El dashboard, el bot y la suite de CV quedan alineados bajo una escalera simple:
-            exploracion, traccion y ejecucion premium con CV Intelligence completa.
+          <p className="mt-4 max-w-3xl text-base leading-7 text-stone-600">
+            Bajamos el free para que sea una entrada genuina, no un plan que promete demasiado.
+            El valor fuerte aparece cuando realmente empezás a operar mejor: tracker, CV suite y preparación.
           </p>
 
           {message ? (
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-700">
               {message}
             </div>
           ) : null}
@@ -179,32 +179,32 @@ export default function SuscripcionPage() {
                   key={plan.id}
                   className={`relative rounded-[2rem] border p-6 shadow-sm transition-all ${
                     plan.featured
-                      ? "border-violet-300 bg-gradient-to-br from-violet-50 via-white to-amber-50"
+                      ? "border-indigo-300 bg-gradient-to-br from-indigo-50 via-white to-amber-50"
                       : isSelected
-                        ? "border-slate-950 bg-white"
-                        : "border-slate-200 bg-white/90"
+                        ? "border-stone-950 bg-white"
+                        : "border-stone-200 bg-white/90"
                   }`}
                 >
                   {plan.recommended ? (
-                    <span className="absolute -top-3 left-5 rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
-                      Mas elegido
+                    <span className="absolute -top-3 left-5 rounded-full bg-stone-950 px-3 py-1 text-xs font-semibold text-white">
+                      Más elegido
                     </span>
                   ) : null}
 
                   {plan.featured ? (
-                    <span className="absolute -top-3 right-5 rounded-full bg-violet-600 px-3 py-1 text-xs font-semibold text-white">
-                      Premium Feature
+                    <span className="absolute -top-3 right-5 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">
+                      Premium
                     </span>
                   ) : null}
 
                   {plan.eyebrow ? (
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
                       {plan.eyebrow}
                     </p>
                   ) : null}
 
                   <div className="mt-3 flex items-center gap-2">
-                    <h2 className="text-2xl font-semibold text-slate-950">{plan.name}</h2>
+                    <h2 className="text-2xl font-semibold text-stone-950">{plan.name}</h2>
                     {plan.featured ? (
                       <span className="rounded-full bg-amber-100 p-1 text-amber-700">
                         <Crown size={14} />
@@ -213,25 +213,25 @@ export default function SuscripcionPage() {
                   </div>
 
                   <div className="mt-4 flex items-end gap-2">
-                    <span className="text-5xl font-semibold tracking-tight text-slate-950">
+                    <span className="text-5xl font-semibold tracking-tight text-stone-950">
                       ${plan.price}
                     </span>
-                    <span className="pb-2 text-slate-500">/mes</span>
+                    <span className="pb-2 text-stone-500">/mes</span>
                   </div>
 
                   {plan.spotlight ? (
-                    <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-4">
-                      <div className="flex items-center gap-2 text-violet-700">
+                    <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                      <div className="flex items-center gap-2 text-indigo-700">
                         <Sparkles size={16} />
-                        <span className="text-sm font-semibold">CV Intelligence</span>
+                        <span className="text-sm font-semibold">Feature destacada</span>
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-violet-900">{plan.spotlight}</p>
+                      <p className="mt-2 text-sm leading-6 text-indigo-950">{plan.spotlight}</p>
                     </div>
                   ) : null}
 
                   <ul className="mt-6 space-y-3">
                     {plan.features.map((feature: string) => (
-                      <li key={feature} className="flex items-start gap-2 text-sm leading-6 text-slate-600">
+                      <li key={feature} className="flex items-start gap-2 text-sm leading-6 text-stone-600">
                         <Check className="mt-1 text-emerald-600" size={16} />
                         <span>{feature}</span>
                       </li>
@@ -244,10 +244,10 @@ export default function SuscripcionPage() {
                     disabled={isCurrent || plan.id === "free"}
                     className={`mt-8 w-full rounded-2xl px-4 py-3 font-medium transition-colors ${
                       isCurrent
-                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                        ? "cursor-not-allowed bg-stone-100 text-stone-400"
                         : plan.featured
-                          ? "bg-violet-600 text-white hover:bg-violet-700"
-                          : "bg-slate-950 text-white hover:bg-slate-800"
+                          ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                          : "bg-stone-950 text-white hover:bg-stone-800"
                     }`}
                   >
                     {isCurrent ? "Plan actual" : plan.id === "free" ? "Incluido" : "Seleccionar"}
@@ -258,10 +258,10 @@ export default function SuscripcionPage() {
           </div>
 
           <div className="space-y-5">
-            <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-950">Checkout del plan</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Estás por activar <strong>{selectedPlan.toUpperCase()}</strong>. Elige el medio
+            <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-stone-950">Checkout del plan</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Estás por activar <strong>{selectedPlan.toUpperCase()}</strong>. Elegí el medio
                 de pago que prefieras.
               </p>
 
@@ -284,17 +284,18 @@ export default function SuscripcionPage() {
               </div>
             </section>
 
-            <section className="rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-sm">
-              <h2 className="text-xl font-semibold text-slate-950">Que cambia en Premium</h2>
+            <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
+              <h2 className="text-xl font-semibold text-stone-950">Cómo pensar los planes</h2>
               <div className="mt-4 space-y-3">
                 {[
-                  "Tu CV workflow queda completo dentro del dashboard.",
-                  "Puedes pasar de busqueda a aplicacion sin salir del producto.",
-                  "El bot y la web comparten promesa comercial y operativa.",
+                  "Free es para probar el flujo, no para sostener una búsqueda completa.",
+                  "Starter destraba el tracker y las alertas para empezar a operar con orden.",
+                  "Pro mete IA donde más ayuda: CV, match y priorización.",
+                  "Premium junta toda la capa de CV Intelligence dentro del dashboard.",
                 ].map((item) => (
                   <div
                     key={item}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+                    className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600"
                   >
                     {item}
                   </div>

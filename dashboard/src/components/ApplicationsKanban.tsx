@@ -26,12 +26,12 @@ export function ApplicationsKanban({
 
   if (!hasApplications && showEmptyMessage) {
     return (
-      <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-10 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+      <div className="rounded-3xl border border-dashed border-stone-300 bg-white/80 p-10 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-stone-100 text-stone-500">
           <Briefcase size={24} />
         </div>
-        <h3 className="mt-4 text-lg font-semibold text-slate-900">Tu pipeline todavia esta vacio</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
+        <h3 className="mt-4 text-lg font-semibold text-stone-950">Tu pipeline todavía está vacío</h3>
+        <p className="mt-2 text-sm leading-6 text-stone-500">
           Agrega tus primeras postulaciones para empezar a medir avance, follow-ups y conversion.
         </p>
         <Link
@@ -55,7 +55,7 @@ export function ApplicationsKanban({
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-full ${column.meta.dot}`} />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-700">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-stone-700">
                 {column.meta.label}
               </h3>
             </div>
@@ -74,24 +74,24 @@ export function ApplicationsKanban({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h4 className="text-sm font-semibold text-slate-900">
-                        {application.job_title}
-                      </h4>
-                      <p className="mt-1 text-sm text-slate-600">{application.company}</p>
+                        <h4 className="text-sm font-semibold text-stone-950">
+                          {application.job_title}
+                        </h4>
+                      <p className="mt-1 text-sm text-stone-600">{application.company}</p>
                     </div>
                     <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${meta.chip}`}>
                       {meta.label}
                     </span>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+                  <div className="mt-4 flex items-center justify-between gap-3 text-xs text-stone-500">
                     <span>{formatApplicationDate(application.applied_at)}</span>
                     {application.url ? (
                       <a
                         href={application.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-medium text-slate-700 hover:text-slate-950"
+                        className="font-medium text-stone-700 hover:text-stone-950"
                       >
                         Ver oferta
                       </a>
@@ -102,7 +102,7 @@ export function ApplicationsKanban({
             })}
 
             {column.items.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/80 bg-white/60 px-4 py-6 text-center text-sm text-slate-500">
+              <div className="rounded-2xl border border-dashed border-white/80 bg-white/60 px-4 py-6 text-center text-sm text-stone-500">
                 Sin movimientos todavia.
               </div>
             ) : null}

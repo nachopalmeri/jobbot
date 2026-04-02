@@ -97,9 +97,9 @@ async def get_plans():
                 "price": 0,
                 "currency": "USD",
                 "features": [
-                    "5 busquedas por dia",
-                    "Hasta 5 resultados por consulta",
-                    "Dashboard basico",
+                    "3 busquedas guiadas por dia",
+                    "Hasta 3 resultados visibles por consulta",
+                    "Dashboard liviano",
                     "Score ATS inicial de CV",
                 ],
             },
@@ -109,7 +109,7 @@ async def get_plans():
                 "price": 4,
                 "currency": "USD",
                 "features": [
-                    "30 busquedas por dia",
+                    "12 busquedas por dia",
                     "Resultados completos",
                     "Pipeline de postulaciones",
                     "Alertas automatizadas por Telegram",
@@ -122,12 +122,13 @@ async def get_plans():
                 "price": 8,
                 "currency": "USD",
                 "features": [
-                    "80 busquedas por dia",
+                    "40 busquedas por dia",
                     "Resultados completos y filtros avanzados",
-                    "Analisis de CV con IA y match score",
+                    "4 analisis de CV con IA por mes",
+                    "Match score y keywords faltantes",
                     "Pipeline de postulaciones",
                     "Alertas automatizadas por Telegram",
-                    "Keywords faltantes y feedback recruiter",
+                    "Feedback recruiter para vacantes clave",
                 ],
             },
             {
@@ -140,8 +141,8 @@ async def get_plans():
                     "CV Intelligence Suite destacada",
                     "CV Tailoring y cover letters",
                     "Entrevistas mock con IA",
-                    "Busquedas ilimitadas",
-                    "Mayor cuota diaria de IA",
+                    "120 busquedas por dia",
+                    "20 analisis IA + 10 mock interviews por mes",
                     "Workflow completo para aplicar mejor",
                 ],
             },
@@ -402,9 +403,9 @@ async def _send_telegram_notification(telegram_id: int, message: str) -> bool:
 async def _notify_plan_change(telegram_id: int, plan: str, expiry: str) -> bool:
     """Notify user about subscription plan change."""
     plan_names = {
-        "starter": "Starter ($3/mes)",
-        "pro": "Pro ($5/mes)",
-        "premium": "Premium ($15/mes)",
+        "starter": "Starter ($4/mes)",
+        "pro": "Pro ($8/mes)",
+        "premium": "Premium ($12/mes)",
         "free": "Free"
     }
     plan_name = plan_names.get(plan, plan)

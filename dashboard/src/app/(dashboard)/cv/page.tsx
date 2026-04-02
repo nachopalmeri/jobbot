@@ -2,21 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { 
-  AlertTriangle, 
-  BarChart3, 
-  CheckCircle2, 
-  FileUp, 
-  Loader2, 
-  Sparkles, 
-  Crown,
-  Zap,
-  History,
-  FileText,
-  Target,
+import {
+  AlertTriangle,
   ArrowRight,
+  BarChart3,
+  CheckCircle2,
   Coins,
-  MessageSquareQuote
+  Crown,
+  FileText,
+  FileUp,
+  History,
+  Loader2,
+  MessageSquareQuote,
+  Sparkles,
+  Target,
+  Zap,
 } from "lucide-react"
 
 import { apiRequest } from "@/lib/api"
@@ -54,19 +54,6 @@ type ScanResult = {
   used_credits: boolean
 }
 
-function scoreTone(score: number | null) {
-  if (score === null) {
-    return "bg-slate-100 text-slate-700"
-  }
-  if (score >= 80) {
-    return "bg-emerald-100 text-emerald-700"
-  }
-  if (score >= 60) {
-    return "bg-amber-100 text-amber-700"
-  }
-  return "bg-rose-100 text-rose-700"
-}
-
 interface ToolCardProps {
   icon: React.ReactNode
   title: string
@@ -76,28 +63,65 @@ interface ToolCardProps {
   locked?: boolean
 }
 
+const primaryTools: ToolCardProps[] = [
+  {
+    icon: <BarChart3 className="text-indigo-600" size={24} />,
+    title: "Resume Score",
+    description: "Score general de estructura, claridad y señales fuertes del CV.",
+    href: "#analyzer",
+    highlight: true,
+  },
+  {
+    icon: <Sparkles className="text-indigo-600" size={24} />,
+    title: "ATS Checker",
+    description: "Detectá gaps, secciones flojas y mejoras rápidas antes de aplicar.",
+    href: "#analyzer",
+    highlight: true,
+  },
+  {
+    icon: <Target className="text-indigo-600" size={24} />,
+    title: "Job Matcher",
+    description: "Compará tu CV contra una vacante real y encontrá qué te está faltando.",
+    href: "#analyzer",
+    highlight: true,
+  },
+]
+
+function scoreTone(score: number | null) {
+  if (score === null) {
+    return "bg-stone-100 text-stone-700"
+  }
+  if (score >= 80) {
+    return "bg-emerald-100 text-emerald-700"
+  }
+  if (score >= 60) {
+    return "bg-amber-100 text-amber-800"
+  }
+  return "bg-rose-100 text-rose-700"
+}
+
 function ToolCard({ icon, title, description, href, highlight, locked }: ToolCardProps) {
   return (
     <Link
       href={href}
-      className={`group rounded-xl p-5 border-2 transition-all ${
-        highlight 
-          ? "border-purple-200 bg-purple-50/50 hover:border-purple-400" 
+      className={`group rounded-[1.6rem] border p-5 transition-all ${
+        highlight
+          ? "border-indigo-200 bg-indigo-50 hover:border-indigo-400"
           : locked
-            ? "border-slate-200 bg-slate-50 opacity-75"
-            : "border-slate-200 bg-white hover:border-purple-300"
+            ? "border-stone-200 bg-stone-50 opacity-80"
+            : "border-stone-200 bg-white hover:border-indigo-300"
       }`}
     >
       <div className="flex items-start gap-4">
-        <div className={`p-3 rounded-lg ${highlight ? "bg-purple-100" : "bg-slate-100"}`}>
+        <div className={`rounded-2xl p-3 ${highlight ? "bg-indigo-100" : "bg-stone-100"}`}>
           {icon}
         </div>
         <div className="flex-1">
-          <h3 className={`font-semibold ${highlight ? "text-purple-900" : "text-slate-900"}`}>
+          <h3 className={`font-semibold ${highlight ? "text-indigo-950" : "text-stone-950"}`}>
             {title}
           </h3>
-          <p className="text-sm text-slate-600 mt-1">{description}</p>
-          <div className="flex items-center gap-1 mt-3 text-sm font-medium text-purple-600 group-hover:text-purple-700">
+          <p className="mt-1 text-sm leading-6 text-stone-600">{description}</p>
+          <div className="mt-3 flex items-center gap-1 text-sm font-medium text-indigo-600 group-hover:text-indigo-700">
             <span>Usar herramienta</span>
             <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
           </div>
@@ -140,7 +164,7 @@ export default function CVPage() {
         setRemainingAnalyses(0)
         setCurrentPlan("free")
       })
-  }, [result]) // Recargar después de un scan
+  }, [result])
 
   const canSubmit = useMemo(() => Boolean(cvFile || cvText.trim()), [cvFile, cvText])
   const hasPlanQuota = remainingAnalyses > 0
@@ -148,6 +172,30 @@ export default function CVPage() {
   const needsProUnlock = mode === "pro" && !canUseProMode
   const canCreateCoverLetter = currentPlan === "premium"
   const canRunMockInterview = currentPlan === "premium"
+
+  const secondaryTools: ToolCardProps[] = [
+    {
+      icon: <FileText className="text-stone-600" size={24} />,
+      title: "Cover Letter",
+      description: "Cartas personalizadas para cada aplicación.",
+      href: "/dashboard/cv/cover-letter",
+      locked: !canCreateCoverLetter,
+    },
+    {
+      icon: <MessageSquareQuote className="text-stone-600" size={24} />,
+      title: "Mock Interview",
+      description: "Practicá respuestas reales antes de la entrevista.",
+      href: "/dashboard/cv/mock-interview",
+      locked: !canRunMockInterview,
+    },
+    {
+      icon: <History className="text-stone-600" size={24} />,
+      title: "Historial",
+      description: "Guardá análisis y compará versiones del CV.",
+      href: "/dashboard/cv/historial",
+      locked: !unlockActive,
+    },
+  ]
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,10 +221,14 @@ export default function CVPage() {
       }
       form.append("mode", mode)
 
-      const data = await apiRequest<ScanResult>("/cv/scan", {
-        method: "POST",
-        body: form,
-      }, true)
+      const data = await apiRequest<ScanResult>(
+        "/cv/scan",
+        {
+          method: "POST",
+          body: form,
+        },
+        true,
+      )
       setResult(data)
     } catch (err) {
       setError(
@@ -190,78 +242,76 @@ export default function CVPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-2 rounded-lg">
-            <Sparkles className="text-white" size={24} />
+    <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-8">
+      <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-8">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-600">
+              CV Intelligence
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="rounded-2xl bg-indigo-600 p-3 text-white">
+                <Sparkles size={24} />
+              </div>
+              <h1 className="text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
+                CV Suite
+              </h1>
+            </div>
+            <p className="mt-4 text-base leading-7 text-stone-600 lg:text-lg">
+              La versión buena de esta suite no es una pared de bloques: te dice rápido si tu CV
+              está listo, dónde pierde puntos y qué cambiar antes de mandar otra postulación.
+            </p>
           </div>
-          <h1 className="text-3xl font-bold text-slate-900">CV Suite</h1>
-        </div>
-        <p className="text-slate-600 max-w-2xl">
-          La capa de CV Intelligence vive completa dentro del dashboard: Resume Score, ATS Checker,
-          Job Match, cover letters y mock interviews para aplicar con mas precision.
-        </p>
-      </div>
 
-      {/* Tools Grid */}
-      {!result && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8">
-          <ToolCard
-            icon={<BarChart3 className="text-purple-600" size={24} />}
-            title="Resume Score"
-            description="Score general de tu CV basado en estructura, contenido y formato."
-            href="#analyzer"
-            highlight
-          />
-          <ToolCard
-            icon={<Sparkles className="text-purple-600" size={24} />}
-            title="ATS Checker"
-            description="Detectá estructura, gaps y señales que frenan filtros automáticos."
-            href="#analyzer"
-            highlight
-          />
-          <ToolCard
-            icon={<Target className="text-purple-600" size={24} />}
-            title="Job Matcher"
-            description="Compará tu CV contra una oferta específica y descubrí qué te falta."
-            href="#analyzer"
-            highlight
-          />
-          <ToolCard
-            icon={<FileText className="text-slate-600" size={24} />}
-            title="Cover Letter"
-            description="Generá cartas de presentación personalizadas con IA."
-            href="/dashboard/cv/cover-letter"
-            locked={!canCreateCoverLetter}
-          />
-          <ToolCard
-            icon={<MessageSquareQuote className="text-slate-600" size={24} />}
-            title="Mock Interview"
-            description="Practicá preguntas reales para llegar mas afilado a la entrevista."
-            href="/dashboard/cv/mock-interview"
-            locked={!canRunMockInterview}
-          />
-          <ToolCard
-            icon={<History className="text-slate-600" size={24} />}
-            title="Historial"
-            description="Accedé a todos tus análisis previos y compará versiones."
-            href="/dashboard/cv/historial"
-            locked={!unlockActive}
-          />
+          <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
+            <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Básico
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                ATS Score, estructura y quick wins sin consumir créditos.
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Match
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                Compará contra una vacante y detectá keywords faltantes.
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                Premium
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                Cover letters, mock interviews e historial guardado.
+              </p>
+            </div>
+          </div>
         </div>
-      )}
+      </section>
 
-      {/* Credit Status Bar */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 mb-6 flex flex-wrap items-center justify-between gap-4">
+      <section className="grid gap-4 lg:grid-cols-3">
+        {primaryTools.map((tool) => (
+          <ToolCard key={tool.title} {...tool} />
+        ))}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-3">
+        {secondaryTools.map((tool) => (
+          <ToolCard key={tool.title} {...tool} />
+        ))}
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="bg-purple-100 p-2 rounded-lg">
-            <Coins className="text-purple-600" size={20} />
+          <div className="rounded-2xl bg-indigo-100 p-3">
+            <Coins className="text-indigo-600" size={20} />
           </div>
           <div>
-            <span className="font-semibold text-slate-900">{credits} créditos disponibles</span>
-            <p className="text-sm text-slate-500">
+            <span className="font-semibold text-stone-950">{credits} créditos disponibles</span>
+            <p className="text-sm text-stone-600">
               {hasPlanQuota
                 ? `Tu plan ${currentPlan.toUpperCase()} incluye ${remainingAnalyses} análisis IA restantes.`
                 : unlockActive
@@ -272,83 +322,109 @@ export default function CVPage() {
         </div>
         <Link
           href="/dashboard/creditos"
-          className="text-purple-600 hover:text-purple-700 font-medium text-sm flex items-center gap-1"
+          className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-700"
         >
           {credits === 0 ? "Conseguir créditos" : "Comprar más"}
           <ArrowRight size={16} />
         </Link>
-      </div>
+      </section>
 
-      {/* Main Analyzer */}
-      <div id="analyzer" className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <form onSubmit={handleAnalyze} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          {/* Mode Selector */}
+      <section id="analyzer" className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <form
+          onSubmit={handleAnalyze}
+          className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-7"
+        >
           <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-700 mb-3">Modo de análisis</label>
-            <div className="flex gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Analizador principal
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-stone-950">Escaneá tu CV</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+              Subí tu archivo o pegá el contenido. Si además cargás una vacante, te devolvemos
+              el match y las keywords faltantes.
+            </p>
+          </div>
+
+          <div className="mb-6">
+            <label className="mb-3 block text-sm font-medium text-stone-800">Modo de análisis</label>
+            <div className="grid gap-3 md:grid-cols-2">
               <button
                 type="button"
                 onClick={() => setMode("basic")}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 text-left transition-colors ${
+                className={`rounded-[1.4rem] border px-4 py-4 text-left ${
                   mode === "basic"
-                    ? "border-purple-500 bg-purple-50"
-                    : "border-slate-200 hover:border-purple-200"
+                    ? "border-indigo-500 bg-indigo-50"
+                    : "border-stone-200 hover:border-indigo-200"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <BarChart3 size={18} className={mode === "basic" ? "text-purple-600" : "text-slate-400"} />
-                  <span className={`font-semibold ${mode === "basic" ? "text-purple-900" : "text-slate-700"}`}>
+                  <BarChart3
+                    size={18}
+                    className={mode === "basic" ? "text-indigo-600" : "text-stone-400"}
+                  />
+                  <span
+                    className={`font-semibold ${
+                      mode === "basic" ? "text-indigo-950" : "text-stone-800"
+                    }`}
+                  >
                     Básico (Gratis)
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1 ml-6">
-                  Score ATS, estructura, keywords
+                <p className="mt-2 text-xs leading-5 text-stone-600">
+                  Score ATS, estructura, keywords y quick wins para iterar rápido.
                 </p>
               </button>
-              
+
               <button
                 type="button"
                 onClick={() => setMode("pro")}
                 disabled={needsProUnlock}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 text-left transition-colors ${
+                className={`rounded-[1.4rem] border px-4 py-4 text-left ${
                   mode === "pro"
-                    ? "border-purple-500 bg-purple-50"
+                    ? "border-indigo-500 bg-indigo-50"
                     : needsProUnlock
-                      ? "border-slate-200 opacity-50 cursor-not-allowed"
-                      : "border-slate-200 hover:border-purple-200"
+                      ? "cursor-not-allowed border-stone-200 opacity-60"
+                      : "border-stone-200 hover:border-indigo-200"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Zap size={18} className={mode === "pro" ? "text-purple-600" : "text-slate-400"} />
-                  <span className={`font-semibold ${mode === "pro" ? "text-purple-900" : "text-slate-700"}`}>
+                  <Zap
+                    size={18}
+                    className={mode === "pro" ? "text-indigo-600" : "text-stone-400"}
+                  />
+                  <span
+                    className={`font-semibold ${
+                      mode === "pro" ? "text-indigo-950" : "text-stone-800"
+                    }`}
+                  >
                     Pro (IA)
                   </span>
                   {credits > 0 || hasPlanQuota ? (
-                    <span className="ml-auto bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                    <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-bold text-indigo-700">
                       {credits > 0 ? "1⭐" : "Plan"}
                     </span>
                   ) : null}
                 </div>
-                <p className="text-xs text-slate-500 mt-1 ml-6">
-                  + Feedback personalizado con IA
+                <p className="mt-2 text-xs leading-5 text-stone-600">
+                  Feedback recruiter, lectura más fina y recomendaciones personalizadas.
                 </p>
               </button>
             </div>
-            
-            {needsProUnlock && (
-              <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800 flex items-center gap-2">
+
+            {needsProUnlock ? (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <Crown size={16} />
                 <span>Necesitás créditos o un plan con cuota IA para usar el análisis Pro.</span>
-                <Link href="/dashboard/suscripcion" className="underline font-medium">
-                  Ver planes →
+                <Link href="/dashboard/suscripcion" className="font-medium underline">
+                  Ver planes
                 </Link>
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600 md:col-span-2">
-              <span className="mb-2 flex items-center gap-2 font-medium text-slate-800">
+            <label className="rounded-[1.4rem] border border-dashed border-stone-300 bg-stone-50 p-4 text-sm text-stone-700 md:col-span-2">
+              <span className="mb-2 flex items-center gap-2 font-medium text-stone-900">
                 <FileUp size={16} />
                 Tu CV (PDF o TXT)
               </span>
@@ -356,60 +432,60 @@ export default function CVPage() {
                 type="file"
                 accept=".pdf,.txt"
                 onChange={(e) => setCvFile(e.target.files?.[0] ?? null)}
-                className="mt-2 block w-full text-sm text-slate-500"
+                className="mt-2 block w-full text-sm text-stone-700"
               />
-              <span className="mt-2 block text-xs text-slate-500">
+              <span className="mt-2 block text-xs text-stone-500">
                 {cvFile ? `Archivo listo: ${cvFile.name}` : "También podés pegar el texto directamente abajo."}
               </span>
             </label>
 
             <div className="md:col-span-2">
-              <label className="mb-2 block text-sm font-medium text-slate-700">O pegá el texto de tu CV</label>
+              <label className="mb-2 block text-sm font-medium text-stone-800">O pegá el texto de tu CV</label>
               <textarea
                 value={cvText}
                 onChange={(e) => setCvText(e.target.value)}
                 rows={8}
                 placeholder="Copiá y pegá el contenido de tu CV aquí..."
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500"
+                className="w-full rounded-[1.4rem] border border-stone-200 px-4 py-3 outline-none focus:border-indigo-500"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Puesto objetivo</label>
+              <label className="mb-2 block text-sm font-medium text-stone-800">Puesto objetivo</label>
               <input
                 value={jobTitle}
                 onChange={(e) => setJobTitle(e.target.value)}
                 placeholder="Backend Engineer"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500"
+                className="w-full rounded-[1.4rem] border border-stone-200 px-4 py-3 outline-none focus:border-indigo-500"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Empresa</label>
+              <label className="mb-2 block text-sm font-medium text-stone-800">Empresa</label>
               <input
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder="Mercado Libre"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500"
+                className="w-full rounded-[1.4rem] border border-stone-200 px-4 py-3 outline-none focus:border-indigo-500"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-2 block text-sm font-medium text-slate-700">
+              <label className="mb-2 block text-sm font-medium text-stone-800">
                 Descripción del puesto (opcional)
               </label>
               <textarea
                 value={jobDescription}
                 onChange={(e) => setJobDescription(e.target.value)}
                 rows={6}
-                placeholder="Pegá la descripción del puesto para obtener match score y keywords faltantes. Podés usar una URL de LinkedIn o pegar el texto directamente."
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-purple-500"
+                placeholder="Pegá la descripción del puesto para obtener match score y keywords faltantes."
+                className="w-full rounded-[1.4rem] border border-stone-200 px-4 py-3 outline-none focus:border-indigo-500"
               />
             </div>
           </div>
 
           {error ? (
-            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               {error}
             </div>
           ) : null}
@@ -418,112 +494,108 @@ export default function CVPage() {
             <button
               type="submit"
               disabled={loading || !canSubmit || (mode === "pro" && needsProUnlock)}
-              className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-6 py-3 font-semibold text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-              {loading 
-                ? "Analizando..." 
-                : mode === "pro" 
+              {loading
+                ? "Analizando..."
+                : mode === "pro"
                   ? `Analizar con IA ${credits > 0 ? "(1⭐)" : hasPlanQuota ? "(Plan)" : ""}`
-                  : "Analizar CV"
-              }
+                  : "Analizar CV"}
             </button>
-            <p className="text-sm text-slate-500">
-              {mode === "basic" 
+            <p className="text-sm text-stone-600">
+              {mode === "basic"
                 ? "Análisis ATS gratuito. No consume créditos."
                 : credits > 0
                   ? "Consumirá 1 crédito de tu balance."
                   : hasPlanQuota
                     ? `Consumirá 1 uso de tu plan ${currentPlan.toUpperCase()}.`
-                    : "Necesitás créditos o una suscripción con cuota IA."
-              }
+                    : "Necesitás créditos o una suscripción con cuota IA."}
             </p>
           </div>
         </form>
 
-        {/* Results Panel */}
         <div className="space-y-6">
-          {/* What you'll get */}
-          {!result && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900 mb-4">Qué vas a obtener</h2>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
-                  <BarChart3 size={20} className="text-purple-600 mt-0.5" />
+          {!result ? (
+            <div className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Qué devuelve el análisis
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-stone-950">Lectura útil, no ruido</h2>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                La suite te muestra solo lo que ayuda a decidir rápido cómo mejorar tu siguiente aplicación.
+              </p>
+              <div className="mt-5 space-y-3">
+                <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
+                  <BarChart3 size={20} className="mt-0.5 text-indigo-600" />
                   <div>
-                    <p className="font-medium text-slate-900">ATS Score</p>
-                    <p className="text-sm text-slate-600">Qué tan bien está estructurado para filtros automáticos.</p>
+                    <p className="font-medium text-stone-950">ATS Score</p>
+                    <p className="text-sm text-stone-600">Qué tan bien está estructurado para filtros automáticos.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
-                  <Target size={20} className="text-purple-600 mt-0.5" />
+                <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
+                  <Target size={20} className="mt-0.5 text-indigo-600" />
                   <div>
-                    <p className="font-medium text-slate-900">Match Score</p>
-                    <p className="text-sm text-slate-600">Qué tanto coincide con la vacante específica.</p>
+                    <p className="font-medium text-stone-950">Match Score</p>
+                    <p className="text-sm text-stone-600">Qué tanto coincide con la vacante que querés atacar.</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-slate-50">
-                  <AlertTriangle size={20} className="text-purple-600 mt-0.5" />
+                <div className="flex items-start gap-3 rounded-2xl bg-stone-50 p-4">
+                  <AlertTriangle size={20} className="mt-0.5 text-indigo-600" />
                   <div>
-                    <p className="font-medium text-slate-900">Keywords faltantes</p>
-                    <p className="text-sm text-slate-600">Skills y términos que deberías agregar.</p>
+                    <p className="font-medium text-stone-950">Keywords faltantes</p>
+                    <p className="text-sm text-stone-600">Qué skills o términos conviene sumar o visibilizar mejor.</p>
                   </div>
                 </div>
-                {mode === "pro" && (
-                  <div className="flex items-start gap-3 p-3 rounded-lg bg-purple-50 border border-purple-100">
-                    <Sparkles size={20} className="text-purple-600 mt-0.5" />
+                {mode === "pro" ? (
+                  <div className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                    <Sparkles size={20} className="mt-0.5 text-indigo-600" />
                     <div>
-                      <p className="font-medium text-purple-900">Feedback IA</p>
-                      <p className="text-sm text-purple-700">Recomendaciones personalizadas por IA.</p>
+                      <p className="font-medium text-indigo-950">Feedback IA</p>
+                      <p className="text-sm text-indigo-700">Diagnóstico corto con foco en impacto y claridad.</p>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
-          )}
-
-          {/* Results */}
-          {result ? (
+          ) : (
             <div className="space-y-6">
-              {/* Score Cards */}
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm font-medium text-slate-500">ATS Score</p>
+                <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
+                  <p className="text-sm font-medium text-stone-500">ATS Score</p>
                   <div className={`mt-3 inline-flex rounded-full px-4 py-2 text-3xl font-bold ${scoreTone(result.ats_score)}`}>
                     {result.ats_score}/100
                   </div>
-                  <p className="text-xs text-slate-500 mt-2">
+                  <p className="mt-2 text-xs text-stone-500">
                     {result.ats_score >= 80 ? "Excelente" : result.ats_score >= 60 ? "Bueno" : "Necesita mejora"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm font-medium text-slate-500">Match Score</p>
+                <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
+                  <p className="text-sm font-medium text-stone-500">Match Score</p>
                   <div className={`mt-3 inline-flex rounded-full px-4 py-2 text-3xl font-bold ${scoreTone(result.match_score)}`}>
                     {result.match_score ?? "--"}{result.match_score !== null ? "/100" : ""}
                   </div>
-                  <p className="text-xs text-slate-500 mt-2">
-                    {result.match_score === null 
-                      ? "Agregá una job description" 
-                      : result.match_score >= 80 
-                        ? "Muy buen match" 
-                        : "Hay espacio para mejorar"
-                    }
+                  <p className="mt-2 text-xs text-stone-500">
+                    {result.match_score === null
+                      ? "Agregá una job description"
+                      : result.match_score >= 80
+                        ? "Muy buen match"
+                        : "Hay espacio para mejorar"}
                   </p>
                 </div>
               </div>
 
-              {/* Main Analysis */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Diagnóstico</h2>
-                    <p className="text-sm text-slate-500">
+                    <h2 className="text-lg font-semibold text-stone-950">Diagnóstico</h2>
+                    <p className="text-sm text-stone-500">
                       {result.company_name || result.job_title
                         ? `Objetivo: ${[result.job_title, result.company_name].filter(Boolean).join(" · ")}`
                         : "Scan general de CV"}
                     </p>
                   </div>
-                  <div className="text-right text-xs text-slate-500">
+                  <div className="text-right text-xs text-stone-500">
                     <div>{result.metrics.word_count} palabras</div>
                     <div>{result.metrics.keyword_count} keywords</div>
                     <div>{result.metrics.action_verb_hits} verbos de acción</div>
@@ -532,80 +604,77 @@ export default function CVPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-stone-900">
                       <CheckCircle2 size={16} className="text-emerald-600" />
                       Fortalezas
                     </p>
-                    <ul className="space-y-2 text-sm text-slate-600">
+                    <ul className="space-y-2 text-sm text-stone-600">
                       {result.strengths.length ? result.strengths.map((item) => (
-                        <li key={item} className="rounded-lg bg-emerald-50 px-3 py-2">{item}</li>
-                      )) : <li className="rounded-lg bg-slate-50 px-3 py-2">Todavía no encontramos puntos claramente fuertes.</li>}
+                        <li key={item} className="rounded-xl bg-emerald-50 px-3 py-2">{item}</li>
+                      )) : <li className="rounded-xl bg-stone-50 px-3 py-2">Todavía no encontramos puntos claramente fuertes.</li>}
                     </ul>
                   </div>
                   <div>
-                    <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-stone-900">
                       <AlertTriangle size={16} className="text-amber-600" />
                       Quick wins
                     </p>
-                    <ul className="space-y-2 text-sm text-slate-600">
+                    <ul className="space-y-2 text-sm text-stone-600">
                       {result.suggestions.map((item) => (
-                        <li key={item} className="rounded-lg bg-amber-50 px-3 py-2">{item}</li>
+                        <li key={item} className="rounded-xl bg-amber-50 px-3 py-2">{item}</li>
                       ))}
                     </ul>
                   </div>
                 </div>
               </div>
 
-              {/* Keywords */}
               <div className="grid gap-6 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <h3 className="text-base font-semibold text-slate-900 mb-4">✅ Keywords que tenés</h3>
+                <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
+                  <h3 className="mb-4 text-base font-semibold text-stone-950">Keywords que ya están</h3>
                   <div className="flex flex-wrap gap-2">
                     {result.matching_keywords.length ? result.matching_keywords.map((item) => (
                       <span key={item} className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700">
                         {item}
                       </span>
-                    )) : <span className="text-sm text-slate-500">Agregá una job description para comparar.</span>}
+                    )) : <span className="text-sm text-stone-500">Agregá una job description para comparar.</span>}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <h3 className="text-base font-semibold text-slate-900 mb-4">⚠️ Keywords faltantes</h3>
+                <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
+                  <h3 className="mb-4 text-base font-semibold text-stone-950">Keywords faltantes</h3>
                   <div className="flex flex-wrap gap-2">
                     {result.missing_keywords.length ? result.missing_keywords.map((item) => (
                       <span key={item} className="rounded-full bg-rose-100 px-3 py-1 text-sm font-medium text-rose-700">
                         {item}
                       </span>
-                    )) : <span className="text-sm text-slate-500">No detectamos gaps claros. ¡Buen trabajo!</span>}
+                    )) : <span className="text-sm text-stone-500">No detectamos gaps claros. Buen trabajo.</span>}
                   </div>
                 </div>
               </div>
 
-              {/* AI Feedback */}
-              {result.ai_feedback_included && result.ai_feedback && (
-                <div className="rounded-2xl border border-purple-200 bg-purple-50 p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Sparkles className="text-purple-600" size={20} />
-                    <h3 className="font-semibold text-purple-900">Feedback IA</h3>
-                    {result.used_credits && (
-                      <span className="ml-auto bg-purple-100 text-purple-700 text-xs font-bold px-2 py-1 rounded-full">
+              {result.ai_feedback_included && result.ai_feedback ? (
+                <div className="rounded-[1.75rem] border border-indigo-200 bg-indigo-50 p-6">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Sparkles className="text-indigo-600" size={20} />
+                    <h3 className="font-semibold text-indigo-950">Feedback IA</h3>
+                    {result.used_credits ? (
+                      <span className="ml-auto rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">
                         Usó 1⭐
                       </span>
-                    )}
+                    ) : null}
                   </div>
-                  <div className="text-sm leading-7 text-purple-800 whitespace-pre-wrap">
+                  <div className="whitespace-pre-wrap text-sm leading-7 text-indigo-900">
                     {result.ai_feedback}
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {/* Next Steps */}
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <h3 className="font-semibold text-slate-900 mb-3">Próximos pasos</h3>
+              <div className="rounded-[1.75rem] border border-stone-200 bg-stone-50 p-6">
+                <h3 className="mb-3 font-semibold text-stone-950">Próximos pasos</h3>
                 <div className="flex flex-wrap gap-3">
                   <Link
                     href="/dashboard/cv/historial"
-                    className="inline-flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-lg font-medium text-slate-700 hover:border-purple-300 hover:text-purple-700 transition-colors"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-stone-200 bg-white px-4 py-2 font-medium text-stone-700 hover:border-indigo-300 hover:text-indigo-700"
                   >
                     <History size={18} />
                     Ver en historial
@@ -615,7 +684,7 @@ export default function CVPage() {
                       setResult(null)
                       window.scrollTo({ top: 0, behavior: "smooth" })
                     }}
-                    className="inline-flex items-center gap-2 bg-purple-600 px-4 py-2 rounded-lg font-medium text-white hover:bg-purple-700 transition-colors"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-700"
                   >
                     <Sparkles size={18} />
                     Analizar otro CV
@@ -623,9 +692,9 @@ export default function CVPage() {
                 </div>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

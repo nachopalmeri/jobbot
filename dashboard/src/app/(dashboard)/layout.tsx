@@ -30,7 +30,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-[linear-gradient(180deg,_#fafaf9,_#f5f5f4_100%)] text-stone-950">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">
         {children}
