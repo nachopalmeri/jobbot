@@ -67,7 +67,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
             detail="JWT_SECRET_KEY no configurado",
         )
     to_encode = data.copy()
-    expire = datetime.utcnow() + (
+    expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     )
     to_encode.update({"exp": expire})
