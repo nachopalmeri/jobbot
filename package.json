@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Workspace root configuration with global dependencies",
   "dependencies": {
-    "@chenglou/pretext": "latest"
+    "@chenglou/pretext": "latest",
+    "pptxgenjs": "^4.0.1"
   },
   "scripts": {
     "postinstall": "echo 'Global workspace dependencies installed. Pretext is available in all sub-projects.'"
