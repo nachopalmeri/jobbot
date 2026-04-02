@@ -44,8 +44,8 @@ PLANS = {
 class CheckoutRequest(BaseModel):
     provider: str
     plan: str
-    success_url: str = "https://jobbot.ar/success"
-    cancel_url: str = "https://jobbot.ar/cancel"
+    success_url: str = "https://app-jobbot.vercel.app/dashboard/suscripcion"
+    cancel_url: str = "https://app-jobbot.vercel.app/dashboard/suscripcion"
 
 
 def _subscription_expiry_iso(days: int = 30) -> str:

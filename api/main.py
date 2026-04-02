@@ -42,6 +42,10 @@ def _cors_origins() -> list[str]:
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3010",
         "http://127.0.0.1:3011",
+        "https://jobbot-lime.vercel.app",
+        "https://jobbot-app.vercel.app",
+        "https://dashboard-nachopalmeris-projects.vercel.app",
+        "https://app-jobbot.vercel.app",
         "https://tu-dominio.com",
         "https://jobbot.ar",
     ]

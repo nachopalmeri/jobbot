@@ -184,6 +184,11 @@ STATS_API_PORT = int(os.getenv("STATS_API_PORT", "8080"))
 STATS_API_ENABLED = os.getenv("STATS_API_ENABLED", "false").lower() == "true"
 
 # ============================================================
-# LANDING PAGE - URL publica actual para el comando /web
+# LANDING PAGE - URL publica actual para marketing
 # ============================================================
-LANDING_URL = os.getenv("LANDING_URL", "https://jobbot.ar")
+LANDING_URL = os.getenv("LANDING_URL", "https://jobbot-app.vercel.app")
+
+# Dashboard web - app autenticada
+DASHBOARD_URL = os.getenv(
+    "DASHBOARD_URL", "https://app-jobbot.vercel.app"
+)

@@ -14,7 +14,10 @@ from typing import Dict, Optional, List
 from pathlib import Path
 
 # Importar datos de empresas
-from interview_data import COMPANY_DATA, get_company_specific_questions
+try:
+    from interview_data import COMPANY_DATA, get_company_specific_questions
+except ImportError:
+    from job_bot.interview_data import COMPANY_DATA, get_company_specific_questions
 
 # Intentar importar financial_service para datos de ticker
 financial_service_available = False
@@ -23,7 +26,11 @@ try:
     from financial_service import FinancialService, DOMAIN_TO_TICKER
     financial_service_available = True
 except ImportError:
-    pass
+    try:
+        from job_bot.financial_service import FinancialService, DOMAIN_TO_TICKER
+        financial_service_available = True
+    except ImportError:
+        pass
 
 logger = logging.getLogger(__name__)
 

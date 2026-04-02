@@ -252,10 +252,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💎 <b>BIENVENIDO A TU PLAN PREMIUM</b> 💎\n\n"
                 f"Tu suscripción está activa hasta el {expires_str}.\n\n"
                 f"🎯 <b>Beneficios incluidos:</b>\n"
-                f"• 150 búsquedas por día\n"
+                f"• Búsquedas ilimitadas\n"
                 f"• 30 análisis IA de CV y ofertas por mes\n"
                 f"• Simulador de entrevistas con IA (20/mes)\n"
-                f"• Generador de cover letters (20/mes)\n"
+                f"• CV Tailoring y cover letters premium\n"
                 f"• Job tracker completo sin límites\n\n"
                 f"📋 Comandos Premium disponibles:\n"
                 f"/entrevista — Simular entrevista técnica\n"
@@ -1907,7 +1907,11 @@ async def web_login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     code = secrets.token_hex(3).upper()
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     db.create_web_login_code(user.id, code, expires_at)
-    base_url = (config.LANDING_URL or "https://jobbot.ar").rstrip("/")
+    base_url = (
+        getattr(config, "DASHBOARD_URL", None)
+        or config.LANDING_URL
+        or "https://app-jobbot.vercel.app"
+    ).rstrip("/")
     login_url = f"{base_url}/login?code={code}"
     await update.message.reply_text(
         "🌐 <b>Entrá a tu panel web</b>\n\n"

@@ -488,7 +488,16 @@ async def generate_rrhh_interview_questions(
         Lista de diccionarios con preguntas estructuradas
     """
     try:
-        from interview_data import get_random_rrhh_questions, get_company_specific_questions
+        try:
+            from interview_data import (
+                get_random_rrhh_questions,
+                get_company_specific_questions,
+            )
+        except ImportError:
+            from job_bot.interview_data import (
+                get_random_rrhh_questions,
+                get_company_specific_questions,
+            )
         
         # 1. Obtener preguntas aleatorias del pool
         questions = get_random_rrhh_questions(question_count)
@@ -751,4 +760,3 @@ def format_star_feedback(evaluation: Dict, mode: str = "immediate") -> str:
         ]
     
     return "\n".join(lines)
-

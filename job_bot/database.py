@@ -17,6 +17,9 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+POSTGRES_DB_TYPES = {"postgres", "postgresql", "supabase"}
+
+
 class Database:
     """Maneja las operaciones de base de datos (SQLite o PostgreSQL).
 
@@ -37,7 +40,10 @@ class Database:
             from job_bot import config  # Import como paquete job_bot.database
 
         # Valores por defecto desde config, sobreescribibles en tests
-        self.db_type = (db_type or config.DATABASE_TYPE).lower()
+        configured_db_type = (db_type or config.DATABASE_TYPE).lower()
+        self.db_type = (
+            "supabase" if configured_db_type in POSTGRES_DB_TYPES else configured_db_type
+        )
         self.db_path = db_path or config.DATABASE_PATH
         self.pg_url = pg_url or config.DATABASE_URL
         self._sqlite_memory_conn = None
@@ -143,14 +149,21 @@ class Database:
             # Usar el archivo schema_supabase.sql si es posible o replicar aquí
             # Por ahora replicamos las tablas básicas para que el bot arranque
             queries = [
-                "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
+                "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', is_admin SMALLINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS keywords (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, keyword TEXT, UNIQUE(telegram_id, keyword))",
                 "CREATE TABLE IF NOT EXISTS jobs_seen (id BIGSERIAL PRIMARY KEY, job_hash TEXT, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, source TEXT, title TEXT, company TEXT, url TEXT, seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(job_hash, telegram_id))",
                 "CREATE TABLE IF NOT EXISTS custom_feeds (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, feed_url TEXT, feed_name TEXT)",
                 "CREATE TABLE IF NOT EXISTS applications (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, job_title TEXT, company TEXT, url TEXT, status TEXT DEFAULT 'aplicado', notes TEXT, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS web_users (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT UNIQUE NOT NULL, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, plan TEXT DEFAULT 'free', subscription_status TEXT, subscription_provider TEXT, subscription_id TEXT, subscription_expires_at TIMESTAMPTZ, ai_analyses_used INTEGER DEFAULT 0, ai_analyses_limit INTEGER DEFAULT 2, searches_used INTEGER DEFAULT 0, searches_limit INTEGER DEFAULT 5, interviews_used INTEGER DEFAULT 0, interviews_limit INTEGER DEFAULT 20, job_tracker_enabled SMALLINT DEFAULT 0, usage_period_start TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS payments (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, provider TEXT NOT NULL, amount DOUBLE PRECISION NOT NULL, currency TEXT DEFAULT 'USD', status TEXT NOT NULL, provider_payment_id TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE TABLE IF NOT EXISTS ai_analyses (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, cv_analyzed SMALLINT DEFAULT 0, job_matched SMALLINT DEFAULT 0, prompt_tokens INTEGER, response_tokens INTEGER, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS web_login_codes (code TEXT PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS telegram_link_codes (code TEXT PRIMARY KEY, web_telegram_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
+                "CREATE TABLE IF NOT EXISTS companies (domain TEXT PRIMARY KEY, data TEXT NOT NULL, cached_at BIGINT NOT NULL, expires_at BIGINT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS stock_data (ticker TEXT PRIMARY KEY, data TEXT NOT NULL, cached_at BIGINT NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS pending_job_batches (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT NOT NULL, jobs_json TEXT NOT NULL, total_count INTEGER DEFAULT 0, high_match_count INTEGER DEFAULT 0, medium_match_count INTEGER DEFAULT 0, regular_match_count INTEGER DEFAULT 0, source TEXT DEFAULT 'manual', created_at BIGINT NOT NULL, expires_at BIGINT NOT NULL, viewed SMALLINT DEFAULT 0, fallback_sent SMALLINT DEFAULT 0)",
+                "CREATE TABLE IF NOT EXISTS batch_interactions (id BIGSERIAL PRIMARY KEY, batch_id BIGINT NOT NULL REFERENCES pending_job_batches(id) ON DELETE CASCADE, telegram_id BIGINT NOT NULL, action TEXT NOT NULL, timestamp BIGINT NOT NULL)",
             ]
             for q in queries:
                 self._execute(q)
@@ -178,6 +191,10 @@ class Database:
                 (
                     "digest_mode",
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS digest_mode TEXT DEFAULT 'realtime'",
+                ),
+                (
+                    "is_admin",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin SMALLINT DEFAULT 0",
                 ),
             ]:
                 try:
@@ -211,6 +228,7 @@ class Database:
                         blocked_companies  TEXT    DEFAULT '',
                         preferred_companies TEXT   DEFAULT '',
                         digest_mode        TEXT    DEFAULT 'realtime',
+                        is_admin           INTEGER DEFAULT 0,
                         created_at         TEXT    DEFAULT CURRENT_TIMESTAMP,
                         last_check         TEXT
                     );
@@ -284,6 +302,7 @@ class Database:
                     ("blocked_companies", "''"),
                     ("preferred_companies", "''"),
                     ("digest_mode", "'realtime'"),
+                    ("is_admin", "0"),
                 ]:
                     try:
                         conn.execute(
@@ -459,6 +478,20 @@ class Database:
         """Retorna los datos de un usuario o None si no existe."""
         return self._fetchone(
             "SELECT * FROM users WHERE telegram_id = ?", (telegram_id,)
+        )
+
+    def is_admin(self, telegram_id: int) -> bool:
+        """Retorna True si el usuario tiene permisos administrativos."""
+        user = self.get_user(telegram_id)
+        if not user:
+            return False
+        return bool(user.get("is_admin") or 0)
+
+    def set_admin(self, telegram_id: int, is_admin: bool = True):
+        """Promueve o revoca permisos administrativos para un usuario."""
+        self._execute(
+            "UPDATE users SET is_admin = ? WHERE telegram_id = ?",
+            (1 if is_admin else 0, telegram_id),
         )
 
     def get_all_active_users(self) -> List[Dict]:
@@ -738,13 +771,20 @@ class Database:
                 "max_job_age_days": 30,
                 "match_threshold": 70,
             }
+
+        def _int_or(value, default):
+            try:
+                return default if value is None else int(value)
+            except (TypeError, ValueError):
+                return default
+
         return {
-            "experience_level": user.get("experience_level", "junior"),
-            "role_type": user.get("role_type", ""),
-            "technologies": user.get("technologies", ""),
-            "job_modality": user.get("job_modality", "cualquiera"),
-            "max_job_age_days": int(user.get("max_job_age_days", 30)),
-            "match_threshold": int(user.get("match_threshold", 70) or 70),
+            "experience_level": user.get("experience_level") or "junior",
+            "role_type": user.get("role_type") or "",
+            "technologies": user.get("technologies") or "",
+            "job_modality": user.get("job_modality") or "cualquiera",
+            "max_job_age_days": _int_or(user.get("max_job_age_days"), 30),
+            "match_threshold": _int_or(user.get("match_threshold"), 70),
         }
 
     def generate_smart_keywords(self, telegram_id: int) -> List[str]:

@@ -101,6 +101,7 @@ def get_authenticated_user(
         "telegram_id": telegram_id,
         "email": email,
         "plan": db.get_user_plan(telegram_id),
+        "is_admin": db.is_admin(telegram_id),
         "name": base_user.get("name") or web_user.get("email") or "Usuario",
         "user": base_user,
         "web_user": web_user,
@@ -142,23 +143,16 @@ async def register(user_data: dict, db: Database = Depends(get_db)):
             detail="Ese Telegram ID ya esta vinculado a otra cuenta",
         )
 
-    if db.get_user(telegram_id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Ese Telegram ID ya existe en JobBot. Para vincular una cuenta activa "
-                "necesitas verificarla desde Telegram."
-            ),
-        )
-
     hashed_pw = get_password_hash(password)
     db.create_user_if_not_exists(telegram_id, name)
     db.create_web_user(telegram_id, email, hashed_pw)
+    db.update_user_plan(telegram_id, "free")
     access_token = create_access_token(data={"sub": email, "telegram_id": telegram_id})
     return {
         "message": "Usuario registrado correctamente",
         "telegram_id": telegram_id,
         "email": email,
+        "is_admin": db.is_admin(telegram_id),
         "access_token": access_token,
         "token_type": "bearer",
     }
@@ -193,6 +187,7 @@ async def login(
         "access_token": access_token,
         "token_type": "bearer",
         "telegram_id": user["telegram_id"],
+        "is_admin": db.is_admin(int(user["telegram_id"])),
     }
 
 
@@ -207,6 +202,7 @@ async def get_current_user(current_user: dict = Depends(get_authenticated_user))
         "telegram_id": current_user["telegram_id"],
         "email": current_user["email"],
         "plan": current_user["plan"],
+        "is_admin": current_user["is_admin"],
         "name": current_user["name"],
     }
 
@@ -286,6 +282,7 @@ async def telegram_auth(request: TelegramAuthRequest):
             "username": request.telegram_username,
             "first_name": request.telegram_first_name,
             "plan": db.get_user_plan(request.telegram_id),
+            "is_admin": db.is_admin(request.telegram_id),
         },
     }
 
@@ -341,6 +338,7 @@ async def telegram_code_login(
             "name": base_user.get("name") or "Usuario",
             "plan": db.get_user_plan(telegram_id),
             "email": web_user.get("email"),
+            "is_admin": db.is_admin(telegram_id),
         },
     }
 
@@ -352,7 +350,11 @@ async def create_telegram_web_login_link(
     code = secrets.token_hex(3).upper()
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
     db.create_web_login_code(current_user["telegram_id"], code, expires_at)
-    landing_url = (os.getenv("LANDING_URL") or "https://jobbot.ar").rstrip("/")
+    landing_url = (
+        os.getenv("DASHBOARD_URL")
+        or os.getenv("LANDING_URL")
+        or "https://app-jobbot.vercel.app"
+    ).rstrip("/")
     return {
         "code": code,
         "expires_in": 600,

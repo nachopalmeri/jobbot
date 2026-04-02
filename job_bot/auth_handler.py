@@ -1,11 +1,14 @@
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-API_BASE_URL = "http://localhost:8000"
+DASHBOARD_URL = os.getenv(
+    "DASHBOARD_URL", "https://app-jobbot.vercel.app"
+).rstrip("/")
 
 
 class AuthHandler:
-    def __init__(self, db, api_base_url: str = API_BASE_URL):
+    def __init__(self, db, api_base_url: str = DASHBOARD_URL):
         self.db = db
         self.api_url = api_base_url
 
@@ -16,7 +19,7 @@ class AuthHandler:
             [
                 InlineKeyboardButton(
                     "🔗 Vincular cuenta web",
-                    url=f"{self.api_url}/auth/link?telegram_id={user.id}",
+                    url=f"{self.api_url}/login",
                 )
             ]
         ]
@@ -92,18 +95,20 @@ class AuthHandler:
 
         plan = web_user.get("plan", "free").upper()
         ai_used = web_user.get("ai_analyses_used", 0)
-        ai_limit = web_user.get("ai_analyses_limit", 2)
+        ai_limit = web_user.get("ai_analyses_limit", 0)
         search_used = web_user.get("searches_used", 0)
-        search_limit = web_user.get("searches_limit", 5)
+        search_limit = web_user.get("searches_limit", 0)
 
         emoji = "🟣" if plan == "PREMIUM" else "⚪"
+        ai_limit_label = "Ilimitado" if not ai_limit else str(ai_limit)
+        search_limit_label = "Ilimitadas" if not search_limit else str(search_limit)
 
         usage = f"""
 📊 *Tu Estado*
 
 {emoji} Plan: *{plan}*
-📈 Análisis CV: {ai_used}/{ai_limit}
-🔍 Búsquedas: {search_used}/{search_limit}
+📈 Análisis CV: {ai_used}/{ai_limit_label}
+🔍 Búsquedas: {search_used}/{search_limit_label}
 
 /buscar - Buscar empleos
 /cargar_cv - Subir CV

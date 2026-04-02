@@ -1,17 +1,35 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
+
 import Sidebar from "@/components/Sidebar"
+import { getToken } from "@/lib/api"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
-  
-  if (!token) {
-    if (typeof window !== "undefined") {
-      window.location.href = "/login"
+  const router = useRouter()
+  const pathname = usePathname()
+  const [isReady, setIsReady] = useState(false)
+
+  useEffect(() => {
+    const token = getToken()
+    if (!token) {
+      router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`)
+      return
     }
-    return null
+    setIsReady(true)
+  }, [pathname, router])
+
+  if (!isReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
+        Cargando tu dashboard...
+      </div>
+    )
   }
 
   return (

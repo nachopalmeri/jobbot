@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
@@ -12,6 +13,8 @@ import {
   LogOut
 } from "lucide-react"
 
+import { apiRequest, clearToken } from "@/lib/api"
+
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Inicio" },
   { href: "/dashboard/buscar", icon: Search, label: "Buscar" },
@@ -22,9 +25,16 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const [planLabel, setPlanLabel] = useState("Free")
+
+  useEffect(() => {
+    apiRequest<{ plan: string }>("/subscriptions/status", {}, true)
+      .then((data) => setPlanLabel((data.plan || "free").toUpperCase()))
+      .catch(() => setPlanLabel("Free"))
+  }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem("token")
+    clearToken()
     window.location.href = "/login"
   }
 
@@ -60,9 +70,9 @@ export default function Sidebar() {
         <div className="bg-gradient-to-r from-amber-400 to-orange-500 rounded-xl p-4 text-white mb-4">
           <div className="flex items-center gap-2">
             <Zap size={18} />
-            <span className="font-semibold">Plan Free</span>
+            <span className="font-semibold">Plan {planLabel}</span>
           </div>
-          <p className="text-xs mt-1 opacity-90">Actualiza a Premium</p>
+          <p className="text-xs mt-1 opacity-90">Gestioná tu suscripción</p>
         </div>
         
         <button 

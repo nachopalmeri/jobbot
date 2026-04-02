@@ -2,38 +2,43 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+
+import { apiRequest, setToken } from "@/lib/api"
 
 export default function RegisterPage() {
+  const router = useRouter()
+  const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [telegramId, setTelegramId] = useState("")
   const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState("")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setMessage("")
     
     try {
-      const res = await fetch("http://localhost:8000/auth/register", {
+      const data = await apiRequest<{ access_token: string }>("/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
           password,
-          telegram_id: parseInt(telegramId),
-          name: "Usuario"
+          telegram_id: parseInt(telegramId, 10),
+          name: name || "Usuario",
         }),
       })
-      
-      if (res.ok) {
-        alert("Cuenta creada. Iniciá sesión.")
-        window.location.href = "/login"
-      } else {
-        const data = await res.json()
-        alert(data.detail || "Error al registrar")
-      }
+
+      setToken(data.access_token)
+      router.replace("/dashboard")
     } catch (error) {
-      alert("Error de conexión")
+      const detail =
+        error && typeof error === "object" && "message" in error
+          ? String(error.message)
+          : "Error de conexión"
+      setMessage(detail)
     } finally {
       setLoading(false)
     }
@@ -44,8 +49,20 @@ export default function RegisterPage() {
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 w-full max-w-md border border-white/20">
         <h1 className="text-3xl font-bold text-white mb-2 text-center">JobBot</h1>
         <p className="text-white/60 text-center mb-6">Creá tu cuenta</p>
+        {message ? (
+          <div className="mb-4 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white">
+            {message}
+          </div>
+        ) : null}
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="text"
+            placeholder="Nombre"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          />
           <input
             type="text"
             placeholder="Tu ID de Telegram"

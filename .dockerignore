@@ -1,0 +1,17 @@
+.git
+.gitignore
+.vercel
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+job_bot.db
+dashboard
+frontend
+legacy
+docs
+node_modules
+npm-debug.log
