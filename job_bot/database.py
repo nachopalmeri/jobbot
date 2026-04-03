@@ -149,7 +149,7 @@ class Database:
             # Usar el archivo schema_supabase.sql si es posible o replicar aquí
             # Por ahora replicamos las tablas básicas para que el bot arranque
             queries = [
-                "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', is_admin SMALLINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
+                "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, job_schedule TEXT DEFAULT 'cualquiera', max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', is_admin SMALLINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS keywords (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, keyword TEXT, UNIQUE(telegram_id, keyword))",
                 "CREATE TABLE IF NOT EXISTS jobs_seen (id BIGSERIAL PRIMARY KEY, job_hash TEXT, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, source TEXT, title TEXT, company TEXT, url TEXT, seen_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(job_hash, telegram_id))",
                 "CREATE TABLE IF NOT EXISTS custom_feeds (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, feed_url TEXT, feed_name TEXT)",
@@ -201,6 +201,10 @@ class Database:
                     "subscription_billing_cycle",
                     "ALTER TABLE web_users ADD COLUMN IF NOT EXISTS subscription_billing_cycle TEXT DEFAULT 'monthly'",
                 ),
+                (
+                    "job_schedule",
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS job_schedule TEXT DEFAULT 'cualquiera'",
+                ),
             ]:
                 try:
                     self._execute(ddl)
@@ -226,6 +230,7 @@ class Database:
                         role_type          TEXT    DEFAULT '',
                         technologies       TEXT    DEFAULT '',
                         job_modality       TEXT    DEFAULT 'cualquiera',
+                        job_schedule       TEXT    DEFAULT 'cualquiera',
                         max_job_age_days   INTEGER DEFAULT 30,
                         match_threshold    INTEGER DEFAULT 70,
                         check_interval_hours INTEGER DEFAULT 6,
@@ -298,6 +303,7 @@ class Database:
                     ("role_type", "''"),
                     ("technologies", "''"),
                     ("job_modality", "'cualquiera'"),
+                    ("job_schedule", "'cualquiera'"),
                     ("max_job_age_days", "30"),
                     ("match_threshold", "70"),
                     ("check_interval_hours", "6"),
@@ -640,6 +646,7 @@ class Database:
         role_type: str,
         technologies: str,
         job_modality: str,
+        job_schedule: str = "cualquiera",
         max_job_age_days: int = 30,
         match_threshold: int = 70,
     ):
@@ -653,7 +660,7 @@ class Database:
             """
             UPDATE users SET
                 experience_level = ?, role_type = ?, technologies = ?,
-                job_modality = ?, max_job_age_days = ?, match_threshold = ?
+                job_modality = ?, job_schedule = ?, max_job_age_days = ?, match_threshold = ?
             WHERE telegram_id = ?
         """,
             (
@@ -661,6 +668,7 @@ class Database:
                 role_type,
                 technologies,
                 job_modality,
+                job_schedule,
                 max_job_age_days,
                 threshold,
                 telegram_id,
@@ -797,6 +805,7 @@ class Database:
                 "role_type": "",
                 "technologies": "",
                 "job_modality": "cualquiera",
+                "job_schedule": "cualquiera",
                 "max_job_age_days": 30,
                 "match_threshold": 70,
             }
@@ -812,6 +821,7 @@ class Database:
             "role_type": user.get("role_type") or "",
             "technologies": user.get("technologies") or "",
             "job_modality": user.get("job_modality") or "cualquiera",
+            "job_schedule": user.get("job_schedule") or "cualquiera",
             "max_job_age_days": _int_or(user.get("max_job_age_days"), 30),
             "match_threshold": _int_or(user.get("match_threshold"), 70),
         }
@@ -844,19 +854,24 @@ class Database:
 
         keywords = []
 
-        # Combinar cada tecnología con el nivel
+        role_terms = [part.strip() for part in role.replace("/", ",").split(",") if part.strip()]
+
+        # Combinar cada tecnología con el rol y nivel
         for tech in techs[:5]:  # Máximo 5 tecnologías
-            # "python junior", "python trainee"
+            for role_term in role_terms[:2]:
+                keywords.append(f"{tech} {role_term}")
             for lkw in level_kws[:2]:  # Top 2 level terms
                 keywords.append(f"{tech} {lkw}")
-            # También buscar solo la tecnología
-            keywords.append(tech)
+                for role_term in role_terms[:2]:
+                    keywords.append(f"{tech} {role_term} {lkw}")
+            if not role_terms:
+                keywords.append(tech)
 
         # Si tiene rol, agregar combinaciones
-        if role:
+        for role_term in role_terms[:3]:
             for lkw in level_kws[:2]:
-                keywords.append(f"{role} {lkw}")
-            keywords.append(role)
+                keywords.append(f"{role_term} {lkw}")
+            keywords.append(role_term)
 
         # Deduplicar y limitar
         seen = set()
@@ -1410,6 +1425,7 @@ class Database:
         merged_role = prefer_text(source_user.get("role_type"), target_user.get("role_type"), "")
         merged_technologies = prefer_text(source_user.get("technologies"), target_user.get("technologies"), "")
         merged_modality = prefer_text(source_user.get("job_modality"), target_user.get("job_modality"), "cualquiera")
+        merged_schedule = prefer_text(source_user.get("job_schedule"), target_user.get("job_schedule"), "cualquiera")
         merged_max_age = prefer_numeric(source_user.get("max_job_age_days"), target_user.get("max_job_age_days"), 30)
         merged_match_threshold = prefer_numeric(source_user.get("match_threshold"), target_user.get("match_threshold"), 70)
         merged_interval = prefer_numeric(source_user.get("check_interval_hours"), target_user.get("check_interval_hours"), 6)
@@ -1429,7 +1445,7 @@ class Database:
             UPDATE users SET
                 name = ?, active_alerts = ?, alert_channel = ?, cv_path = ?, location = ?,
                 experience_level = ?, role_type = ?, technologies = ?, job_modality = ?,
-                max_job_age_days = ?, match_threshold = ?, check_interval_hours = ?,
+                job_schedule = ?, max_job_age_days = ?, match_threshold = ?, check_interval_hours = ?,
                 alert_start_hour = ?, alert_end_hour = ?, timezone = ?, weekly_goal_apps = ?,
                 blocked_companies = ?, preferred_companies = ?, digest_mode = ?,
                 last_check = ?, github_url = ?, search_mode = ?
@@ -1445,6 +1461,7 @@ class Database:
                 merged_role,
                 merged_technologies,
                 merged_modality,
+                merged_schedule,
                 merged_max_age,
                 merged_match_threshold,
                 merged_interval,

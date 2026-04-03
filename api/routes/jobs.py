@@ -41,6 +41,22 @@ def _normalize_modality(value: str) -> str:
     return mapping.get((value or "").strip().lower(), "cualquiera")
 
 
+def _normalize_schedule(value: str) -> str:
+    mapping = {
+        "all": "cualquiera",
+        "cualquiera": "cualquiera",
+        "full_time": "full_time",
+        "full-time": "full_time",
+        "fulltime": "full_time",
+        "jornada completa": "full_time",
+        "part_time": "part_time",
+        "part-time": "part_time",
+        "parttime": "part_time",
+        "media jornada": "part_time",
+    }
+    return mapping.get((value or "").strip().lower(), "cualquiera")
+
+
 def _serialize_modality(job: dict) -> str:
     text = (
         f"{job.get('title', '')} {job.get('location', '')} {job.get('description', '')}"
@@ -181,6 +197,7 @@ def _require_search_quota(db: Database, telegram_id: int):
 async def search_jobs(
     q: str = Query("", description="Query de busqueda"),
     modality: Optional[str] = Query("all", description="remote, hybrid, onsite"),
+    schedule: Optional[str] = Query("all", description="full_time, part_time"),
     location: Optional[str] = Query(None, description="Ubicacion"),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
@@ -221,6 +238,16 @@ async def search_jobs(
     requested_modality = _normalize_modality(modality or "all")
     if requested_modality != "cualquiera":
         jobs = JobScraper.apply_modality_filter(jobs, requested_modality)
+
+    requested_schedule = _normalize_schedule(schedule or "all")
+    if requested_schedule != "cualquiera":
+        jobs = JobScraper.apply_schedule_filter(jobs, requested_schedule)
+
+    jobs = JobScraper.apply_profile_relevance_filter(
+        jobs,
+        role_type=profile.get("role_type", ""),
+        technologies=profile.get("technologies", ""),
+    )
 
     if tags_filter:
         jobs = [

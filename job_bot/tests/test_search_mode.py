@@ -115,7 +115,7 @@ class TestSearchMode(unittest.TestCase):
         self.db.set_search_mode(123, "volumen")
 
         # Update profile (should not affect mode)
-        self.db.set_user_profile(123, "junior", "backend", "python", "remoto", 30)
+        self.db.set_user_profile(123, "junior", "backend", "python", "remoto", "cualquiera", 30)
 
         # Mode should still be volumen
         mode = self.db.get_search_mode(123)

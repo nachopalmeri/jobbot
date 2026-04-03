@@ -12,6 +12,7 @@ const defaultPreferences = {
   role_type: "",
   technologies: "",
   job_modality: "cualquiera",
+  job_schedule: "cualquiera",
   weekly_goal: 10,
   digest_mode: "realtime",
   active_alerts: false,
@@ -209,6 +210,21 @@ export default function ConfiguracionPage() {
                   <option value="remoto">Remoto</option>
                   <option value="hibrido">Hibrido</option>
                   <option value="presencial">Presencial</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">
+                  Jornada objetivo
+                </span>
+                <select
+                  value={form.job_schedule}
+                  onChange={(e) => setForm({ ...form, job_schedule: e.target.value })}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                >
+                  <option value="cualquiera">Cualquiera</option>
+                  <option value="full_time">Jornada completa</option>
+                  <option value="part_time">Media jornada</option>
                 </select>
               </label>
             </div>

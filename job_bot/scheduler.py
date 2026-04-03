@@ -170,6 +170,7 @@ async def check_jobs_for_user(
     exp_level = profile.get("experience_level", "junior")
     max_age_days = profile.get("max_job_age_days", 30)
     modality = profile.get("job_modality", "cualquiera")
+    schedule = profile.get("job_schedule", "cualquiera")
 
     # --- Buscar en todas las fuentes estándar ---
     all_jobs = scraper.search_all(keywords, location, max_age_days=max_age_days)
@@ -188,6 +189,12 @@ async def check_jobs_for_user(
     # --- Aplicar filtro de keywords negativas y de modalidad ---
     all_jobs = JobScraper.apply_negative_filter(all_jobs, experience_level=exp_level)
     all_jobs = JobScraper.apply_modality_filter(all_jobs, modality=modality)
+    all_jobs = JobScraper.apply_schedule_filter(all_jobs, schedule=schedule)
+    all_jobs = JobScraper.apply_profile_relevance_filter(
+        all_jobs,
+        role_type=profile.get("role_type", ""),
+        technologies=profile.get("technologies", ""),
+    )
 
     # --- Filtros por empresas (lista negra / preferidos) ---
     company_filters = db.get_company_filters(telegram_id)
@@ -282,7 +289,8 @@ async def check_jobs_for_user(
         "location": location,
         "experience_level": exp_level,
         "technologies": ", ".join(keywords[:3]) if keywords else None,
-        "job_modality": modality
+        "job_modality": modality,
+        "job_schedule": schedule,
     }
     
     # Crear batch y enviar resumen con botón

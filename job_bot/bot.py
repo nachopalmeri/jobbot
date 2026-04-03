@@ -136,9 +136,10 @@ scraper = JobScraper()
     WAITING_ROLE,
     WAITING_TECHS,
     WAITING_LOCATION,
-    WAITING_MAX_AGE,
     WAITING_MODALITY,
-) = range(6)
+    WAITING_SCHEDULE,
+    WAITING_MAX_AGE,
+) = range(7)
 WAITING_INTERVAL, WAITING_START_HOUR, WAITING_END_HOUR = range(10, 13)
 # Estados para entrevistas (nuevo sistema con selección de tipo)
 (
@@ -580,7 +581,7 @@ async def preferencias_recibe_location(
 
     await update.message.reply_text(
         f"✅ Ubicación: <b>{safe_location}</b>\n\n"
-        "🏠 <b>Paso 5/6 — ¿Qué modalidad de trabajo buscás?</b>\n\n"
+        "🏠 <b>Paso 5/7 — ¿Qué modalidad de trabajo buscás?</b>\n\n"
         "Escribí una opción:\n"
         "1️⃣ Remoto\n"
         "2️⃣ Híbrido\n"
@@ -615,7 +616,50 @@ async def preferencias_recibe_modality(
 
     await update.message.reply_text(
         f"✅ Modalidad: <b>{modality.capitalize()}</b>\n\n"
-        "⏳ <b>Paso 6/6 — ¿Qué antigüedad máxima pueden tener las ofertas?</b>\n\n"
+        "🕒 <b>Paso 6/7 — ¿Qué jornada buscás?</b>\n\n"
+        "Escribí una opción:\n"
+        "1️⃣ Jornada completa\n"
+        "2️⃣ Media jornada\n"
+        "3️⃣ Cualquiera\n\n"
+        "Respondé con el número o la palabra.",
+        parse_mode=ParseMode.HTML,
+    )
+    return WAITING_SCHEDULE
+
+
+async def preferencias_recibe_schedule(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    text = update.message.text.strip().lower()
+    schedule_map = {
+        "1": "full_time",
+        "jornada completa": "full_time",
+        "completa": "full_time",
+        "full time": "full_time",
+        "full-time": "full_time",
+        "2": "part_time",
+        "media jornada": "part_time",
+        "media": "part_time",
+        "part time": "part_time",
+        "part-time": "part_time",
+        "3": "cualquiera",
+        "cualquiera": "cualquiera",
+    }
+    schedule = schedule_map.get(text)
+    if not schedule:
+        await update.message.reply_text("❌ Respondé con 1, 2 o 3.")
+        return WAITING_SCHEDULE
+
+    context.user_data["job_schedule"] = schedule
+    schedule_labels = {
+        "full_time": "Jornada completa",
+        "part_time": "Media jornada",
+        "cualquiera": "Cualquiera",
+    }
+
+    await update.message.reply_text(
+        f"✅ Jornada: <b>{schedule_labels[schedule]}</b>\n\n"
+        "⏳ <b>Paso 7/7 — ¿Qué antigüedad máxima pueden tener las ofertas?</b>\n\n"
         "Escribí el número:\n"
         "1️⃣ 24 horas\n"
         "2️⃣ 3 días\n"
@@ -672,9 +716,16 @@ async def preferencias_recibe_max_age(
     technologies = context.user_data.get("technologies", "")
     location = context.user_data.get("location") or config.DEFAULT_LOCATION
     modality = context.user_data.get("job_modality", "cualquiera")
+    schedule = context.user_data.get("job_schedule", "cualquiera")
 
     db.set_user_profile(
-        user_id, exp_level, role_type, technologies, modality, max_job_age_days=max_age
+        user_id,
+        exp_level,
+        role_type,
+        technologies,
+        modality,
+        schedule,
+        max_job_age_days=max_age,
     )
 
     # Generar keywords automáticas
@@ -696,6 +747,11 @@ async def preferencias_recibe_max_age(
         90: "3 meses",
         3650: "Sin límite",
     }
+    schedule_labels = {
+        "full_time": "Jornada completa",
+        "part_time": "Media jornada",
+        "cualquiera": "Cualquiera",
+    }
 
     kw_text = "\n".join(f"  • {kw}" for kw in smart_keywords)
     await update.message.reply_text(
@@ -705,6 +761,7 @@ async def preferencias_recibe_max_age(
         f"🛠 Tecnologías: {technologies}\n"
         f"📍 Ubicación: {location}\n"
         f"🏠 Modalidad: {modality.capitalize()}\n"
+        f"🕒 Jornada: {schedule_labels.get(schedule, schedule)}\n"
         f"⏳ Antigüedad máx: {age_labels[max_age]}\n\n"
         f"🔍 Keywords generadas automáticamente:\n{kw_text}\n\n"
         "Ahora:\n"
@@ -798,7 +855,7 @@ async def buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status_msg = await update.message.reply_text(
         f"🔍 Buscando trabajos...\n"
-        f"({len(keywords)} keywords — puede tardar 15-30 segundos)"
+        f"({len(keywords)} keywords enfocadas en tu perfil — puede tardar 15-30 segundos)"
     )
     try:
         # En búsquedas manuales siempre respondemos en Telegram,
@@ -2354,6 +2411,11 @@ def main():
             WAITING_MODALITY: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND, preferencias_recibe_modality
+                )
+            ],
+            WAITING_SCHEDULE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, preferencias_recibe_schedule
                 )
             ],
             WAITING_MAX_AGE: [

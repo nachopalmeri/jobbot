@@ -27,13 +27,23 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(user["name"], "Test User")
         # Por defecto, los usuarios nuevos arrancan sin restringir modalidad
         self.assertEqual(user["job_modality"], "cualquiera")
+        self.assertEqual(user["job_schedule"], "cualquiera")
 
     def test_set_user_profile(self):
         self.db.create_user_if_not_exists(123, "Test User")
-        self.db.set_user_profile(123, "senior", "backend", "python, sqlite", "remoto", 15)
+        self.db.set_user_profile(
+            123,
+            "senior",
+            "backend",
+            "python, sqlite",
+            "remoto",
+            "full_time",
+            15,
+        )
         profile = self.db.get_user_profile(123)
         self.assertEqual(profile["experience_level"], "senior")
         self.assertEqual(profile["job_modality"], "remoto")
+        self.assertEqual(profile["job_schedule"], "full_time")
         self.assertEqual(profile["max_job_age_days"], 15)
 
     def test_delete_user_data(self):

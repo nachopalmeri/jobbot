@@ -1057,6 +1057,91 @@ class JobScraper:
         logger.debug("Filtrado por modalidad '%s': quedaron %d de %d", modality, len(filtered), len(jobs))
         return filtered
 
+    @staticmethod
+    def apply_schedule_filter(jobs: List[Dict], schedule: str) -> List[Dict]:
+        """
+        Filtra trabajos según jornada: full-time, part-time o cualquiera.
+        """
+        normalized = (schedule or "cualquiera").strip().lower()
+        if normalized not in ["full_time", "part_time"]:
+            return jobs
+
+        filtered = []
+        for job in jobs:
+            text = f"{job.get('title','')} {job.get('location','')} {job.get('description','')}".lower()
+            is_part_time = any(
+                token in text
+                for token in [
+                    "part time",
+                    "part-time",
+                    "media jornada",
+                    "half time",
+                    "jornada reducida",
+                ]
+            )
+            is_full_time = any(
+                token in text
+                for token in [
+                    "full time",
+                    "full-time",
+                    "tiempo completo",
+                    "jornada completa",
+                ]
+            )
+
+            if normalized == "part_time" and is_part_time:
+                filtered.append(job)
+            elif normalized == "full_time" and (is_full_time or not is_part_time):
+                filtered.append(job)
+
+        logger.debug(
+            "Filtrado por jornada '%s': quedaron %d de %d",
+            normalized,
+            len(filtered),
+            len(jobs),
+        )
+        return filtered
+
+    @staticmethod
+    def apply_profile_relevance_filter(
+        jobs: List[Dict], role_type: str = "", technologies: str = ""
+    ) -> List[Dict]:
+        """
+        Filtra resultados demasiado genéricos usando rol y stack del usuario.
+        """
+        role_terms = [
+            part.strip().lower()
+            for part in role_type.replace("/", ",").split(",")
+            if part.strip()
+        ]
+        tech_terms = [part.strip().lower() for part in technologies.split(",") if part.strip()]
+
+        if not role_terms and not tech_terms:
+            return jobs
+
+        filtered = []
+        for job in jobs:
+            haystack = f"{job.get('title','')} {job.get('description','')} {job.get('company','')}".lower()
+            role_hits = sum(1 for term in role_terms if term in haystack)
+            tech_hits = sum(1 for term in tech_terms if term in haystack)
+
+            if role_terms and tech_terms:
+                if role_hits >= 1 or tech_hits >= 2:
+                    filtered.append(job)
+            elif role_terms and role_hits >= 1:
+                filtered.append(job)
+            elif tech_terms and tech_hits >= 1:
+                filtered.append(job)
+
+        logger.debug(
+            "Filtrado por perfil (roles=%s techs=%s): quedaron %d de %d",
+            role_terms,
+            tech_terms,
+            len(filtered),
+            len(jobs),
+        )
+        return filtered
+
     # ----------------------------------------------------------
     # FILTRO EXTRA POR KEYWORDS NEGATIVAS
     # ----------------------------------------------------------

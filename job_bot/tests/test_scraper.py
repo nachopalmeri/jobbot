@@ -30,6 +30,35 @@ class TestJobScraper(unittest.TestCase):
         any_jobs = JobScraper.apply_modality_filter(jobs, "cualquiera")
         self.assertEqual(len(any_jobs), 3)
 
+    def test_apply_schedule_filter(self):
+        jobs = [
+            {"title": "Backend Developer", "location": "Remote", "description": "Full time remote role"},
+            {"title": "Soporte IT", "location": "CABA", "description": "Media jornada presencial"},
+            {"title": "QA Analyst", "location": "Hybrid", "description": "Part-time hybrid role"},
+        ]
+
+        full_time_jobs = JobScraper.apply_schedule_filter(jobs, "full_time")
+        self.assertEqual(len(full_time_jobs), 1)
+        self.assertIn("Full time", full_time_jobs[0]["description"])
+
+        part_time_jobs = JobScraper.apply_schedule_filter(jobs, "part_time")
+        self.assertEqual(len(part_time_jobs), 2)
+
+    def test_apply_profile_relevance_filter(self):
+        jobs = [
+            {"title": "Backend Python Developer", "description": "Python, FastAPI, PostgreSQL"},
+            {"title": "Diseñador UX", "description": "Figma, research, design systems"},
+            {"title": "Data Analyst", "description": "SQL, dashboards, analytics"},
+        ]
+
+        filtered = JobScraper.apply_profile_relevance_filter(
+            jobs,
+            role_type="backend",
+            technologies="python, fastapi",
+        )
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["title"], "Backend Python Developer")
+
     def test_apply_negative_filter(self):
         jobs = [
             {"title": "Junior Python Dev", "description": ""},

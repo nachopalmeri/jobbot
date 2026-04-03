@@ -27,6 +27,7 @@ class PreferencesUpdate(BaseModel):
     role_type: str = ""
     technologies: str = ""
     job_modality: str = "cualquiera"
+    job_schedule: str = "cualquiera"
     max_job_age_days: int = 30
     match_threshold: int = 70
     alert_channel: str = "telegram"
@@ -233,6 +234,7 @@ async def update_preferences(
         payload.role_type,
         payload.technologies,
         payload.job_modality,
+        payload.job_schedule,
         payload.max_job_age_days,
         payload.match_threshold,
     )
