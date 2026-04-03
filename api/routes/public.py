@@ -40,14 +40,21 @@ def _mercadopago_ready() -> bool:
     required = [
         "MP_ACCESS_TOKEN",
         "MP_WEBHOOK_SECRET",
-        "MP_STARTER_PRICE_ID",
-        "MP_PRO_PRICE_ID",
-        "MP_PREMIUM_PRICE_ID",
-        "MP_STARTER_YEARLY_PRICE_ID",
-        "MP_PRO_YEARLY_PRICE_ID",
-        "MP_PREMIUM_YEARLY_PRICE_ID",
     ]
     return all(_configured(key) for key in required)
+
+
+def _mercadopago_status() -> str:
+    required = [
+        "MP_ACCESS_TOKEN",
+        "MP_WEBHOOK_SECRET",
+    ]
+    configured = [_configured(key) for key in required]
+    if all(configured):
+        return "configured"
+    if any(configured):
+        return "partial"
+    return "missing"
 
 
 def get_db() -> Database:
@@ -67,7 +74,7 @@ async def health_check(db: Database = Depends(get_db)):
     checks = {
         "database": "ok",
         "stripe": "configured" if _stripe_ready() else "missing",
-        "mercadopago": "configured" if _mercadopago_ready() else "missing",
+        "mercadopago": _mercadopago_status(),
         "groq": "configured" if os.getenv("GROQ_API_KEY") else "missing",
     }
 

@@ -140,13 +140,42 @@ def _validate_ip_whitelist(request: Request, env_key: str):
         raise HTTPException(status_code=403, detail="IP no autorizada")
 
 
-def _validate_mp_request(request: Request):
+def _extract_mp_signature_part(header_value: str, key: str) -> str:
+    for part in (header_value or "").split(","):
+        if "=" not in part:
+            continue
+        part_key, part_value = part.split("=", 1)
+        if part_key.strip() == key:
+            return part_value.strip()
+    return ""
+
+
+def _resolve_mp_data_id(payload: dict, request: Request) -> str:
+    data = payload.get("data") or {}
+    if isinstance(data, dict) and data.get("id") is not None:
+        return str(data.get("id"))
+    data_id = request.query_params.get("data.id") or request.query_params.get("id")
+    return str(data_id or "")
+
+
+def _validate_mp_request(request: Request, payload: Optional[dict] = None):
     _validate_ip_whitelist(request, "MP_WEBHOOK_IPS")
     secret = os.getenv("MP_WEBHOOK_SECRET", "").strip()
     if not secret:
         return
+
     signature = request.headers.get("x-signature", "")
-    if signature != secret:
+    request_id = request.headers.get("x-request-id", "")
+    ts = _extract_mp_signature_part(signature, "ts")
+    received_hash = _extract_mp_signature_part(signature, "v1")
+    data_id = _resolve_mp_data_id(payload or {}, request)
+
+    if not signature or not request_id or not ts or not received_hash or not data_id:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    manifest = f"id:{data_id};request-id:{request_id};ts:{ts};"
+    expected_hash = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_hash, received_hash):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
 
@@ -473,11 +502,11 @@ async def stripe_webhook(
 
 @router.post("/webhook/mercadopago")
 async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
-    _validate_mp_request(request)
     try:
         body = await request.json()
     except Exception:
         body = {}
+    _validate_mp_request(request, body)
 
     event_type = (
         body.get("type")
