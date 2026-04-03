@@ -24,13 +24,17 @@ PUBLIC_APP_URL = os.getenv(
 ).rstrip("/")
 PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "").rstrip("/")
 
+
+def _env(name: str) -> str:
+    return os.getenv(name, "").strip()
+
 PLANS = {
     "starter": {
         "price_usd": 4,
         "yearly_price_usd": 40,
         "name": "Starter",
-        "stripe_price_id": os.getenv("STRIPE_STARTER_PRICE_ID", "price_starter"),
-        "stripe_yearly_price_id": os.getenv("STRIPE_STARTER_YEARLY_PRICE_ID", ""),
+        "stripe_price_id": _env("STRIPE_STARTER_PRICE_ID"),
+        "stripe_yearly_price_id": _env("STRIPE_STARTER_YEARLY_PRICE_ID"),
         "mp_price_id": os.getenv("MP_STARTER_PRICE_ID", "starter"),
         "mp_yearly_price_id": os.getenv("MP_STARTER_YEARLY_PRICE_ID", ""),
     },
@@ -38,8 +42,8 @@ PLANS = {
         "price_usd": 8,
         "yearly_price_usd": 80,
         "name": "Pro",
-        "stripe_price_id": os.getenv("STRIPE_PRO_PRICE_ID", "price_pro"),
-        "stripe_yearly_price_id": os.getenv("STRIPE_PRO_YEARLY_PRICE_ID", ""),
+        "stripe_price_id": _env("STRIPE_PRO_PRICE_ID"),
+        "stripe_yearly_price_id": _env("STRIPE_PRO_YEARLY_PRICE_ID"),
         "mp_price_id": os.getenv("MP_PRO_PRICE_ID", "pro"),
         "mp_yearly_price_id": os.getenv("MP_PRO_YEARLY_PRICE_ID", ""),
     },
@@ -47,8 +51,8 @@ PLANS = {
         "price_usd": 12,
         "yearly_price_usd": 120,
         "name": "Premium",
-        "stripe_price_id": os.getenv("STRIPE_PREMIUM_PRICE_ID", "price_premium"),
-        "stripe_yearly_price_id": os.getenv("STRIPE_PREMIUM_YEARLY_PRICE_ID", ""),
+        "stripe_price_id": _env("STRIPE_PREMIUM_PRICE_ID"),
+        "stripe_yearly_price_id": _env("STRIPE_PREMIUM_YEARLY_PRICE_ID"),
         "mp_price_id": os.getenv("MP_PREMIUM_PRICE_ID", "premium"),
         "mp_yearly_price_id": os.getenv("MP_PREMIUM_YEARLY_PRICE_ID", ""),
     },
