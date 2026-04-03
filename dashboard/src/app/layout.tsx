@@ -1,12 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { DM_Sans, Geist_Mono, Sora } from "next/font/google";
 
 import { appUrl, landingUrl, siteName } from "@/lib/site";
 
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const bodySans = DM_Sans({
+  variable: "--font-body",
+  subsets: ["latin"],
+});
+
+const displaySans = Sora({
+  variable: "--font-display",
   subsets: ["latin"],
 });
 
@@ -72,7 +77,7 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${bodySans.variable} ${displaySans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

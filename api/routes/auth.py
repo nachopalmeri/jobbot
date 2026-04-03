@@ -46,6 +46,21 @@ PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", os.getenv("DASHBOARD_URL", "https:/
 PRIMARY_ADMIN_EMAIL = (os.getenv("PRIMARY_ADMIN_EMAIL") or "admin@jobbot.com").strip().lower()
 
 
+def _parse_env_list(name: str) -> set[str]:
+    raw = os.getenv(name, "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _parse_env_int_list(name: str) -> set[int]:
+    values: set[int] = set()
+    for item in _parse_env_list(name):
+        try:
+            values.add(int(item))
+        except ValueError:
+            continue
+    return values
+
+
 def _password_reset_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -55,7 +70,12 @@ def _resolve_admin_flag(db: Database, telegram_id: int, email: Optional[str]) ->
         return True
 
     normalized_email = (email or "").strip().lower()
-    if normalized_email and normalized_email == PRIMARY_ADMIN_EMAIL:
+    admin_emails = _parse_env_list("ADMIN_EMAILS")
+    admin_telegram_ids = _parse_env_int_list("ADMIN_TELEGRAM_IDS")
+    if PRIMARY_ADMIN_EMAIL:
+        admin_emails.add(PRIMARY_ADMIN_EMAIL)
+
+    if telegram_id in admin_telegram_ids or (normalized_email and normalized_email in admin_emails):
         db.create_user_if_not_exists(telegram_id, "Admin")
         db.set_admin(telegram_id, True)
         return True

@@ -62,6 +62,24 @@ def test_login_returns_access_token_and_admin_flag(client, temp_db):
     assert payload["is_admin"] is True
 
 
+def test_login_promotes_admin_from_configured_email_list(client, temp_db, monkeypatch):
+    monkeypatch.setenv("PRIMARY_ADMIN_EMAIL", "")
+    monkeypatch.setenv("ADMIN_EMAILS", "ops@example.com, founder@example.com")
+
+    temp_db.create_user_if_not_exists(654, "Ops User")
+    temp_db.create_web_user(654, "ops@example.com", auth.get_password_hash("ops-pass-123"))
+
+    response = client.post(
+        "/auth/token",
+        data={"username": "ops@example.com", "password": "ops-pass-123"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["is_admin"] is True
+    assert temp_db.is_admin(654) is True
+
+
 def test_password_reset_flow_updates_password(client, temp_db, monkeypatch):
     temp_db.create_user_if_not_exists(777, "Reset User")
     temp_db.create_web_user(777, "reset@example.com", auth.get_password_hash("oldpass"))

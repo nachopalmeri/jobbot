@@ -8,6 +8,7 @@ import {
   Crown,
   Flame,
   FolderKanban,
+  ListChecks,
   Search,
   Sparkles,
 } from "lucide-react";
@@ -122,15 +123,28 @@ export default function DashboardPage() {
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">
-                Dashboard Operativo
+                Centro de control
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
-                Un tablero más claro para moverte sin ruido.
+                Un dashboard más claro, más cálido y conectado con tu ritmo real.
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600 lg:text-lg">
-                Priorizá lo importante: qué hacer hoy, qué revisar en el pipeline y qué herramienta
-                abrir después. Lo demás vive en sus secciones.
+                Buscá, aplicá y mejorá tu CV desde un solo lugar, pero sin sentir que todo compite
+                por tu atención. Acá elegís foco; cada herramienta vive en su propia sección.
               </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                {["Búsquedas guiadas", "Pipeline estilo Notion", "CV Intelligence"].map(
+                  (item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-medium text-stone-700"
+                    >
+                      {item}
+                    </span>
+                  ),
+                )}
+              </div>
 
               <div className="mt-7 grid gap-3 sm:grid-cols-3">
                 <Link
@@ -173,26 +187,34 @@ export default function DashboardPage() {
             </div>
 
             <div className="rounded-[1.75rem] border border-indigo-200 bg-[linear-gradient(135deg,_rgba(79,70,229,0.08),_rgba(245,158,11,0.08))] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
-                Qué mirar primero
-              </p>
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-white/85 p-3 text-indigo-700 shadow-sm">
+                  <ListChecks size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
+                    Qué mirar primero
+                  </p>
+                  <h2 className="mt-1 text-2xl font-semibold text-stone-950">Tu bloque de hoy</h2>
+                </div>
+              </div>
               <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
                 <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
                   <p className="text-sm font-medium text-stone-500">Paso 1</p>
                   <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Elegí una búsqueda concreta para hoy.
+                    Elegí una búsqueda puntual y evitá abrir diez tabs al mismo tiempo.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
                   <p className="text-sm font-medium text-stone-500">Paso 2</p>
                   <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Ajustá tu CV solo si la vacante lo amerita.
+                    Ajustá tu CV solo para las vacantes con match real y potencial.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
                   <p className="text-sm font-medium text-stone-500">Paso 3</p>
                   <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Guardá la postulación y definí el siguiente follow-up.
+                    Guardá la postulación y definí follow-up antes de pasar a la siguiente.
                   </p>
                 </div>
               </div>
@@ -234,16 +256,16 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-600">
-                    CV Analysis
+                    CV Intelligence
                   </p>
                   <h3 className="mt-1 text-xl font-semibold text-stone-950">
-                    Resume Score + ATS + Job Match
+                    La promesa premium de la landing, aterrizada en una suite real
                   </h3>
                 </div>
               </div>
               <p className="mt-4 text-sm leading-6 text-stone-600">
-                La suite de CV vive separada para que no te distraiga hasta que la necesites:
-                score ATS, keywords faltantes, feedback IA, cover letters y mock interviews.
+                Score ATS, job match, feedback IA, cover letters y mock interviews. Todo vive
+                aparte para que entres justo cuando estés por aplicar.
               </p>
               <Link
                 href="/dashboard/cv"
@@ -269,8 +291,8 @@ export default function DashboardPage() {
                 </div>
               </div>
               <p className="mt-4 text-sm leading-6 text-stone-600">
-                Si querés destrabar mock interviews, cover letters y CV Intelligence full, tené la
-                parte comercial en una sección aparte y simple.
+                La parte comercial también queda separada: cuando quieras más volumen, cover
+                letters o mock interviews, lo hacés sin invadir el resto del flujo.
               </p>
               <Link
                 href="/dashboard/suscripcion"
@@ -310,7 +332,7 @@ export default function DashboardPage() {
                     Recomendadas
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold text-stone-950">
-                    Oportunidades para atacar hoy
+                    Oportunidades para mover hoy
                   </h2>
                 </div>
                 <div className="flex flex-wrap gap-3">
@@ -332,7 +354,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-6 space-y-3">
-                {recommendedJobs.slice(0, 4).map((job) => (
+                {recommendedJobs.slice(0, 3).map((job) => (
                   <a
                     key={job.id}
                     href={job.url || "#"}
@@ -360,7 +382,8 @@ export default function DashboardPage() {
 
                 {recommendedJobs.length === 0 ? (
                   <div className="rounded-3xl border border-dashed border-stone-300 bg-stone-50 px-6 py-10 text-center text-sm leading-6 text-stone-500">
-                    Completa tu configuración y corré una primera búsqueda para poblar este bloque.
+                    Completa tu configuración y corré una primera búsqueda para poblar este bloque
+                    con vacantes reales.
                   </div>
                 ) : null}
               </div>

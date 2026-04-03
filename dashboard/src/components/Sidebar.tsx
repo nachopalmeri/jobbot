@@ -59,13 +59,13 @@ export default function Sidebar() {
     <aside className="flex h-screen w-72 flex-col border-r border-stone-200 bg-[radial-gradient(circle_at_top,_rgba(79,70,229,0.14),_transparent_26%),linear-gradient(180deg,_#fcfbf7,_#f5f5f4)] text-stone-900">
       <div className="border-b border-stone-200 px-6 py-6">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-indigo-600">
-          JobBot AR
+          JobBot
         </p>
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-stone-950">Job Search OS</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-stone-950">Career Command</h1>
             <p className="mt-1 text-sm text-stone-600">
-              Un tablero con ritmo para buscar, aplicar y mejorar cada semana.
+              El mismo sistema que promete la landing, ordenado para accionar sin quemarte.
             </p>
           </div>
           <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
@@ -95,7 +95,7 @@ export default function Sidebar() {
               <span className="text-sm font-semibold">Subí de plan</span>
             </div>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Desbloqueá pipeline completo, búsquedas mejores y CV Intelligence.
+              Desbloqueá workflow completo, CV Intelligence y más volumen operativo.
             </p>
             <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-stone-950">
               Ver planes
@@ -131,7 +131,6 @@ export default function Sidebar() {
           )
         })}
         
-        {/* Admin Panel Link - Solo para admin@jobbot.com */}
         {isAdmin && (
           <Link
             href="/dashboard/admin"
