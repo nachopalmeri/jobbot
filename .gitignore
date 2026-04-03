@@ -11,6 +11,10 @@ downloads/
 eggs/
 .eggs/
 lib/
+!dashboard/src/lib/api.ts
+!dashboard/src/lib/applications.ts
+!dashboard/src/lib/dashboard.ts
+!dashboard/src/lib/site.ts
 lib64/
 parts/
 sdist/
