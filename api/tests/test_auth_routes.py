@@ -60,3 +60,40 @@ def test_login_returns_access_token_and_admin_flag(client, temp_db):
     assert payload["token_type"] == "bearer"
     assert payload["telegram_id"] == 321
     assert payload["is_admin"] is True
+
+
+def test_password_reset_flow_updates_password(client, temp_db, monkeypatch):
+    temp_db.create_user_if_not_exists(777, "Reset User")
+    temp_db.create_web_user(777, "reset@example.com", auth.get_password_hash("oldpass"))
+    monkeypatch.setattr(auth.secrets, "token_urlsafe", lambda _: "fixed-reset-token-long-enough")
+    monkeypatch.setattr(auth, "_send_password_reset_email", lambda email, url: None)
+
+    response = client.post("/auth/password-reset/request", json={"email": "reset@example.com"})
+
+    assert response.status_code == 200
+    assert "te enviamos un enlace" in response.json()["message"]
+
+    confirm = client.post(
+        "/auth/password-reset/confirm",
+        json={"token": "fixed-reset-token-long-enough", "password": "newpass123"},
+    )
+
+    assert confirm.status_code == 200
+    assert confirm.json()["message"] == "Password actualizada correctamente"
+
+    login = client.post(
+        "/auth/token",
+        data={"username": "reset@example.com", "password": "newpass123"},
+    )
+
+    assert login.status_code == 200
+
+
+def test_password_reset_confirm_rejects_invalid_token(client):
+    response = client.post(
+        "/auth/password-reset/confirm",
+        json={"token": "invalid-token-long-enough", "password": "newpass123"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "El enlace de recuperacion es invalido o ya expiró"

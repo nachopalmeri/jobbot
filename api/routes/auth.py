@@ -43,10 +43,24 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@jobbot.ar")
 PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", os.getenv("DASHBOARD_URL", "https://app-jobbot.vercel.app"))
+PRIMARY_ADMIN_EMAIL = (os.getenv("PRIMARY_ADMIN_EMAIL") or "admin@jobbot.com").strip().lower()
 
 
 def _password_reset_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _resolve_admin_flag(db: Database, telegram_id: int, email: Optional[str]) -> bool:
+    if db.is_admin(telegram_id):
+        return True
+
+    normalized_email = (email or "").strip().lower()
+    if normalized_email and normalized_email == PRIMARY_ADMIN_EMAIL:
+        db.create_user_if_not_exists(telegram_id, "Admin")
+        db.set_admin(telegram_id, True)
+        return True
+
+    return False
 
 
 def _smtp_configured() -> bool:
@@ -193,7 +207,7 @@ def get_authenticated_user(
         "telegram_id": telegram_id,
         "email": email,
         "plan": db.get_user_plan(telegram_id),
-        "is_admin": db.is_admin(telegram_id),
+        "is_admin": _resolve_admin_flag(db, telegram_id, email),
         "has_telegram_link": telegram_id > 0,
         "name": base_user.get("name") or web_user.get("email") or "Usuario",
         "user": base_user,
@@ -292,7 +306,7 @@ async def login(
         "access_token": access_token,
         "token_type": "bearer",
         "telegram_id": user["telegram_id"],
-        "is_admin": db.is_admin(int(user["telegram_id"])),
+        "is_admin": _resolve_admin_flag(db, int(user["telegram_id"]), email),
     }
 
 

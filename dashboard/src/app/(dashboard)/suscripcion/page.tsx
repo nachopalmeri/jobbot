@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bitcoin, Check, CreditCard, Crown, Sparkles, Wallet } from "lucide-react";
+import Link from "next/link";
+import { Check, CreditCard, Crown, Sparkles, Wallet } from "lucide-react";
 
+import { supportEmail } from "@/lib/site";
 import { apiRequest } from "@/lib/api";
 
 interface Plan {
@@ -21,10 +23,20 @@ interface Plan {
   featured?: boolean;
 }
 
+interface SubscriptionStatus {
+  plan: string;
+  status?: string;
+  provider?: string | null;
+  billing_cycle?: string;
+  expires_at?: string | null;
+  can_cancel?: boolean;
+  can_manage_billing?: boolean;
+  support_email?: string;
+}
+
 const providers = [
   { name: "Stripe", icon: CreditCard, color: "bg-stone-950", available: true, note: "Suscripción mensual o anual" },
   { name: "MercadoPago", icon: Wallet, color: "bg-sky-600", available: true, note: "Pago único del ciclo elegido" },
-  { name: "Crypto", icon: Bitcoin, color: "bg-amber-500", available: false, note: "Próximamente" },
 ];
 
 const planOverrides: Record<
@@ -91,13 +103,15 @@ export default function SuscripcionPage() {
   const [selectedPlan, setSelectedPlan] = useState("premium");
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly");
   const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         const [plansData, statusData] = await Promise.all([
           apiRequest<{ plans: Plan[] }>("/subscriptions/plans", {}, true),
-          apiRequest<{ plan: string }>("/subscriptions/status", {}, true),
+          apiRequest<SubscriptionStatus>("/subscriptions/status", {}, true),
         ]);
 
         const decoratedPlans: Plan[] = (plansData.plans || []).map((plan) => ({
@@ -109,8 +123,12 @@ export default function SuscripcionPage() {
 
         setPlans(decoratedPlans);
         const activePlan = statusData.plan || "free";
+        setStatus(statusData);
         setCurrentPlan(activePlan);
         setSelectedPlan(activePlan === "free" ? "pro" : activePlan);
+        setBillingCycle(
+          statusData.billing_cycle === "yearly" && activePlan !== "free" ? "yearly" : "monthly",
+        );
       } catch (err) {
         setMessage(
           err && typeof err === "object" && "message" in err
@@ -133,6 +151,8 @@ export default function SuscripcionPage() {
     billingCycle === "yearly" && plan.yearly_price ? plan.yearly_price : plan.price;
 
   const displayedPeriod = billingCycle === "yearly" ? "/año" : "/mes";
+
+  const activeSupportEmail = status?.support_email || supportEmail;
 
   const handleUpgrade = async (provider: string) => {
     try {
@@ -157,6 +177,58 @@ export default function SuscripcionPage() {
           ? String(error.message)
           : "Error al procesar el pago.",
       );
+    }
+  };
+
+  const handleManageBilling = async () => {
+    try {
+      setBillingLoading(true);
+      setMessage("");
+      const data = await apiRequest<{ url?: string; detail?: string }>("/subscriptions/manage-billing", {
+        method: "POST",
+      }, true);
+      if (data.url) {
+        window.location.assign(data.url);
+        return;
+      }
+      setMessage(data.detail || `Escribinos a ${activeSupportEmail}`);
+    } catch (error) {
+      setMessage(
+        error && typeof error === "object" && "message" in error
+          ? String(error.message)
+          : "No pudimos abrir la gestión de facturación.",
+      );
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      setBillingLoading(true);
+      setMessage("");
+      const data = await apiRequest<{ message: string; status?: string; expires_at?: string | null }>(
+        "/subscriptions/cancel",
+        { method: "POST" },
+        true,
+      );
+      setMessage(data.message);
+      setStatus((current) =>
+        current
+          ? { ...current, status: data.status || "cancelled", expires_at: data.expires_at ?? null }
+          : current,
+      );
+      if (!data.expires_at) {
+        setCurrentPlan("free");
+      }
+    } catch (error) {
+      setMessage(
+        error && typeof error === "object" && "message" in error
+          ? String(error.message)
+          : "No pudimos cancelar la suscripción.",
+      );
+    } finally {
+      setBillingLoading(false);
     }
   };
 
@@ -332,6 +404,27 @@ export default function SuscripcionPage() {
                 </div>
               ) : null}
 
+              {status?.provider ? (
+                <div className="mt-4 rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Proveedor actual</span>
+                    <strong className="capitalize text-stone-950">{status.provider}</strong>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <span>Estado</span>
+                    <span className="capitalize text-stone-950">{status.status || "active"}</span>
+                  </div>
+                  {status.expires_at ? (
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <span>Vence / se corta</span>
+                      <span className="text-stone-950">
+                        {new Date(status.expires_at).toLocaleDateString("es-AR")}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="mt-5 space-y-3">
                 {providers.map((provider) => (
                   <button
@@ -353,10 +446,38 @@ export default function SuscripcionPage() {
               <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950">
                 Si preferís no suscribirte, podés ir por <strong>créditos</strong>: desbloqueás la CV
                 Suite o comprás packs para usar IA cuando realmente la necesites.
-                <a href="/dashboard/creditos" className="ml-2 font-semibold underline underline-offset-4">
+                <Link href="/dashboard/creditos" className="ml-2 font-semibold underline underline-offset-4">
                   Ver créditos
-                </a>
+                </Link>
               </div>
+
+              {currentPlan !== "free" ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={handleManageBilling}
+                    disabled={billingLoading}
+                    className="rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm font-medium text-stone-950 transition hover:border-stone-950 disabled:opacity-60"
+                  >
+                    Gestionar facturación
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    disabled={billingLoading || !status?.can_cancel}
+                    className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                  >
+                    Cancelar suscripción
+                  </button>
+                </div>
+              ) : null}
+
+              <p className="mt-4 text-xs leading-6 text-stone-500">
+                Soporte de billing:{" "}
+                <a href={`mailto:${activeSupportEmail}`} className="font-semibold text-stone-700 underline underline-offset-4">
+                  {activeSupportEmail}
+                </a>
+              </p>
             </section>
 
             <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm">

@@ -1,6 +1,6 @@
 """
-Admin Panel Routes - Solo para admin@jobbot.com
-Métricas de billing, usuarios, revenue
+Admin panel routes.
+Métricas de billing, usuarios y revenue para operadores internos.
 """
 import logging
 from datetime import datetime, timedelta
@@ -18,16 +18,12 @@ except ImportError:
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Email del único admin autorizado
-ADMIN_EMAIL = "admin@jobbot.com"
-
-
 def verify_admin_access(current_user: dict):
-    """Verifica que solo el admin autorizado pueda acceder."""
-    if current_user.get("email") != ADMIN_EMAIL:
+    """Verifica acceso admin real desde el flag persistido en users."""
+    if not current_user.get("is_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso restringido al administrador principal"
+            detail="Acceso restringido a administradores"
         )
 
 
@@ -36,9 +32,7 @@ async def get_admin_metrics(
     current_user: dict = Depends(get_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    """
-    Métricas de billing y usuarios. Solo para admin@jobbot.com
-    """
+    """Métricas de billing y usuarios."""
     verify_admin_access(current_user)
     
     # Obtener métricas de usuarios
@@ -156,30 +150,30 @@ async def get_admin_users(
     current_user: dict = Depends(get_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    """
-    Lista de usuarios con sus planes. Solo para admin@jobbot.com
-    """
+    """Lista de usuarios con sus planes."""
     verify_admin_access(current_user)
     
     users = db._fetchall(
-        """SELECT w.id, w.telegram_id, w.email, w.plan, w.is_admin, 
+        """SELECT w.id, w.telegram_id, w.email, w.plan, u.is_admin,
                   w.created_at, w.ai_analyses_used, w.ai_analyses_limit,
                   w.searches_used, w.searches_limit,
                   COALESCE(SUM(c.credits_remaining), 0) as credits
            FROM web_users w
+           LEFT JOIN users u ON w.telegram_id = u.telegram_id
            LEFT JOIN credit_packs c ON w.telegram_id = c.telegram_id AND c.status = 'active'
-           GROUP BY w.id
+           GROUP BY w.id, u.is_admin
            ORDER BY w.created_at DESC
            LIMIT ? OFFSET ?""",
         (limit, offset)
     ) if db.db_type != "supabase" else db._fetchall(
-        """SELECT w.id, w.telegram_id, w.email, w.plan, w.is_admin, 
+        """SELECT w.id, w.telegram_id, w.email, w.plan, u.is_admin,
                   w.created_at, w.ai_analyses_used, w.ai_analyses_limit,
                   w.searches_used, w.searches_limit,
                   COALESCE(SUM(c.credits_remaining), 0) as credits
            FROM web_users w
+           LEFT JOIN users u ON w.telegram_id = u.telegram_id
            LEFT JOIN credit_packs c ON w.telegram_id = c.telegram_id AND c.status = 'active'
-           GROUP BY w.id
+           GROUP BY w.id, u.is_admin
            ORDER BY w.created_at DESC
            LIMIT %s OFFSET %s""",
         (limit, offset)

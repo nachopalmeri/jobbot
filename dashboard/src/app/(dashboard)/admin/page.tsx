@@ -46,8 +46,6 @@ interface AdminMetrics {
   }>
 }
 
-const ADMIN_EMAIL = "admin@jobbot.com"
-
 export default function AdminPage() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -58,11 +56,10 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdmin = async () => {
       try {
-        // Verificar si el usuario actual es admin
         const user = await apiRequest<{ email: string; is_admin: boolean }>("/auth/me", {}, true)
         setUserEmail(user.email)
         
-        if (user.email !== ADMIN_EMAIL) {
+        if (!user.is_admin) {
           setIsAdmin(false)
           setLoading(false)
           return
@@ -99,7 +96,7 @@ export default function AdminPage() {
         </div>
         <h1 className="mt-4 text-2xl font-bold text-stone-900">Acceso Restringido</h1>
         <p className="mt-2 text-center text-stone-600">
-          Solo el administrador principal puede acceder a esta sección.
+          Solo los administradores pueden acceder a esta sección.
         </p>
         <p className="mt-1 text-sm text-stone-500">
           Tu email: {userEmail}

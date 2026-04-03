@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
+import PublicFooterLinks from "@/components/PublicFooterLinks"
 import { apiRequest, setToken } from "@/lib/api"
 
 function LoginContent() {
@@ -73,48 +74,89 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 w-full max-w-md border border-white/20">
-        <h1 className="text-3xl font-bold text-white mb-2 text-center">JobBot</h1>
-        <p className="text-white/60 text-center mb-6">Iniciá sesión en tu cuenta</p>
-        {message ? (
-          <div className="mb-4 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white">
-            {message}
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(79,70,229,0.22),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(251,191,36,0.18),_transparent_26%),linear-gradient(180deg,_#18181b,_#0f172a_42%,_#111827)] px-4 py-12 text-white">
+      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="rounded-[2rem] border border-white/10 bg-white/6 p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-300">
+            Login
+          </p>
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight">
+            Volvé a tu dashboard sin perder contexto
+          </h1>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-white/72">
+            Seguí tu pipeline, retomá la CV Suite y revisá tus búsquedas guardadas desde el mismo
+            lugar donde dejaste todo.
+          </p>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            {[
+              "Pipeline con foco semanal y seguimiento real.",
+              "CV Intelligence con ATS, job match y cover letters.",
+              "Alertas, historial y entrevistas prácticas en un solo flujo.",
+              "Billing y upgrades cuando realmente necesitás escalar.",
+            ].map((item) => (
+              <div key={item} className="rounded-[1.5rem] border border-white/10 bg-black/15 p-4 text-sm text-white/74">
+                {item}
+              </div>
+            ))}
           </div>
-        ) : null}
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            required
-          />
-          <button 
-            type="submit" 
-            disabled={loading || !!code}
-            className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-semibold text-white hover:opacity-90 transition-all disabled:opacity-50"
-          >
-            {loading ? "Ingresando..." : code ? "Validando código..." : "Iniciar Sesión"}
-          </button>
-        </form>
-        
-        <p className="text-white/60 text-center mt-6">
-          ¿No tienes cuenta?{" "}
-          <Link href="/register" className="text-purple-400 hover:underline">
-            Regístrate
-          </Link>
-        </p>
+        </section>
+
+        <section className="rounded-[2rem] border border-white/10 bg-white/6 p-8 shadow-2xl backdrop-blur-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
+            Acceso
+          </p>
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight">Iniciá sesión</h2>
+          <p className="mt-3 text-sm leading-7 text-white/68">
+            También podés entrar desde Telegram si generaste un código de acceso en el bot.
+          </p>
+
+          {message ? (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm text-white/90">
+              {message}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <input
+              type="email"
+              placeholder="tu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Tu password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading || !!code}
+              className="w-full rounded-2xl bg-gradient-to-r from-indigo-500 via-sky-500 to-amber-400 px-4 py-3 font-semibold text-slate-950 transition hover:opacity-95 disabled:opacity-60"
+            >
+              {loading ? "Ingresando..." : code ? "Validando código..." : "Entrar al dashboard"}
+            </button>
+          </form>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm text-white/62">
+            <Link href="/forgot-password" className="font-medium text-indigo-300 hover:text-indigo-200">
+              ¿Olvidaste tu password?
+            </Link>
+            <span>
+              ¿No tenés cuenta?{" "}
+              <Link href="/register" className="font-semibold text-amber-300 hover:text-amber-200">
+                Crear cuenta
+              </Link>
+            </span>
+          </div>
+
+          <PublicFooterLinks />
+        </section>
       </div>
     </div>
   )
@@ -124,7 +166,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
           Cargando acceso...
         </div>
       }
