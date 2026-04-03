@@ -240,11 +240,12 @@ export default function SuscripcionPage() {
             Pricing
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
-            Planes más realistas y con una escalera que sí se entiende.
+            Una escalera simple: suscripción si buscás todos los días, créditos si usás CV Suite por demanda.
           </h1>
           <p className="mt-4 max-w-3xl text-base leading-7 text-stone-600">
-            Bajamos el free para que sea una entrada genuina, no un plan que promete demasiado.
-            El valor fuerte aparece cuando realmente empezás a operar mejor: tracker, CV suite y preparación.
+            El free sirve para explorar. Starter y Pro ordenan la operación diaria. Premium suma la
+            capa completa de CV Intelligence. Y si no querés otra suscripción, podés pagar CV Suite
+            por uso con créditos.
           </p>
 
           <div className="mt-6 inline-flex rounded-full border border-stone-200 bg-stone-100 p-1">

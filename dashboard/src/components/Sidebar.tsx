@@ -63,9 +63,9 @@ export default function Sidebar() {
         </p>
         <div className="mt-3 flex items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-stone-950">Career Command</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-stone-950">Job Search OS</h1>
             <p className="mt-1 text-sm text-stone-600">
-              El mismo sistema que promete la landing, ordenado para accionar sin quemarte.
+              La promesa de la landing, traducida a un sistema diario más claro y accionable.
             </p>
           </div>
           <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">

@@ -24,7 +24,7 @@ router = APIRouter()
 CREDIT_PACKS = {
     "unlock_suite": {
         "name": "CV Suite Unlock",
-        "description": "Lifetime access + 50 AI credits",
+        "description": "Acceso permanente a CV Suite base + 50 créditos IA",
         "credits": 50,
         "price_usd": 9,
         "stripe_price_id": os.getenv("STRIPE_UNLOCK_PRICE_ID"),
@@ -88,7 +88,7 @@ async def get_credit_packs():
     
     return {
         "packs": packs,
-        "note": "Los créditos nunca expiran. 1 crédito = 1 análisis IA o carta de presentación."
+        "note": "Los créditos nunca expiran. 1 crédito = 1 análisis IA o 1 cover letter."
     }
 
 

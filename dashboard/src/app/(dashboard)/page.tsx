@@ -5,12 +5,13 @@ import Link from "next/link";
 import {
   ArrowRight,
   Bell,
+  CalendarClock,
+  CheckCircle2,
   Crown,
-  Flame,
   FolderKanban,
-  ListChecks,
   Search,
   Sparkles,
+  Target,
 } from "lucide-react";
 
 import ApplicationsPipeline from "@/components/ApplicationsPipeline";
@@ -85,17 +86,17 @@ export default function DashboardPage() {
   const stats = useMemo(
     () => [
       {
-        label: "Pipeline",
+        label: "Postulaciones activas",
         value: dashboard?.applications?.length ?? 0,
-        detail: `${dashboard?.funnel?.interview ?? 0} entrevistas activas`,
+        detail: `${dashboard?.funnel?.interview ?? 0} entrevistas en juego`,
       },
       {
-        label: "Búsquedas",
+        label: "Búsquedas disponibles",
         value:
           usage?.searches_limit === 0 ? "Ilimitadas" : String(usage?.remaining_searches ?? 0),
         detail:
           usage?.searches_limit === 0
-            ? "Tu plan ya no tiene tope diario"
+            ? "Tu plan no tiene tope diario"
             : `${usage?.searches_used ?? 0} usadas hoy`,
       },
       {
@@ -120,33 +121,53 @@ export default function DashboardPage() {
     <div className="min-h-full bg-[radial-gradient(circle_at_top_left,_rgba(79,70,229,0.08),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(217,119,6,0.08),_transparent_28%),linear-gradient(180deg,_#fafaf9,_#f5f5f4_42%,_#ffffff)] p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white/92 p-6 shadow-sm lg:p-8">
-          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">
-                Centro de control
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
-                Un dashboard más claro, más cálido y conectado con tu ritmo real.
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600 lg:text-lg">
-                Buscá, aplicá y mejorá tu CV desde un solo lugar, pero sin sentir que todo compite
-                por tu atención. Acá elegís foco; cada herramienta vive en su propia sección.
-              </p>
-
-              <div className="mt-5 flex flex-wrap gap-2">
-                {["Búsquedas guiadas", "Pipeline estilo Notion", "CV Intelligence"].map(
-                  (item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-xs font-medium text-stone-700"
-                    >
-                      {item}
-                    </span>
-                  ),
-                )}
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <div className="max-w-3xl space-y-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-indigo-600">
+                  Centro de control
+                </p>
+                <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 lg:text-5xl">
+                  Entrá, elegí foco y avanzá sin sentir el dashboard encima.
+                </h1>
+                <p className="mt-4 max-w-2xl text-base leading-7 text-stone-600 lg:text-lg">
+                  La landing promete orden y criterio. Acá se traduce en algo concreto: primero
+                  decidís qué bloque vas a mover hoy, después abrís solo la herramienta que
+                  necesitás.
+                </p>
               </div>
 
-              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <article className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-stone-950">
+                    <Target size={16} className="text-indigo-600" />
+                    Hoy
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Elegí una búsqueda, una mejora de CV o un follow-up. No todo al mismo tiempo.
+                  </p>
+                </article>
+                <article className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-stone-950">
+                    <CalendarClock size={16} className="text-amber-600" />
+                    Ritmo
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Meta semanal, frase del día y pomodoro viven juntos para no dispersarte.
+                  </p>
+                </article>
+                <article className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-stone-950">
+                    <Sparkles size={16} className="text-indigo-600" />
+                    CV Suite
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-stone-600">
+                    Score, ATS y match cuando ya tenés una vacante que vale la pena trabajar.
+                  </p>
+                </article>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
                 <Link
                   href="/dashboard/buscar"
                   className="rounded-[1.5rem] border border-stone-200 bg-white px-5 py-4 transition hover:border-indigo-200 hover:bg-indigo-50"
@@ -156,7 +177,7 @@ export default function DashboardPage() {
                     Buscar
                   </div>
                   <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Ejecutá una búsqueda nueva y guardá las mejores.
+                    Corré una búsqueda enfocada y guardá las oportunidades serias.
                   </p>
                 </Link>
                 <Link
@@ -180,44 +201,68 @@ export default function DashboardPage() {
                     CV Suite
                   </div>
                   <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Score, ATS y job match cuando estés listo para aplicar.
+                    Activá ATS, match y feedback solo cuando vayas a aplicar mejor.
                   </p>
                 </Link>
               </div>
             </div>
 
-            <div className="rounded-[1.75rem] border border-indigo-200 bg-[linear-gradient(135deg,_rgba(79,70,229,0.08),_rgba(245,158,11,0.08))] p-5">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-white/85 p-3 text-indigo-700 shadow-sm">
-                  <ListChecks size={18} />
+            <div className="space-y-4">
+              <div className="rounded-[1.75rem] border border-indigo-200 bg-[linear-gradient(135deg,_rgba(79,70,229,0.08),_rgba(245,158,11,0.08))] p-5">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-2xl bg-white/85 p-3 text-indigo-700 shadow-sm">
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
+                      Qué mirar primero
+                    </p>
+                    <h2 className="mt-1 text-2xl font-semibold text-stone-950">
+                      Un bloque claro para hoy
+                    </h2>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
-                    Qué mirar primero
-                  </p>
-                  <h2 className="mt-1 text-2xl font-semibold text-stone-950">Tu bloque de hoy</h2>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                    <p className="text-sm font-medium text-stone-500">1. Buscar con intención</p>
+                    <p className="mt-2 text-base font-semibold text-stone-950">
+                      Abrí el buscador con una query puntual o usando tu perfil.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                    <p className="text-sm font-medium text-stone-500">2. Mejorar antes de aplicar</p>
+                    <p className="mt-2 text-base font-semibold text-stone-950">
+                      Si una vacante vale la pena, recién ahí entrá a CV Suite y ajustá.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
+                    <p className="text-sm font-medium text-stone-500">3. Registrar y seguir</p>
+                    <p className="mt-2 text-base font-semibold text-stone-950">
+                      Guardá la postulación y definí el follow-up en el pipeline.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
-                  <p className="text-sm font-medium text-stone-500">Paso 1</p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Elegí una búsqueda puntual y evitá abrir diez tabs al mismo tiempo.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
-                  <p className="text-sm font-medium text-stone-500">Paso 2</p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Ajustá tu CV solo para las vacantes con match real y potencial.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-4">
-                  <p className="text-sm font-medium text-stone-500">Paso 3</p>
-                  <p className="mt-2 text-lg font-semibold text-stone-950">
-                    Guardá la postulación y definí follow-up antes de pasar a la siguiente.
-                  </p>
-                </div>
-              </div>
+
+              <article className="rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-600">
+                  Plan actual
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-stone-950">
+                  {(dashboard?.plan || "free").toUpperCase()}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-stone-600">
+                  Cuando necesites más volumen, más IA o más workflow, el upgrade vive separado y
+                  no te invade el resto del producto.
+                </p>
+                <Link
+                  href="/dashboard/suscripcion"
+                  className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 font-medium text-amber-800 hover:bg-amber-100"
+                >
+                  Ver planes y anual
+                  <ArrowRight size={16} />
+                </Link>
+              </article>
             </div>
           </div>
 
@@ -298,29 +343,9 @@ export default function DashboardPage() {
                 href="/dashboard/suscripcion"
                 className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 font-medium text-amber-800 hover:bg-amber-100"
               >
-                Ver planes premium
+                Ver planes, anual y créditos
                 <ArrowRight size={16} />
               </Link>
-            </article>
-
-            <article className="rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,_#fff7ed,_#ffffff)] p-6 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
-                  <Flame size={20} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-600">
-                    Ritmo
-                  </p>
-                  <h3 className="mt-1 text-xl font-semibold text-stone-950">
-                    Una acción buena por bloque
-                  </h3>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-stone-600">
-                El home ya no intenta mostrar todo. Usalo para elegir foco, y después bajá a la
-                sección específica que necesites.
-              </p>
             </article>
           </div>
 

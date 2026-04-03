@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ExternalLink, Loader2, Search, Sparkles } from "lucide-react"
 
 import { apiRequest } from "@/lib/api"
@@ -9,6 +9,12 @@ const modalityLabels: Record<string, string> = {
   remote: "Remoto",
   hybrid: "Híbrido",
   onsite: "Presencial",
+}
+
+const scheduleLabels: Record<string, string> = {
+  all: "Cualquiera",
+  full_time: "Jornada completa",
+  part_time: "Media jornada",
 }
 
 const suggestedSearches = [
@@ -30,9 +36,18 @@ interface SearchJob {
   url?: string
 }
 
+interface PreferencesSnapshot {
+  role_type: string
+  technologies: string
+  location: string
+  job_modality: string
+  job_schedule: string
+}
+
 export default function BuscarPage() {
   const [query, setQuery] = useState("")
   const [modality, setModality] = useState("all")
+  const [schedule, setSchedule] = useState("all")
   const [jobs, setJobs] = useState<SearchJob[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -40,8 +55,32 @@ export default function BuscarPage() {
   const [hasSearched, setHasSearched] = useState(false)
   const [lastQueryLabel, setLastQueryLabel] = useState("tu perfil")
   const [requestLabel, setRequestLabel] = useState("")
+  const [preferences, setPreferences] = useState<PreferencesSnapshot | null>(null)
 
-  const runSearch = useCallback(async (customQuery: string, customModality: string) => {
+  useEffect(() => {
+    apiRequest<PreferencesSnapshot>("/users/preferences", {}, true)
+      .then((data) => {
+        setPreferences(data)
+        if (data.job_modality && data.job_modality !== "cualquiera") {
+          const normalizedModality = data.job_modality.normalize("NFD").replace(/\p{Diacritic}/gu, "")
+          const mappedModality =
+            normalizedModality === "remoto"
+              ? "remote"
+              : normalizedModality === "hibrido"
+                ? "hybrid"
+                : normalizedModality === "presencial"
+                  ? "onsite"
+                  : "all"
+          setModality(mappedModality)
+        }
+        if (data.job_schedule && data.job_schedule !== "cualquiera") {
+          setSchedule(data.job_schedule)
+        }
+      })
+      .catch(() => setPreferences(null))
+  }, [])
+
+  const runSearch = useCallback(async (customQuery: string, customModality: string, customSchedule: string) => {
     try {
       setLoading(true)
       setError("")
@@ -53,6 +92,9 @@ export default function BuscarPage() {
       }
       if (customModality !== "all") {
         params.set("modality", customModality)
+      }
+      if (customSchedule !== "all") {
+        params.set("schedule", customSchedule)
       }
       params.set("limit", "20")
 
@@ -101,24 +143,53 @@ export default function BuscarPage() {
               Buscar empleos con una intención clara
             </h1>
             <p className="mt-4 text-base leading-7 text-stone-600">
-              Esta pantalla ya no queda “buscando para siempre”: vos decidís cuándo correrla,
-              qué modalidad querés y si querés explorar con tu perfil o con una query concreta.
+              Corrés la búsqueda cuando querés, con modalidad, jornada y una intención concreta.
+              Si no escribís query, JobBot usa tu perfil guardado como punto de partida.
             </p>
           </div>
 
           <div className="rounded-[1.5rem] border border-stone-200 bg-stone-50 px-5 py-4 text-sm leading-6 text-stone-700 xl:max-w-sm">
             <p className="font-semibold text-stone-950">Cómo funciona</p>
             <p className="mt-2">
-              Si dejás la query vacía, JobBot usa tu perfil y tus keywords guardadas para traerte
-              oportunidades reales desde el motor del bot.
+              Primero filtramos por perfil, modalidad y jornada. Después ordenamos por match para
+              que no se mezclen ofertas demasiado genéricas.
             </p>
           </div>
         </div>
       </section>
 
+      {preferences ? (
+        <section className="grid gap-4 lg:grid-cols-4">
+          <article className="rounded-[1.5rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Rol</p>
+            <p className="mt-2 text-base font-semibold text-stone-950">
+              {preferences.role_type || "Sin definir"}
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Stack</p>
+            <p className="mt-2 text-base font-semibold text-stone-950">
+              {preferences.technologies || "Sin definir"}
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Modalidad</p>
+            <p className="mt-2 text-base font-semibold text-stone-950">
+              {preferences.job_modality || "cualquiera"}
+            </p>
+          </article>
+          <article className="rounded-[1.5rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Jornada</p>
+            <p className="mt-2 text-base font-semibold text-stone-950">
+              {scheduleLabels[preferences.job_schedule || "all"] || "Cualquiera"}
+            </p>
+          </article>
+        </section>
+      ) : null}
+
       <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="grid gap-3 xl:grid-cols-[1.2fr_0.32fr_0.32fr_auto_auto]">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" size={18} />
               <input
@@ -126,7 +197,7 @@ export default function BuscarPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    void runSearch(query, modality)
+                    void runSearch(query, modality, schedule)
                   }
                 }}
                 placeholder="Python backend, React, data analyst..."
@@ -138,15 +209,25 @@ export default function BuscarPage() {
               value={modality}
               onChange={(e) => setModality(e.target.value)}
               className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
+              >
+                <option value="all">Cualquier modalidad</option>
+                <option value="remote">Remoto</option>
+                <option value="hybrid">Híbrido</option>
+                <option value="onsite">Presencial</option>
+              </select>
+
+            <select
+              value={schedule}
+              onChange={(e) => setSchedule(e.target.value)}
+              className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none focus:border-indigo-400"
             >
-              <option value="all">Cualquier modalidad</option>
-              <option value="remote">Remoto</option>
-              <option value="hybrid">Híbrido</option>
-              <option value="onsite">Presencial</option>
+              <option value="all">Cualquier jornada</option>
+              <option value="full_time">Jornada completa</option>
+              <option value="part_time">Media jornada</option>
             </select>
 
             <button
-              onClick={() => void runSearch(query, modality)}
+              onClick={() => void runSearch(query, modality, schedule)}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-stone-950 px-5 py-3 font-medium text-white hover:bg-stone-800 disabled:opacity-60"
             >
@@ -155,12 +236,12 @@ export default function BuscarPage() {
             </button>
 
             <button
-              onClick={() => void runSearch("", modality)}
+              onClick={() => void runSearch("", modality, schedule)}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-3 font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
             >
               <Sparkles size={18} />
-              Usar mi perfil
+              Usar mi perfil guardado
             </button>
           </div>
 
@@ -171,7 +252,7 @@ export default function BuscarPage() {
                 type="button"
                 onClick={() => {
                   setQuery(term)
-                  void runSearch(term, modality)
+                  void runSearch(term, modality, schedule)
                 }}
                 className="rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm font-medium text-stone-700 hover:border-indigo-300 hover:text-indigo-700"
               >
@@ -183,14 +264,22 @@ export default function BuscarPage() {
       </section>
 
       <section className="rounded-[1.75rem] border border-stone-200 bg-white/90 px-5 py-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-stone-600">{summary}</p>
-          {hasSearched && !loading ? (
-            <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
-              {total} resultados
-            </span>
-          ) : null}
-        </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-stone-600">{summary}</p>
+            {hasSearched && !loading ? (
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
+                  {total} resultados
+                </span>
+                <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
+                  {modalityLabels[modality] || "Todas las modalidades"}
+                </span>
+                <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
+                  {scheduleLabels[schedule]}
+                </span>
+              </div>
+            ) : null}
+          </div>
       </section>
 
       {error ? (
@@ -210,7 +299,7 @@ export default function BuscarPage() {
           <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-stone-950">2. Filtrá modalidad</p>
             <p className="mt-2 text-sm leading-6 text-stone-600">
-              Remoto, híbrido o presencial. El filtro se aplica antes de mostrar resultados.
+              Modalidad y jornada se aplican antes de mostrar resultados.
             </p>
           </div>
           <div className="rounded-[1.75rem] border border-stone-200 bg-white p-6 shadow-sm">
@@ -229,7 +318,7 @@ export default function BuscarPage() {
           </div>
           <p className="mt-4 text-lg font-semibold text-stone-950">Buscando oportunidades reales</p>
           <p className="mt-2 text-sm text-stone-600">
-            Esto consulta el motor del bot y puede tardar unos segundos según la búsqueda.
+            Esto consulta el motor del bot con tu perfil y filtros actuales.
           </p>
         </section>
       ) : null}

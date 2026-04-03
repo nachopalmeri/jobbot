@@ -244,7 +244,7 @@ export default function CVPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8 p-6 lg:p-8">
       <section className="rounded-[2rem] border border-stone-200 bg-white/90 p-6 shadow-sm lg:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-indigo-600">
               CV Intelligence
@@ -258,9 +258,37 @@ export default function CVPage() {
               </h1>
             </div>
             <p className="mt-4 text-base leading-7 text-stone-600 lg:text-lg">
-              La versión buena de esta suite no es una pared de bloques: te dice rápido si tu CV
-              está listo, dónde pierde puntos y qué cambiar antes de mandar otra postulación.
+              La suite está ordenada para un flujo real: primero validás ATS y claridad, después
+              comparás contra una vacante y recién ahí entrás a herramientas premium como cover
+              letters o mock interviews.
             </p>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-3">
+              <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                  Paso 1
+                </p>
+                <p className="mt-2 text-sm font-semibold text-stone-950">
+                  Escaneá tu CV con modo básico.
+                </p>
+              </div>
+              <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                  Paso 2
+                </p>
+                <p className="mt-2 text-sm font-semibold text-stone-950">
+                  Sumá una vacante y mirá el match real.
+                </p>
+              </div>
+              <div className="rounded-[1.4rem] border border-stone-200 bg-stone-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                  Paso 3
+                </p>
+                <p className="mt-2 text-sm font-semibold text-stone-950">
+                  Si vale la pena, usá IA para ajustar y aplicar mejor.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[420px]">
@@ -292,19 +320,39 @@ export default function CVPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+            Núcleo de análisis
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+            Empezá por estas tres herramientas
+          </h2>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
         {primaryTools.map((tool) => (
           <ToolCard key={tool.title} {...tool} />
         ))}
+        </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+            Flujo extendido
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold text-stone-950">
+            Desbloqueá solo cuando de verdad lo necesites
+          </h2>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-3">
         {secondaryTools.map((tool) => (
           <ToolCard key={tool.title} {...tool} />
         ))}
+        </div>
       </section>
 
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] border border-stone-200 bg-white/90 p-5 shadow-sm">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] border border-stone-200 bg-[linear-gradient(135deg,_rgba(79,70,229,0.06),_rgba(245,158,11,0.08))] p-5 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="rounded-2xl bg-indigo-100 p-3">
             <Coins className="text-indigo-600" size={20} />
@@ -313,9 +361,9 @@ export default function CVPage() {
             <span className="font-semibold text-stone-950">{credits} créditos disponibles</span>
             <p className="text-sm text-stone-600">
               {hasPlanQuota
-                ? `Tu plan ${currentPlan.toUpperCase()} incluye ${remainingAnalyses} análisis IA restantes.`
+                ? `Tu plan ${currentPlan.toUpperCase()} incluye ${remainingAnalyses} análisis IA restantes este mes.`
                 : unlockActive
-                  ? "CV Suite desbloqueado para historial y scans guardados."
+                  ? "Tenés la suite desbloqueada. La IA avanzada sigue usando créditos o cuota del plan."
                   : "Comprá créditos o subí de plan para análisis IA avanzados."}
             </p>
           </div>
