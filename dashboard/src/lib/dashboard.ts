@@ -32,12 +32,12 @@ export const pipelineStyles: Record<PipelineStatus, string> = {
 };
 
 export const motivationalQuotes = [
-  "Cada postulación bien hecha acumula ventaja, aunque hoy no se note.",
-  "No buscás más volumen: buscás mejores oportunidades con mejor timing.",
-  "Tu CV mejora más rápido cuando aplicás con criterio que cuando aplicás al azar.",
+  "Cada postulacion bien hecha acumula ventaja, aunque hoy no se note.",
+  "No buscas mas volumen: buscas mejores oportunidades con mejor timing.",
+  "Tu CV mejora mas rapido cuando aplicas con criterio que cuando aplicas al azar.",
   "La constancia gana cuando el mercado parece lento.",
-  "Una semana ordenada de búsqueda vale más que diez impulsos desordenados.",
-  "Aplicar mejor también es una skill. El dashboard existe para entrenarla.",
+  "Una semana ordenada de busqueda vale mas que diez impulsos desordenados.",
+  "Aplicar mejor tambien es una skill. El dashboard existe para entrenarla.",
 ];
 
 export function getDailyQuote(date = new Date()) {
@@ -66,7 +66,7 @@ export function formatApplicationDate(value?: string) {
 
 export function buildGoalMessage(weeklyApplied: number, weeklyGoal: number) {
   if (weeklyGoal <= 0) {
-    return "Definí una meta semanal para darle ritmo a tu pipeline.";
+    return "Defini una meta semanal para darle ritmo a tu pipeline.";
   }
 
   if (weeklyApplied >= weeklyGoal) {
