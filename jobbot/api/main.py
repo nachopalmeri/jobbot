@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -18,6 +19,7 @@ from .middleware import (
     add_security_headers,
     PayloadSizeMiddleware,
     XSSProtectionMiddleware,
+    RateLimitMiddleware,
 )
 from .core import (
     TokenBlacklist,
@@ -32,13 +34,11 @@ from .core import (
 
 # Import enhanced rate limiting
 from .rate_limit import (
-    endpoint_rate_limiter,
-    is_exempt_from_rate_limit,
     get_client_ip,
 )
 
 # Import routes
-from .routes import auth, cv, jobs, public, subscriptions, users
+from .routes import auth, cv, health, jobs, public, subscriptions, users
 
 
 # Structured JSON logging setup
@@ -47,7 +47,7 @@ class JSONFormatter(logging.Formatter):
     
     def format(self, record: logging.LogRecord) -> str:
         log_obj = {
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime()),
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -225,6 +225,10 @@ except ImportError:
 # Add audit logging middleware
 app.add_middleware(AuditLogMiddleware, database=_database)
 
+# Add API rate limiting after the request logging stack so sensitive flows
+# are blocked before they reach the route handlers.
+app.add_middleware(RateLimitMiddleware)
+
 
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):
@@ -232,9 +236,10 @@ async def observability_middleware(request: Request, call_next):
     Middleware for request observability: tracing, metrics, logging.
     """
     # Generate trace ID
-    trace_id = request.headers.get("X-Trace-ID") or os.urandom(16).hex()
+    trace_id = getattr(request.state, "trace_id", None) or request.headers.get("X-Trace-ID") or os.urandom(16).hex()
     request.state.trace_id = trace_id
-    request.state.user_id = None
+    if not hasattr(request.state, "user_id"):
+        request.state.user_id = None
     
     # Start timing
     started = time.time()
@@ -345,9 +350,11 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
+app.include_router(subscriptions.billing_router, prefix="/billing", tags=["Billing"])
 app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 app.include_router(cv.router, prefix="/cv", tags=["CV"])
 app.include_router(public.router, tags=["Public"])
+app.include_router(health.router, tags=["Health"])
 
 
 @app.get("/", tags=["Public"])
@@ -358,46 +365,6 @@ def root():
         "version": "1.0.0",
         "documentation": "/docs",
         "health": "/health",
-    }
-
-
-@app.get("/health", tags=["Public"])
-def health_check():
-    """
-    Health check endpoint with comprehensive status.
-    Used by load balancers and monitoring systems.
-    """
-    # Check circuit breakers
-    circuit_breakers = {
-        name: cb.get_metrics()
-        for name, cb in get_all_circuit_breakers().items()
-    }
-    
-    # Check cache
-    cache_status = "healthy"
-    try:
-        cache._backend.get("health_check")
-    except Exception:
-        cache_status = "degraded"
-    
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "timestamp": time.time(),
-        "checks": {
-            "database": "healthy",  # Simplified check
-            "cache": cache_status,
-            "circuit_breakers": circuit_breakers,
-        },
-        "features": {
-            "rate_limiting": True,
-            "audit_logging": True,
-            "security_headers": True,
-            "token_blacklist": True,
-            "response_compression": True,
-            "circuit_breaker": True,
-            "cache": cache_status == "healthy",
-        },
     }
 
 
@@ -419,12 +386,13 @@ def metrics_check():
 
 
 @app.get("/ready", tags=["Public"])
-def readiness_check():
+async def readiness_check():
     """
     Kubernetes-style readiness probe.
     Returns 200 when the application is ready to receive traffic.
     """
-    return {"status": "ready"}
+    # Legacy alias maintained for infra probes that still hit /ready.
+    return await health.readiness_probe()
 
 
 # Store app start time

@@ -288,7 +288,8 @@ class RefreshTokenManager:
         self,
         user_id: int,
         email: str,
-        device_info: Optional[str] = None
+        device_info: Optional[str] = None,
+        family_id: Optional[str] = None,
     ) -> tuple[str, str]:
         """
         Create a new refresh token with rotation support.
@@ -301,15 +302,15 @@ class RefreshTokenManager:
         Returns:
             Tuple of (access_token, refresh_token)
         """
-        # Generate token family ID for rotation tracking
-        family_id = generate_token_id()
+        # Generate or reuse token family ID for rotation tracking
+        effective_family_id = family_id or generate_token_id()
         
         # Create access token
         access_token = create_access_token(
             data={
                 "sub": email,
                 "telegram_id": user_id,
-                "token_family": family_id,
+                "token_family": effective_family_id,
             }
         )
         
@@ -318,18 +319,20 @@ class RefreshTokenManager:
             data={
                 "sub": email,
                 "telegram_id": user_id,
-                "token_family": family_id,
+                "token_family": effective_family_id,
                 "token_id": generate_token_id(),
             }
         )
+
+        refresh_hash = hash_token(refresh_token)
         
         # Store refresh token hash in database
         if self.database:
             try:
                 self.database.store_refresh_token(
                     user_id=user_id,
-                    token_hash=hash_token(refresh_token),
-                    family_id=family_id,
+                    token_hash=refresh_hash,
+                    family_id=effective_family_id,
                     device_info=device_info,
                     expires_at=int((datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)).timestamp())
                 )
@@ -381,16 +384,27 @@ class RefreshTokenManager:
                     self.database.revoke_token_family(family_id)
                     return None
                 
-                # Mark old token as used
-                self.database.revoke_refresh_token(old_hash)
+                # Rotate within the same family and persist lineage.
+                new_access_token, new_refresh_token = self.create_refresh_token_pair(
+                    user_id=user_id,
+                    email=email,
+                    device_info=device_info,
+                    family_id=family_id,
+                )
+                self.database.revoke_refresh_token(
+                    old_hash,
+                    replaced_by=hash_token(new_refresh_token),
+                )
+                return new_access_token, new_refresh_token
             except Exception:
                 return None
-        
-        # Create new token pair
+
+        # No database configured: still rotate using token claims.
         return self.create_refresh_token_pair(
             user_id=user_id,
             email=email,
-            device_info=device_info
+            device_info=device_info,
+            family_id=family_id,
         )
     
     def revoke_all_user_tokens(self, user_id: int) -> bool:

@@ -5,8 +5,8 @@ import os
 import secrets
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
+from fastapi.security import OAuth2PasswordBearer
 from jose import ExpiredSignatureError, JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ try:
         get_token_blacklist,
         get_refresh_token_manager,
     )
-    from ..core.security import verify_telegram_auth as security_verify_telegram_auth
+    from ..core import security as security_module
 except ImportError:
     from api.core.security import (
         create_access_token as security_create_access_token,
@@ -37,7 +37,7 @@ except ImportError:
         get_token_blacklist,
         get_refresh_token_manager,
     )
-    from api.core.security import verify_telegram_auth as security_verify_telegram_auth
+    from api.core import security as security_module
 
 try:
     from job_bot.database import Database
@@ -99,7 +99,7 @@ def verify_telegram_auth_payload(
     username: Optional[str] = None,
 ) -> bool:
     """Verify Telegram authentication payload."""
-    return security_verify_telegram_auth(
+    return security_module.verify_telegram_auth(
         telegram_id=telegram_id,
         auth_date=auth_date,
         hash_value=hash_value,
@@ -123,7 +123,24 @@ def get_refresh_manager_instance(db: Database = Depends(get_db)) -> RefreshToken
     return get_refresh_token_manager(db)
 
 
+def _auth_identity_snapshot(db: Database, telegram_id: int, email: Optional[str]) -> dict:
+    base_user = db.get_user(telegram_id) or {}
+    web_user = db.get_web_user(telegram_id) or {}
+    has_telegram_link = telegram_id > 0
+    return {
+        "telegram_id": telegram_id,
+        "email": email,
+        "name": base_user.get("name") or web_user.get("email") or "Usuario",
+        "plan": db.get_user_plan(telegram_id),
+        "has_telegram_link": has_telegram_link,
+        "account_type": "telegram-linked" if has_telegram_link else "web-only",
+        "user": base_user,
+        "web_user": web_user,
+    }
+
+
 def get_authenticated_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Database = Depends(get_db),
     blacklist: TokenBlacklist = Depends(get_token_blacklist_instance),
@@ -143,8 +160,9 @@ def get_authenticated_user(
         HTTPException: If token is invalid, expired, or revoked
     """
     # Check if token is blacklisted
-    token_hash = hash_token(token)
-    if blacklist.is_token_revoked(token_hash):
+    # NOTE: TokenBlacklist hashes internally; passing a pre-hashed value
+    # would hash twice and bypass revocation checks.
+    if blacklist.is_token_revoked(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token ha sido revocado",
@@ -171,28 +189,22 @@ def get_authenticated_user(
         )
     
     telegram_id = int(telegram_id)
-    base_user = db.get_user(telegram_id) or {}
-    web_user = db.get_web_user(telegram_id) or {}
-    
+    if request is not None:
+        request.state.user_id = telegram_id
+
     # Si el token viejo apunta a una cuenta web temporal ya migrada,
     # resolvemos la identidad final por email para no romper la sesión.
-    if not base_user and not web_user and email and "@" in email:
+    if not db.get_user(telegram_id) and not db.get_web_user(telegram_id) and email and "@" in email:
         linked_web_user = db.get_web_user_by_email(email) or {}
         if linked_web_user:
             telegram_id = int(linked_web_user["telegram_id"])
-            base_user = db.get_user(telegram_id) or {}
-            web_user = linked_web_user
-    
-    return {
-        "telegram_id": telegram_id,
-        "email": email,
-        "plan": db.get_user_plan(telegram_id),
-        "name": base_user.get("name") or web_user.get("email") or "Usuario",
-        "user": base_user,
-        "web_user": web_user,
+
+    snapshot = _auth_identity_snapshot(db, telegram_id, email)
+    snapshot.update({
         "token": token,
-        "token_hash": token_hash,
-    }
+        "token_hash": hash_token(token),
+    })
+    return snapshot
 
 
 @router.post("/register")
@@ -276,6 +288,8 @@ async def register(
         "message": "Usuario registrado correctamente",
         "telegram_id": telegram_id,
         "email": email,
+        "name": name,
+        "plan": db.get_user_plan(telegram_id),
         "has_telegram_link": telegram_linked,
         "account_type": "telegram-linked" if telegram_linked else "web-only",
         "access_token": access_token,
@@ -286,7 +300,8 @@ async def register(
 
 @router.post("/token")
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
     db: Database = Depends(get_db),
     refresh_manager: RefreshTokenManager = Depends(get_refresh_manager_instance),
 ):
@@ -301,8 +316,7 @@ async def login(
     Returns:
         Access and refresh tokens
     """
-    email = (form_data.username or "").strip().lower()
-    password = form_data.password
+    email = (username or "").strip().lower()
 
     if not email or not password:
         raise HTTPException(
@@ -329,12 +343,17 @@ async def login(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "telegram_id": user["telegram_id"],
+        "email": email,
+        "name": user.get("name") or (db.get_user(int(user["telegram_id"])) or {}).get("name") or "Usuario",
+        "plan": db.get_user_plan(int(user["telegram_id"])),
+        "has_telegram_link": int(user["telegram_id"]) > 0,
+        "account_type": "telegram-linked" if int(user["telegram_id"]) > 0 else "web-only",
     }
 
 
 @router.post("/refresh")
 async def refresh_token(
-    refresh_token: str,
+    refresh_token: Optional[str] = Body(None, embed=True),
     db: Database = Depends(get_db),
     refresh_manager: RefreshTokenManager = Depends(get_refresh_manager_instance),
 ):
@@ -351,6 +370,13 @@ async def refresh_token(
         New access and refresh tokens
     """
     # Validate the refresh token
+    refresh_token = (refresh_token or "").strip()
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="refresh_token es requerido",
+        )
+
     payload = security_decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(
@@ -464,11 +490,6 @@ async def logout_all_devices(
     }
 
 
-@router.post("/link")
-async def link_telegram(telegram_id: int, email: str, password: str):
-    return {"message": "Cuenta vinculada correctamente", "telegram_id": telegram_id}
-
-
 @router.get("/me")
 async def get_current_user(current_user: dict = Depends(get_authenticated_user)):
     return {
@@ -494,9 +515,106 @@ class TelegramCodeLoginRequest(BaseModel):
     code: str
 
 
+class TelegramLinkRequest(BaseModel):
+    email: str
+    password: str
+
+
+def _create_telegram_link_code_payload(current_user: dict, db: Database) -> dict:
+    telegram_id = int(current_user["telegram_id"])
+    if telegram_id > 0:
+        return {
+            "already_linked": True,
+            "has_telegram_link": True,
+            "telegram_id": telegram_id,
+            "plan": db.get_user_plan(telegram_id),
+            "account_type": "telegram-linked",
+        }
+
+    code = secrets.token_hex(3).upper()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    db.create_telegram_link_code(telegram_id, code, expires_at)
+
+    landing_url = _landing_url()
+    bot_username = (os.getenv("TELEGRAM_BOT_USERNAME") or "jobs912bot").lstrip("@")
+    deep_link = f"https://t.me/{bot_username}?start=link_{code}"
+
+    return {
+        "code": code,
+        "expires_in": 600,
+        "telegram_bot_username": bot_username,
+        "deep_link": deep_link,
+        "landing_url": landing_url,
+        "instructions": f"/vincular {code}",
+        "plan": db.get_user_plan(telegram_id),
+        "has_telegram_link": False,
+        "account_type": "web-only",
+    }
+
+
+@router.post("/link")
+async def link_telegram(
+    payload: TelegramLinkRequest,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    current_telegram_id = int(current_user["telegram_id"])
+    if current_telegram_id <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debes iniciar sesión con Telegram para vincular una cuenta web",
+        )
+
+    email = (payload.email or "").strip().lower()
+    if not email or not payload.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="email y password son requeridos",
+        )
+
+    web_user = db.get_web_user_by_email(email)
+    if not web_user or not verify_password(payload.password, web_user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales invalidas",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    source_telegram_id = int(web_user["telegram_id"])
+    if source_telegram_id == current_telegram_id:
+        return {
+            "message": "La cuenta ya estaba vinculada",
+            "telegram_id": current_telegram_id,
+            "email": email,
+            "has_telegram_link": True,
+            "account_type": "telegram-linked",
+        }
+
+    if source_telegram_id > 0 and source_telegram_id != current_telegram_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Esa cuenta ya está vinculada a otro Telegram",
+        )
+
+    db.link_web_account_to_telegram(
+        source_telegram_id,
+        current_telegram_id,
+        current_user.get("name") or "Usuario",
+    )
+
+    return {
+        "message": "Cuenta vinculada correctamente",
+        "telegram_id": current_telegram_id,
+        "email": email,
+        "has_telegram_link": True,
+        "account_type": "telegram-linked",
+    }
+
+
 @router.post("/telegram")
 async def telegram_auth(
     request: TelegramAuthRequest,
+    db: Database = Depends(get_db),
     refresh_manager: RefreshTokenManager = Depends(get_refresh_manager_instance),
 ):
     """
@@ -533,7 +651,6 @@ async def telegram_auth(
             detail="Autenticacion de Telegram invalida",
         )
 
-    db = get_db()
     db.create_user_if_not_exists(request.telegram_id, request.telegram_first_name)
 
     # Create token pair with rotation
@@ -613,12 +730,16 @@ async def telegram_code_login(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "telegram_id": telegram_id,
+        "email": email,
         "user": {
             "telegram_id": telegram_id,
             "name": base_user.get("name") or "Usuario",
             "plan": db.get_user_plan(telegram_id),
             "email": web_user.get("email"),
         },
+        "plan": db.get_user_plan(telegram_id),
+        "has_telegram_link": telegram_id > 0,
+        "account_type": "telegram-linked" if telegram_id > 0 else "web-only",
     }
 
 
@@ -643,27 +764,4 @@ async def create_telegram_link_code(
     current_user: dict = Depends(get_authenticated_user),
     db: Database = Depends(get_db),
 ):
-    telegram_id = int(current_user["telegram_id"])
-    if telegram_id > 0:
-        return {
-            "already_linked": True,
-            "has_telegram_link": True,
-            "telegram_id": telegram_id,
-        }
-
-    code = secrets.token_hex(3).upper()
-    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
-    db.create_telegram_link_code(telegram_id, code, expires_at)
-
-    landing_url = _landing_url()
-    bot_username = (os.getenv("TELEGRAM_BOT_USERNAME") or "jobs912bot").lstrip("@")
-    deep_link = f"https://t.me/{bot_username}?start=link_{code}"
-
-    return {
-        "code": code,
-        "expires_in": 600,
-        "telegram_bot_username": bot_username,
-        "deep_link": deep_link,
-        "landing_url": landing_url,
-        "instructions": f"/vincular {code}",
-    }
+    return _create_telegram_link_code_payload(current_user, db)
