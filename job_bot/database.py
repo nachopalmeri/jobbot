@@ -1,11 +1,11 @@
-import sqlite3
+﻿import sqlite3
 import hashlib
 import logging
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Importación condicional para Postgres
+# ImportaciÃ³n condicional para Postgres
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -23,9 +23,9 @@ POSTGRES_DB_TYPES = {"postgres", "postgresql", "supabase"}
 class Database:
     """Maneja las operaciones de base de datos (SQLite o PostgreSQL).
 
-    Permite inyectar parámetros opcionales en tests (por ejemplo, un path
+    Permite inyectar parÃ¡metros opcionales en tests (por ejemplo, un path
     de SQLite temporal) pero sigue utilizando config.py por defecto en
-    producción.
+    producciÃ³n.
     """
 
     def __init__(
@@ -35,7 +35,7 @@ class Database:
         pg_url: Optional[str] = None,
     ):
         try:
-            import config  # Ejecución directa desde job_bot/
+            import config  # EjecuciÃ³n directa desde job_bot/
         except ImportError:
             from job_bot import config  # Import como paquete job_bot.database
 
@@ -50,14 +50,14 @@ class Database:
 
         if self.db_type == "supabase" and not POSTGRES_AVAILABLE:
             logger.error(
-                "❌ 'psycopg2' no está instalado. Reinstalá con: pip install psycopg2-binary"
+                "âŒ 'psycopg2' no estÃ¡ instalado. ReinstalÃ¡ con: pip install psycopg2-binary"
             )
             self.db_type = "sqlite"
 
         self._init_db()
 
     def _get_conn(self):
-        """Retorna una conexión activa según el motor configurado."""
+        """Retorna una conexiÃ³n activa segÃºn el motor configurado."""
         if self.db_type == "supabase":
             conn = psycopg2.connect(self.pg_url, cursor_factory=RealDictCursor)
             conn.autocommit = True
@@ -146,8 +146,8 @@ class Database:
     def _init_db(self):
         """Crea las tablas si no existen."""
         if self.db_type == "supabase":
-            # Usar el archivo schema_supabase.sql si es posible o replicar aquí
-            # Por ahora replicamos las tablas básicas para que el bot arranque
+            # Usar el archivo schema_supabase.sql si es posible o replicar aquÃ­
+            # Por ahora replicamos las tablas bÃ¡sicas para que el bot arranque
             queries = [
                 "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, job_schedule TEXT DEFAULT 'cualquiera', max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', is_admin SMALLINT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS keywords (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, keyword TEXT, UNIQUE(telegram_id, keyword))",
@@ -168,7 +168,7 @@ class Database:
             ]
             for q in queries:
                 self._execute(q)
-            # Migración defensiva para agregar alert_channel si faltara
+            # MigraciÃ³n defensiva para agregar alert_channel si faltara
             try:
                 self._execute(
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_channel TEXT DEFAULT 'telegram'"
@@ -210,9 +210,9 @@ class Database:
                     self._execute(ddl)
                 except Exception:
                     pass
-            logger.info("✅ Supabase DB inicializada")
+            logger.info("âœ… Supabase DB inicializada")
             
-            # Inicializar tablas de créditos (CV Suite)
+            # Inicializar tablas de crÃ©ditos (CV Suite)
             self._init_credit_tables()
         else:
             conn = self._get_conn()
@@ -359,7 +359,7 @@ class Database:
                         created_at      TEXT DEFAULT CURRENT_TIMESTAMP
                     );
                     
-                    -- Tabla de análisis IA realizados
+                    -- Tabla de anÃ¡lisis IA realizados
                     CREATE TABLE IF NOT EXISTS ai_analyses (
                         id              INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id     INTEGER NOT NULL,
@@ -430,7 +430,7 @@ class Database:
                     );
                 """)
 
-                # Migración defensiva: columna para controlar el periodo de uso diario
+                # MigraciÃ³n defensiva: columna para controlar el periodo de uso diario
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN usage_period_start TEXT"
@@ -439,7 +439,7 @@ class Database:
                     # Si ya existe, ignoramos el error
                     pass
                 
-                # Migración: columna para contar entrevistas usadas
+                # MigraciÃ³n: columna para contar entrevistas usadas
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN interviews_used INTEGER DEFAULT 0"
@@ -447,7 +447,7 @@ class Database:
                 except Exception:
                     pass
                 
-                # Migración: columna para límite de entrevistas
+                # MigraciÃ³n: columna para lÃ­mite de entrevistas
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN interviews_limit INTEGER DEFAULT 20"
@@ -462,12 +462,12 @@ class Database:
                 except Exception:
                     pass
                 
-            # Inicializar tablas de créditos (CV Suite)
+            # Inicializar tablas de crÃ©ditos (CV Suite)
             self._init_credit_tables()
             
-            logger.info("✅ SQLite DB inicializada")
+            logger.info("âœ… SQLite DB inicializada")
 
-            logger.info("✅ Base de datos inicializada: %s", self.db_path)
+            logger.info("âœ… Base de datos inicializada: %s", self.db_path)
 
     # ----------------------------------------------------------
     # USUARIOS
@@ -480,7 +480,7 @@ class Database:
         except ImportError:
             from job_bot import config
 
-        # Ver si el usuario ya existía para no sobreescribir su configuración
+        # Ver si el usuario ya existÃ­a para no sobreescribir su configuraciÃ³n
         already = self.get_user(telegram_id)
 
         self._execute(
@@ -535,7 +535,7 @@ class Database:
         return res if res is not None else []
 
     def get_users_due_for_check(self) -> List[Dict]:
-        """Retorna usuarios cuyo intervalo de chequeo ya venció."""
+        """Retorna usuarios cuyo intervalo de chequeo ya venciÃ³."""
         import datetime
 
         try:
@@ -553,7 +553,7 @@ class Database:
         for user in active:
             tz_name = user.get("timezone") or "America/Buenos_Aires"
 
-            # Normalizar zonas horarias antiguas o inválidas
+            # Normalizar zonas horarias antiguas o invÃ¡lidas
             if tz_name == "America/Buenos_Aires":
                 mapped_tz = "America/Argentina/Buenos_Aires"
             else:
@@ -564,7 +564,7 @@ class Database:
             except Exception:
                 # Fallback robusto: si no existe, usar UTC para no romper el scheduler
                 logger.warning(
-                    "Timezone '%s' inválida, usando UTC para scheduler", tz_name
+                    "Timezone '%s' invÃ¡lida, usando UTC para scheduler", tz_name
                 )
                 tz = datetime.timezone.utc
 
@@ -607,14 +607,14 @@ class Database:
         return due_users
 
     def set_alerts_active(self, telegram_id: int, active: bool):
-        """Activa o desactiva las alertas automáticas de un usuario."""
+        """Activa o desactiva las alertas automÃ¡ticas de un usuario."""
         self._execute(
             "UPDATE users SET active_alerts = ? WHERE telegram_id = ?",
             (1 if active else 0, telegram_id),
         )
 
     def set_user_location(self, telegram_id: int, location: str):
-        """Actualiza la ubicación de búsqueda de un usuario."""
+        """Actualiza la ubicaciÃ³n de bÃºsqueda de un usuario."""
         self._execute(
             "UPDATE users SET location = ? WHERE telegram_id = ?",
             (location, telegram_id),
@@ -627,7 +627,7 @@ class Database:
         )
 
     def update_last_check(self, telegram_id: int):
-        """Actualiza el timestamp del último chequeo."""
+        """Actualiza el timestamp del Ãºltimo chequeo."""
         if self.db_type == "supabase":
             self._execute(
                 "UPDATE users SET last_check = CURRENT_TIMESTAMP WHERE telegram_id = ?",
@@ -695,7 +695,7 @@ class Database:
         )
 
     def get_user_schedule(self, telegram_id: int) -> Dict:
-        """Retorna la configuración de horarios del usuario."""
+        """Retorna la configuraciÃ³n de horarios del usuario."""
         user = self.get_user(telegram_id)
         if not user:
             return {
@@ -771,12 +771,12 @@ class Database:
         )
 
     def set_search_mode(self, telegram_id: int, mode: str):
-        """Configura el modo de búsqueda (volumen o calidad)."""
+        """Configura el modo de bÃºsqueda (volumen o calidad)."""
         valid_modes = ["volumen", "calidad"]
         if mode not in valid_modes:
             return
 
-        # Migración defensiva: agregar columna si no existe
+        # MigraciÃ³n defensiva: agregar columna si no existe
         try:
             self._execute(
                 "ALTER TABLE users ADD COLUMN search_mode TEXT DEFAULT 'calidad'"
@@ -790,7 +790,7 @@ class Database:
         )
 
     def get_search_mode(self, telegram_id: int) -> str:
-        """Retorna el modo de búsqueda del usuario."""
+        """Retorna el modo de bÃºsqueda del usuario."""
         user = self.get_user(telegram_id)
         if not user:
             return "calidad"
@@ -828,19 +828,19 @@ class Database:
 
     def generate_smart_keywords(self, telegram_id: int) -> List[str]:
         """
-        Genera keywords de búsqueda inteligentes basadas en el perfil.
-        Combina tecnologías + nivel + rol para crear búsquedas efectivas.
+        Genera keywords de bÃºsqueda inteligentes basadas en el perfil.
+        Combina tecnologÃ­as + nivel + rol para crear bÃºsquedas efectivas.
         """
         profile = self.get_user_profile(telegram_id)
         techs = [t.strip() for t in profile["technologies"].split(",") if t.strip()]
         role = profile.get("role_type", "").strip()
         level = profile.get("experience_level", "junior")
 
-        # Mapear nivel a términos de búsqueda
+        # Mapear nivel a tÃ©rminos de bÃºsqueda
         level_terms = {
             "sin_experiencia": [
                 "trainee",
-                "pasantía",
+                "pasantÃ­a",
                 "pasantia",
                 "aprendiz",
                 "entry level",
@@ -856,8 +856,8 @@ class Database:
 
         role_terms = [part.strip() for part in role.replace("/", ",").split(",") if part.strip()]
 
-        # Combinar cada tecnología con el rol y nivel
-        for tech in techs[:5]:  # Máximo 5 tecnologías
+        # Combinar cada tecnologÃ­a con el rol y nivel
+        for tech in techs[:5]:  # MÃ¡ximo 5 tecnologÃ­as
             for role_term in role_terms[:2]:
                 keywords.append(f"{tech} {role_term}")
             for lkw in level_kws[:2]:  # Top 2 level terms
@@ -882,7 +882,7 @@ class Database:
                 seen.add(kw_lower)
                 unique_kws.append(kw)
 
-        return unique_kws[:10]  # Máximo 10 keywords
+        return unique_kws[:10]  # MÃ¡ximo 10 keywords
 
     # ----------------------------------------------------------
     # KEYWORDS
@@ -919,19 +919,19 @@ class Database:
             return False
 
     def remove_keyword(self, telegram_id: int, keyword: str):
-        """Elimina una keyword específica."""
+        """Elimina una keyword especÃ­fica."""
         self._execute(
             "DELETE FROM keywords WHERE telegram_id = ? AND keyword = ?",
             (telegram_id, keyword.strip()),
         )
 
     # ----------------------------------------------------------
-    # DEDUPLICACIÓN DE TRABAJOS
+    # DEDUPLICACIÃ“N DE TRABAJOS
     # ----------------------------------------------------------
 
     @staticmethod
     def _hash_url(url: str) -> str:
-        """Genera un hash MD5 de la URL para identificar trabajos únicos."""
+        """Genera un hash MD5 de la URL para identificar trabajos Ãºnicos."""
         return hashlib.md5(url.strip().encode("utf-8")).hexdigest()
 
     def is_job_seen(self, telegram_id: int, url: str) -> bool:
@@ -999,11 +999,11 @@ class Database:
         )
 
     # ----------------------------------------------------------
-    # ESTADÍSTICAS (para la landing page)
+    # ESTADÃSTICAS (para la landing page)
     # ----------------------------------------------------------
 
     def get_stats(self) -> Dict:
-        """Retorna estadísticas generales del bot."""
+        """Retorna estadÃ­sticas generales del bot."""
         u = self._fetchone("SELECT COUNT(*) as count FROM users")
         a = self._fetchone(
             "SELECT COUNT(*) as count FROM users WHERE active_alerts = 1"
@@ -1016,7 +1016,7 @@ class Database:
         }
 
     def delete_user_data(self, telegram_id: int):
-        """Elimina toda la información de un usuario (GDPR)."""
+        """Elimina toda la informaciÃ³n de un usuario (GDPR)."""
         self._execute("DELETE FROM keywords WHERE telegram_id = ?", (telegram_id,))
         self._execute("DELETE FROM jobs_seen WHERE telegram_id = ?", (telegram_id,))
         self._execute("DELETE FROM custom_feeds WHERE telegram_id = ?", (telegram_id,))
@@ -1029,7 +1029,7 @@ class Database:
     def add_application(
         self, telegram_id: int, job_title: str, company: str, url: str, notes: str = ""
     ):
-        """Registra una nueva postulación."""
+        """Registra una nueva postulaciÃ³n."""
         self._execute(
             """
             INSERT INTO applications (telegram_id, job_title, company, url, notes)
@@ -1046,7 +1046,7 @@ class Database:
         )
 
     def get_weekly_applications_count(self, telegram_id: int) -> int:
-        """Cuenta las postulaciones de la última semana calendario para el usuario."""
+        """Cuenta las postulaciones de la Ãºltima semana calendario para el usuario."""
         import datetime
 
         apps = self.get_user_applications(telegram_id) or []
@@ -1067,7 +1067,7 @@ class Database:
                     )
                 else:
                     created_dt = created
-                # Normalizar sin tz para comparación simple
+                # Normalizar sin tz para comparaciÃ³n simple
                 if created_dt.tzinfo is not None:
                     created_dt = created_dt.astimezone(datetime.timezone.utc).replace(
                         tzinfo=None
@@ -1114,7 +1114,7 @@ class Database:
         )
 
     def update_application_status(self, app_id: int, telegram_id: int, status: str):
-        """Actualiza el estado de una postulación (aplicado, entrevista, rechazado, oferta)."""
+        """Actualiza el estado de una postulaciÃ³n (aplicado, entrevista, rechazado, oferta)."""
         self._execute(
             "UPDATE applications SET status = ? WHERE id = ? AND telegram_id = ?",
             (status, app_id, telegram_id),
@@ -1169,7 +1169,7 @@ class Database:
         return self._fetchone("SELECT * FROM web_users WHERE email = ?", (normalized_email,))
 
     def get_web_user_by_subscription_id(self, subscription_id: str) -> Optional[Dict]:
-        """Obtiene usuario web por ID de suscripción externa."""
+        """Obtiene usuario web por ID de suscripciÃ³n externa."""
         if not subscription_id:
             return None
         return self._fetchone(
@@ -1185,7 +1185,7 @@ class Database:
         )
 
     def create_password_reset_token(self, email: str, token_hash: str, expires_at: str):
-        """Crea un token de recuperación de password."""
+        """Crea un token de recuperaciÃ³n de password."""
         normalized_email = (email or "").strip().lower()
         self._execute(
             "DELETE FROM password_reset_tokens WHERE email = ? OR expires_at <= CURRENT_TIMESTAMP",
@@ -1198,7 +1198,7 @@ class Database:
         )
 
     def consume_password_reset_token(self, token_hash: str) -> Optional[Dict]:
-        """Consume un token de recuperación si sigue vigente."""
+        """Consume un token de recuperaciÃ³n si sigue vigente."""
         record = self._fetchone(
             """SELECT id, email, token_hash, expires_at, used_at
                FROM password_reset_tokens
@@ -1226,7 +1226,7 @@ class Database:
         return record
 
     def clear_password_reset_tokens_for_email(self, email: str):
-        """Elimina tokens activos de recuperación para un email."""
+        """Elimina tokens activos de recuperaciÃ³n para un email."""
         self._execute(
             "DELETE FROM password_reset_tokens WHERE email = ?",
             ((email or "").strip().lower(),),
@@ -1338,7 +1338,7 @@ class Database:
         )
 
     def consume_telegram_link_code(self, code: str) -> Optional[Dict]:
-        """Consume un codigo de vinculación Telegram y devuelve la cuenta web asociada."""
+        """Consume un codigo de vinculaciÃ³n Telegram y devuelve la cuenta web asociada."""
         record = self._fetchone(
             """SELECT code, web_telegram_id, expires_at, used_at
                FROM telegram_link_codes
@@ -1383,7 +1383,7 @@ class Database:
 
         existing_link = self.get_web_user(telegram_id)
         if existing_link and int(existing_link.get("telegram_id")) != int(web_telegram_id):
-            raise ValueError("Ese usuario de Telegram ya está vinculado a otra cuenta")
+            raise ValueError("Ese usuario de Telegram ya estÃ¡ vinculado a otra cuenta")
 
         for column, definition in (
             ("github_url", "TEXT DEFAULT ''"),
@@ -1523,55 +1523,7 @@ class Database:
             "plan": self.get_user_plan(telegram_id),
             "has_telegram_link": True,
         }
-
-    def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
-        """Actualiza el plan del usuario."""
-        # Actualizar plan + metadatos de suscripción
-        if expires_at:
-            self._execute(
-                """UPDATE web_users SET plan = ?, subscription_status = 'active', 
-                   subscription_expires_at = ? WHERE telegram_id = ?""",
-                (plan, expires_at, telegram_id),
-            )
-        else:
-            self._execute(
-                "UPDATE web_users SET plan = ? WHERE telegram_id = ?",
-                (plan, telegram_id),
-            )
-
-        # Ajustar límites según el plan elegido
-        plan = (plan or "free").lower()
-        if plan == "free":
-            # Valores conservadores para el tier gratuito
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 2,
-                        searches_limit    = 5,
-                        job_tracker_enabled = 0
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-        elif plan == "pro":
-            # Pro: búsquedas y análisis prácticamente ilimitados + tracker
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 0,
-                        searches_limit    = 0,
-                        job_tracker_enabled = 1
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-        elif plan == "premium":
-            # Premium: igual que Pro pero lo usamos para gatear features extra
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 0,
-                        searches_limit    = 0,
-                        job_tracker_enabled = 1
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-
+
     def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
         """Actualiza el plan del usuario con limites comerciales vigentes."""
         if expires_at:
@@ -1660,7 +1612,7 @@ class Database:
         return plan
 
     def increment_usage(self, telegram_id: int, usage_type: str):
-        """Incrementa el uso de un tipo específico."""
+        """Incrementa el uso de un tipo especÃ­fico."""
         column = f"{usage_type}_used"
         self._execute(
             f"UPDATE web_users SET {column} = {column} + 1 WHERE telegram_id = ?",
@@ -1670,8 +1622,8 @@ class Database:
     def check_usage_limit(self, telegram_id: int, usage_type: str) -> bool:
         """Verifica si el usuario puede usar un recurso.
 
-        Para SQLite se interpretan los límites como "por día": al primer uso
-        de cada día se resetean los contadores *_used y se marca la fecha
+        Para SQLite se interpretan los lÃ­mites como "por dÃ­a": al primer uso
+        de cada dÃ­a se resetean los contadores *_used y se marca la fecha
         actual en usage_period_start. En Supabase se mantiene el comportamiento
         anterior (contadores acumulativos), ya que el esquema vive en
         schema_supabase.sql.
@@ -1682,12 +1634,12 @@ class Database:
         if not user:
             return True  # Si no tiene cuenta web, usamos comportamiento por defecto
 
-        # Solo aplicamos lógica de periodo diario en SQLite, donde controlamos el esquema
+        # Solo aplicamos lÃ³gica de periodo diario en SQLite, donde controlamos el esquema
         if self.db_type != "supabase":
             today = datetime.date.today().isoformat()
             period_start = user.get("usage_period_start")
 
-            # Si es un nuevo día (o nunca se seteo), reseteamos contadores diarios
+            # Si es un nuevo dÃ­a (o nunca se seteo), reseteamos contadores diarios
             if period_start != today:
                 try:
                     self._execute(
@@ -1741,7 +1693,7 @@ class Database:
         )
 
     # ----------------------------------------------------------
-    # SAAS: ANÁLISIS IA
+    # SAAS: ANÃLISIS IA
     # ----------------------------------------------------------
 
     def record_ai_analysis(
@@ -1752,7 +1704,7 @@ class Database:
         prompt_tokens: int = 0,
         response_tokens: int = 0,
     ):
-        """Registra un análisis de IA."""
+        """Registra un anÃ¡lisis de IA."""
         self._execute(
             """INSERT INTO ai_analyses 
                (telegram_id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at)
@@ -1767,7 +1719,7 @@ class Database:
         )
 
     def get_user_ai_analyses(self, telegram_id: int) -> List[Dict]:
-        """Obtiene historial de análisis de IA del usuario."""
+        """Obtiene historial de anÃ¡lisis de IA del usuario."""
         return self._fetchall(
             "SELECT * FROM ai_analyses WHERE telegram_id = ? ORDER BY created_at DESC",
             (telegram_id,),
@@ -1804,7 +1756,7 @@ class Database:
         Obtiene datos cacheados de una empresa.
         
         Returns:
-            Dict con 'data' (dict) y 'cached_at' (int timestamp) o None si no existe o expiró
+            Dict con 'data' (dict) y 'cached_at' (int timestamp) o None si no existe o expirÃ³
         """
         import time
         
@@ -1817,7 +1769,7 @@ class Database:
         if not row:
             return None
         
-        # Verificar si expiró
+        # Verificar si expirÃ³
         current_time = int(time.time())
         if current_time > row["expires_at"]:
             return None
@@ -1833,12 +1785,12 @@ class Database:
 
     def set_company_data(self, domain: str, data: Dict, ttl_seconds: int = 604800):
         """
-        Guarda datos de empresa en caché.
+        Guarda datos de empresa en cachÃ©.
         
         Args:
             domain: Dominio de la empresa (ej: google.com)
             data: Dict con datos de la empresa
-            ttl_seconds: Tiempo de vida del caché (default 7 días = 604800 seg)
+            ttl_seconds: Tiempo de vida del cachÃ© (default 7 dÃ­as = 604800 seg)
         """
         import time
         import json
@@ -2079,8 +2031,8 @@ class Database:
     # =========================================================================
     
     def _init_credit_tables(self):
-        """Inicializa tablas de créditos si no existen (defensivo)."""
-        # Tabla de packs de créditos comprados
+        """Inicializa tablas de crÃ©ditos si no existen (defensivo)."""
+        # Tabla de packs de crÃ©ditos comprados
         create_credit_packs = """
             CREATE TABLE IF NOT EXISTS credit_packs (
                 id BIGSERIAL PRIMARY KEY,
@@ -2115,7 +2067,7 @@ class Database:
             )
         """
         
-        # Tabla de transacciones de créditos (uso)
+        # Tabla de transacciones de crÃ©ditos (uso)
         create_credit_transactions = """
             CREATE TABLE IF NOT EXISTS credit_transactions (
                 id BIGSERIAL PRIMARY KEY,
@@ -2148,7 +2100,7 @@ class Database:
             self._execute(create_credit_packs)
             self._execute(create_credit_transactions)
             
-            # Crear índices para performance
+            # Crear Ã­ndices para performance
             if self.db_type == "supabase":
                 self._execute("CREATE INDEX IF NOT EXISTS idx_credit_packs_user ON credit_packs(telegram_id, status)")
                 self._execute("CREATE INDEX IF NOT EXISTS idx_credit_packs_active ON credit_packs(telegram_id) WHERE status = 'active'")
@@ -2162,11 +2114,11 @@ class Database:
     
     def get_user_credits_balance(self, telegram_id: int) -> dict:
         """
-        Obtiene el balance total de créditos de un usuario.
+        Obtiene el balance total de crÃ©ditos de un usuario.
         
         Returns:
             {
-                'total_credits': int,  # Suma de todos los créditos activos
+                'total_credits': int,  # Suma de todos los crÃ©ditos activos
                 'active_packs': list,  # Detalle de packs activos
                 'unlock_active': bool  # Si tiene CV Suite desbloqueado
             }
@@ -2175,7 +2127,7 @@ class Database:
         
         current_time = int(time.time()) if self.db_type != "supabase" else "NOW()"
         
-        # Sumar créditos de packs activos (sin expirar)
+        # Sumar crÃ©ditos de packs activos (sin expirar)
         if self.db_type == "supabase":
             query = """
                 SELECT COALESCE(SUM(credits_remaining), 0) as total
@@ -2245,14 +2197,14 @@ class Database:
                        description: str = None, related_entity_type: str = None,
                        related_entity_id: int = None) -> dict:
         """
-        Consume créditos del usuario (FIFO - primero los más antiguos).
+        Consume crÃ©ditos del usuario (FIFO - primero los mÃ¡s antiguos).
         
         Returns:
             {
                 'success': bool,
                 'credits_consumed': int,
                 'credits_remaining': int,
-                'packs_used': list  # Qué packs se consumieron
+                'packs_used': list  # QuÃ© packs se consumieron
             }
         """
         import time
@@ -2335,7 +2287,7 @@ class Database:
                     "credits_remaining_in_pack": new_remaining
                 })
             
-            # Registrar transacción
+            # Registrar transacciÃ³n
             new_balance = balance["total_credits"] - credits_consumed
             
             if self.db_type == "supabase":
@@ -2371,7 +2323,7 @@ class Database:
             }
             
         except Exception as e:
-            logger.error(f"[CREDITS] Error consumiendo créditos: {e}")
+            logger.error(f"[CREDITS] Error consumiendo crÃ©ditos: {e}")
             if self.db_path != ":memory:":
                 conn.rollback()
             return {
@@ -2390,7 +2342,7 @@ class Database:
                        payment_provider: str = None, payment_id: str = None,
                        metadata: dict = None) -> int:
         """
-        Agrega un pack de créditos a un usuario (después de pago exitoso).
+        Agrega un pack de crÃ©ditos a un usuario (despuÃ©s de pago exitoso).
         
         Returns:
             pack_id: ID del pack creado
@@ -2398,10 +2350,10 @@ class Database:
         import json
         import time
         
-        # Los créditos nunca expiran por defecto (NULL)
+        # Los crÃ©ditos nunca expiran por defecto (NULL)
         expires_at = None
         
-        # Para packs de promo, podrían tener expiración
+        # Para packs de promo, podrÃ­an tener expiraciÃ³n
         if metadata and isinstance(metadata, dict):
             if metadata.get('expires_in_days'):
                 if self.db_type == "supabase":
@@ -2421,7 +2373,7 @@ class Database:
             meta_json = json.dumps(metadata) if metadata else None
             
             if expires_at and expires_at.startswith("NOW()"):
-                # Usar expresión SQL directamente
+                # Usar expresiÃ³n SQL directamente
                 query = query.replace("%s", "{}").format(
                     "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", "%s", expires_at
                 )
@@ -2458,7 +2410,7 @@ class Database:
         return result["id"] if result else None
     
     def get_credit_transactions(self, telegram_id: int, limit: int = 50) -> list:
-        """Obtiene el historial de transacciones de créditos de un usuario."""
+        """Obtiene el historial de transacciones de crÃ©ditos de un usuario."""
         query = """
             SELECT t.*, p.pack_type
             FROM credit_transactions t
@@ -2489,19 +2441,19 @@ class Database:
     
     def has_feature_access(self, telegram_id: int, feature: str) -> dict:
         """
-        Verifica si un usuario tiene acceso a una feature específica.
+        Verifica si un usuario tiene acceso a una feature especÃ­fica.
         
         Features:
-        - 'cv_basic': Análisis básico (siempre disponible)
-        - 'cv_ai': Análisis IA (requiere crédito o plan Pro/Premium)
+        - 'cv_basic': AnÃ¡lisis bÃ¡sico (siempre disponible)
+        - 'cv_ai': AnÃ¡lisis IA (requiere crÃ©dito o plan Pro/Premium)
         - 'cv_history': Historial completo (requiere unlock_suite)
-        - 'cover_letter': Carta de presentación (requiere crédito)
+        - 'cover_letter': Carta de presentaciÃ³n (requiere crÃ©dito)
         
         Returns:
             {
                 'has_access': bool,
-                'requires_credits': int,  # Cuántos créditos necesita
-                'user_credits': int,      # Cuántos tiene
+                'requires_credits': int,  # CuÃ¡ntos crÃ©ditos necesita
+                'user_credits': int,      # CuÃ¡ntos tiene
                 'can_use': bool           # Tiene suficientes
             }
         """
@@ -2540,3 +2492,4 @@ class Database:
             'can_use': has_access and (required_credits == 0 or user_credits >= required_credits),
             'has_unlock': credits['unlock_active']
         }  # No critico, ignorar errores
+

@@ -1,11 +1,11 @@
-import sqlite3
+﻿import sqlite3
 import hashlib
 import logging
 import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
-# Importación condicional para Postgres
+# ImportaciÃ³n condicional para Postgres
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -17,12 +17,32 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _looks_like_password_hash(value: str) -> bool:
+    return value.startswith("$pbkdf2-sha256$") or value.startswith("$2")
+
+
+def _ensure_password_hash(password_or_hash: str) -> str:
+    if not password_or_hash or _looks_like_password_hash(password_or_hash):
+        return password_or_hash
+
+    try:
+        from passlib.context import CryptContext
+
+        pwd_context = CryptContext(
+            schemes=["pbkdf2_sha256", "bcrypt"],
+            deprecated="auto",
+        )
+        return pwd_context.hash(password_or_hash)
+    except Exception:
+        return password_or_hash
+
+
 class Database:
     """Maneja las operaciones de base de datos (SQLite o PostgreSQL).
 
-    Permite inyectar parámetros opcionales en tests (por ejemplo, un path
+    Permite inyectar parÃ¡metros opcionales en tests (por ejemplo, un path
     de SQLite temporal) pero sigue utilizando config.py por defecto en
-    producción.
+    producciÃ³n.
     """
 
     def __init__(
@@ -32,7 +52,7 @@ class Database:
         pg_url: Optional[str] = None,
     ):
         try:
-            import config  # Ejecución directa desde job_bot/
+            import config  # EjecuciÃ³n directa desde job_bot/
         except ImportError:
             from job_bot import config  # Import como paquete job_bot.database
 
@@ -44,14 +64,27 @@ class Database:
 
         if self.db_type == "supabase" and not POSTGRES_AVAILABLE:
             logger.error(
-                "❌ 'psycopg2' no está instalado. Reinstalá con: pip install psycopg2-binary"
+                "âŒ 'psycopg2' no estÃ¡ instalado. ReinstalÃ¡ con: pip install psycopg2-binary"
             )
             self.db_type = "sqlite"
 
         self._init_db()
 
+    def close(self):
+        """Cierra conexiones persistentes abiertas por la instancia."""
+        if self._sqlite_memory_conn is not None:
+            try:
+                self._sqlite_memory_conn.close()
+            except Exception:
+                pass
+            finally:
+                self._sqlite_memory_conn = None
+
+    def __del__(self):
+        self.close()
+
     def _get_conn(self):
-        """Retorna una conexión activa según el motor configurado."""
+        """Retorna una conexiÃ³n activa segÃºn el motor configurado."""
         if self.db_type == "supabase":
             conn = psycopg2.connect(self.pg_url, cursor_factory=RealDictCursor)
             conn.autocommit = True
@@ -90,12 +123,16 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                conn.execute(query, params)
-                conn.commit()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     conn.execute(query, params)
+                    conn.commit()
+                else:
+                    with conn:
+                        conn.execute(query, params)
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
 
     def _fetchone(self, query: str, params: tuple = ()):
         """Retorna una sola fila como dict."""
@@ -110,11 +147,15 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                row = conn.execute(query, params).fetchone()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     row = conn.execute(query, params).fetchone()
+                else:
+                    with conn:
+                        row = conn.execute(query, params).fetchone()
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
             return dict(row) if row else None
 
     def _fetchall(self, query: str, params: tuple = ()):
@@ -130,18 +171,22 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                rows = conn.execute(query, params).fetchall()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     rows = conn.execute(query, params).fetchall()
+                else:
+                    with conn:
+                        rows = conn.execute(query, params).fetchall()
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
             return [dict(r) for r in rows]
 
     def _init_db(self):
         """Crea las tablas si no existen."""
         if self.db_type == "supabase":
-            # Usar el archivo schema_supabase.sql si es posible o replicar aquí
-            # Por ahora replicamos las tablas básicas para que el bot arranque
+            # Usar el archivo schema_supabase.sql si es posible o replicar aquÃ­
+            # Por ahora replicamos las tablas bÃ¡sicas para que el bot arranque
             queries = [
                 "CREATE TABLE IF NOT EXISTS users (telegram_id BIGINT PRIMARY KEY, name TEXT NOT NULL, active_alerts SMALLINT DEFAULT 0, alert_channel TEXT DEFAULT 'telegram', cv_path TEXT, location TEXT, experience_level TEXT, role_type TEXT, technologies TEXT, job_modality TEXT, max_job_age_days INTEGER, check_interval_hours INTEGER, alert_start_hour INTEGER, alert_end_hour INTEGER, timezone TEXT, weekly_goal_apps INTEGER DEFAULT 5, blocked_companies TEXT DEFAULT '', preferred_companies TEXT DEFAULT '', digest_mode TEXT DEFAULT 'realtime', created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, last_check TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS keywords (id BIGSERIAL PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, keyword TEXT, UNIQUE(telegram_id, keyword))",
@@ -151,10 +196,16 @@ class Database:
                 "CREATE TABLE IF NOT EXISTS webhook_events (id BIGSERIAL PRIMARY KEY, event_id TEXT UNIQUE NOT NULL, provider TEXT NOT NULL, event_type TEXT NOT NULL, processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)",
                 "CREATE TABLE IF NOT EXISTS web_login_codes (code TEXT PRIMARY KEY, telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
                 "CREATE TABLE IF NOT EXISTS telegram_link_codes (code TEXT PRIMARY KEY, web_telegram_id BIGINT NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)",
+                "CREATE INDEX IF NOT EXISTS idx_keywords_telegram_id ON keywords(telegram_id)",
+                "CREATE INDEX IF NOT EXISTS idx_jobs_seen_telegram_id_seen_at ON jobs_seen(telegram_id, seen_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_applications_telegram_id_applied_at ON applications(telegram_id, applied_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_applications_telegram_id_status ON applications(telegram_id, status)",
+                "CREATE INDEX IF NOT EXISTS idx_web_login_codes_telegram_id_expires_at ON web_login_codes(telegram_id, expires_at)",
+                "CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_web_telegram_id_expires_at ON telegram_link_codes(web_telegram_id, expires_at)",
             ]
             for q in queries:
                 self._execute(q)
-            # Migración defensiva para agregar alert_channel si faltara
+            # MigraciÃ³n defensiva para agregar alert_channel si faltara
             try:
                 self._execute(
                     "ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_channel TEXT DEFAULT 'telegram'"
@@ -231,6 +282,18 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);",
                 "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);",
                 "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens(family_id);",
+                "CREATE INDEX IF NOT EXISTS idx_applications_telegram_applied_at ON applications (telegram_id, applied_at DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_applications_telegram_status ON applications (telegram_id, status);",
+                "CREATE INDEX IF NOT EXISTS idx_jobs_seen_telegram_seen_at ON jobs_seen (telegram_id, seen_at DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_custom_feeds_telegram_id ON custom_feeds (telegram_id);",
+                "CREATE INDEX IF NOT EXISTS idx_web_login_codes_telegram_expires ON web_login_codes (telegram_id, expires_at);",
+                "CREATE INDEX IF NOT EXISTS idx_web_login_codes_expires ON web_login_codes (expires_at);",
+                "CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_web_telegram_id ON telegram_link_codes (web_telegram_id);",
+                "CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_expires ON telegram_link_codes (expires_at);",
+                "CREATE INDEX IF NOT EXISTS idx_pending_job_batches_telegram_expires ON pending_job_batches (telegram_id, expires_at);",
+                "CREATE INDEX IF NOT EXISTS idx_pending_job_batches_source_viewed_expires ON pending_job_batches (source, viewed, fallback_sent, expires_at);",
+                "CREATE INDEX IF NOT EXISTS idx_pending_job_batches_created_at ON pending_job_batches (created_at);",
+                "CREATE INDEX IF NOT EXISTS idx_batch_interactions_batch_id ON batch_interactions (batch_id);",
             ]
             
             for query in security_queries:
@@ -243,11 +306,10 @@ class Database:
             # END SECURITY TABLES
             # ============================================================
             
-            logger.info("✅ Supabase DB inicializada")
+            logger.info("âœ… Supabase DB inicializada")
         else:
             conn = self._get_conn()
-            context = conn if self.db_path == ":memory:" else conn
-            with context as conn:
+            with conn:
                 conn.executescript("""
                     CREATE TABLE IF NOT EXISTS users (
                         telegram_id        INTEGER PRIMARY KEY,
@@ -324,6 +386,12 @@ class Database:
                         expires_at      TEXT NOT NULL,
                         used_at         TEXT
                     );
+                    CREATE INDEX IF NOT EXISTS idx_keywords_telegram_id ON keywords(telegram_id);
+                    CREATE INDEX IF NOT EXISTS idx_jobs_seen_telegram_id_seen_at ON jobs_seen(telegram_id, seen_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_applications_telegram_id_applied_at ON applications(telegram_id, applied_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_applications_telegram_id_status ON applications(telegram_id, status);
+                    CREATE INDEX IF NOT EXISTS idx_web_login_codes_telegram_id_expires_at ON web_login_codes(telegram_id, expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_web_telegram_id_expires_at ON telegram_link_codes(web_telegram_id, expires_at);
                 """)
                 # Migraciones para SQLite si faltan columnas
                 for col, default in [
@@ -384,7 +452,7 @@ class Database:
                         created_at      TEXT DEFAULT CURRENT_TIMESTAMP
                     );
                     
-                    -- Tabla de análisis IA realizados
+                    -- Tabla de anÃ¡lisis IA realizados
                     CREATE TABLE IF NOT EXISTS ai_analyses (
                         id              INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id     INTEGER NOT NULL,
@@ -490,13 +558,38 @@ class Database:
                     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
                     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens(token_hash);
                     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_family ON refresh_tokens(family_id);
+
+                    CREATE INDEX IF NOT EXISTS idx_applications_telegram_applied_at
+                        ON applications (telegram_id, applied_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_applications_telegram_status
+                        ON applications (telegram_id, status);
+                    CREATE INDEX IF NOT EXISTS idx_jobs_seen_telegram_seen_at
+                        ON jobs_seen (telegram_id, seen_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_custom_feeds_telegram_id
+                        ON custom_feeds (telegram_id);
+                    CREATE INDEX IF NOT EXISTS idx_web_login_codes_telegram_expires
+                        ON web_login_codes (telegram_id, expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_web_login_codes_expires
+                        ON web_login_codes (expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_web_telegram_id
+                        ON telegram_link_codes (web_telegram_id);
+                    CREATE INDEX IF NOT EXISTS idx_telegram_link_codes_expires
+                        ON telegram_link_codes (expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_pending_job_batches_telegram_expires
+                        ON pending_job_batches (telegram_id, expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_pending_job_batches_source_viewed_expires
+                        ON pending_job_batches (source, viewed, fallback_sent, expires_at);
+                    CREATE INDEX IF NOT EXISTS idx_pending_job_batches_created_at
+                        ON pending_job_batches (created_at);
+                    CREATE INDEX IF NOT EXISTS idx_batch_interactions_batch_id
+                        ON batch_interactions (batch_id);
                     
                     -- ============================================================
                     -- END SECURITY TABLES
                     -- ============================================================
                 """)
 
-                # Migración defensiva: columna para controlar el periodo de uso diario
+                # MigraciÃ³n defensiva: columna para controlar el periodo de uso diario
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN usage_period_start TEXT"
@@ -505,7 +598,7 @@ class Database:
                     # Si ya existe, ignoramos el error
                     pass
                 
-                # Migración: columna para contar entrevistas usadas
+                # MigraciÃ³n: columna para contar entrevistas usadas
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN interviews_used INTEGER DEFAULT 0"
@@ -513,16 +606,18 @@ class Database:
                 except Exception:
                     pass
                 
-                # Migración: columna para límite de entrevistas
+                # MigraciÃ³n: columna para lÃ­mite de entrevistas
                 try:
                     conn.execute(
                         "ALTER TABLE web_users ADD COLUMN interviews_limit INTEGER DEFAULT 20"
                     )
                 except Exception:
                     pass
-            logger.info("✅ SQLite DB inicializada")
+            logger.info("âœ… SQLite DB inicializada")
 
-            logger.info("✅ Base de datos inicializada: %s", self.db_path)
+            logger.info("âœ… Base de datos inicializada: %s", self.db_path)
+            if self.db_path != ":memory:":
+                conn.close()
 
     # ----------------------------------------------------------
     # USUARIOS
@@ -535,7 +630,7 @@ class Database:
         except ImportError:
             from job_bot import config
 
-        # Ver si el usuario ya existía para no sobreescribir su configuración
+        # Ver si el usuario ya existÃ­a para no sobreescribir su configuraciÃ³n
         already = self.get_user(telegram_id)
 
         self._execute(
@@ -576,7 +671,7 @@ class Database:
         return res if res is not None else []
 
     def get_users_due_for_check(self) -> List[Dict]:
-        """Retorna usuarios cuyo intervalo de chequeo ya venció."""
+        """Retorna usuarios cuyo intervalo de chequeo ya venciÃ³."""
         import datetime
 
         try:
@@ -594,7 +689,7 @@ class Database:
         for user in active:
             tz_name = user.get("timezone") or "America/Buenos_Aires"
 
-            # Normalizar zonas horarias antiguas o inválidas
+            # Normalizar zonas horarias antiguas o invÃ¡lidas
             if tz_name == "America/Buenos_Aires":
                 mapped_tz = "America/Argentina/Buenos_Aires"
             else:
@@ -605,7 +700,7 @@ class Database:
             except Exception:
                 # Fallback robusto: si no existe, usar UTC para no romper el scheduler
                 logger.warning(
-                    "Timezone '%s' inválida, usando UTC para scheduler", tz_name
+                    "Timezone '%s' invÃ¡lida, usando UTC para scheduler", tz_name
                 )
                 tz = datetime.timezone.utc
 
@@ -648,14 +743,14 @@ class Database:
         return due_users
 
     def set_alerts_active(self, telegram_id: int, active: bool):
-        """Activa o desactiva las alertas automáticas de un usuario."""
+        """Activa o desactiva las alertas automÃ¡ticas de un usuario."""
         self._execute(
             "UPDATE users SET active_alerts = ? WHERE telegram_id = ?",
             (1 if active else 0, telegram_id),
         )
 
     def set_user_location(self, telegram_id: int, location: str):
-        """Actualiza la ubicación de búsqueda de un usuario."""
+        """Actualiza la ubicaciÃ³n de bÃºsqueda de un usuario."""
         self._execute(
             "UPDATE users SET location = ? WHERE telegram_id = ?",
             (location, telegram_id),
@@ -668,7 +763,7 @@ class Database:
         )
 
     def update_last_check(self, telegram_id: int):
-        """Actualiza el timestamp del último chequeo."""
+        """Actualiza el timestamp del Ãºltimo chequeo."""
         if self.db_type == "supabase":
             self._execute(
                 "UPDATE users SET last_check = CURRENT_TIMESTAMP WHERE telegram_id = ?",
@@ -734,7 +829,7 @@ class Database:
         )
 
     def get_user_schedule(self, telegram_id: int) -> Dict:
-        """Retorna la configuración de horarios del usuario."""
+        """Retorna la configuraciÃ³n de horarios del usuario."""
         user = self.get_user(telegram_id)
         if not user:
             return {
@@ -810,12 +905,12 @@ class Database:
         )
 
     def set_search_mode(self, telegram_id: int, mode: str):
-        """Configura el modo de búsqueda (volumen o calidad)."""
+        """Configura el modo de bÃºsqueda (volumen o calidad)."""
         valid_modes = ["volumen", "calidad"]
         if mode not in valid_modes:
             return
 
-        # Migración defensiva: agregar columna si no existe
+        # MigraciÃ³n defensiva: agregar columna si no existe
         try:
             self._execute(
                 "ALTER TABLE users ADD COLUMN search_mode TEXT DEFAULT 'calidad'"
@@ -829,7 +924,7 @@ class Database:
         )
 
     def get_search_mode(self, telegram_id: int) -> str:
-        """Retorna el modo de búsqueda del usuario."""
+        """Retorna el modo de bÃºsqueda del usuario."""
         user = self.get_user(telegram_id)
         if not user:
             return "calidad"
@@ -858,19 +953,19 @@ class Database:
 
     def generate_smart_keywords(self, telegram_id: int) -> List[str]:
         """
-        Genera keywords de búsqueda inteligentes basadas en el perfil.
-        Combina tecnologías + nivel + rol para crear búsquedas efectivas.
+        Genera keywords de bÃºsqueda inteligentes basadas en el perfil.
+        Combina tecnologÃ­as + nivel + rol para crear bÃºsquedas efectivas.
         """
         profile = self.get_user_profile(telegram_id)
         techs = [t.strip() for t in profile["technologies"].split(",") if t.strip()]
         role = profile.get("role_type", "").strip()
         level = profile.get("experience_level", "junior")
 
-        # Mapear nivel a términos de búsqueda
+        # Mapear nivel a tÃ©rminos de bÃºsqueda
         level_terms = {
             "sin_experiencia": [
                 "trainee",
-                "pasantía",
+                "pasantÃ­a",
                 "pasantia",
                 "aprendiz",
                 "entry level",
@@ -884,12 +979,12 @@ class Database:
 
         keywords = []
 
-        # Combinar cada tecnología con el nivel
-        for tech in techs[:5]:  # Máximo 5 tecnologías
+        # Combinar cada tecnologÃ­a con el nivel
+        for tech in techs[:5]:  # MÃ¡ximo 5 tecnologÃ­as
             # "python junior", "python trainee"
             for lkw in level_kws[:2]:  # Top 2 level terms
                 keywords.append(f"{tech} {lkw}")
-            # También buscar solo la tecnología
+            # TambiÃ©n buscar solo la tecnologÃ­a
             keywords.append(tech)
 
         # Si tiene rol, agregar combinaciones
@@ -907,7 +1002,7 @@ class Database:
                 seen.add(kw_lower)
                 unique_kws.append(kw)
 
-        return unique_kws[:10]  # Máximo 10 keywords
+        return unique_kws[:10]  # MÃ¡ximo 10 keywords
 
     # ----------------------------------------------------------
     # KEYWORDS
@@ -944,19 +1039,19 @@ class Database:
             return False
 
     def remove_keyword(self, telegram_id: int, keyword: str):
-        """Elimina una keyword específica."""
+        """Elimina una keyword especÃ­fica."""
         self._execute(
             "DELETE FROM keywords WHERE telegram_id = ? AND keyword = ?",
             (telegram_id, keyword.strip()),
         )
 
     # ----------------------------------------------------------
-    # DEDUPLICACIÓN DE TRABAJOS
+    # DEDUPLICACIÃ“N DE TRABAJOS
     # ----------------------------------------------------------
 
     @staticmethod
     def _hash_url(url: str) -> str:
-        """Genera un hash MD5 de la URL para identificar trabajos únicos."""
+        """Genera un hash MD5 de la URL para identificar trabajos Ãºnicos."""
         return hashlib.md5(url.strip().encode("utf-8")).hexdigest()
 
     def is_job_seen(self, telegram_id: int, url: str) -> bool:
@@ -1024,11 +1119,11 @@ class Database:
         )
 
     # ----------------------------------------------------------
-    # ESTADÍSTICAS (para la landing page)
+    # ESTADÃSTICAS (para la landing page)
     # ----------------------------------------------------------
 
     def get_stats(self) -> Dict:
-        """Retorna estadísticas generales del bot."""
+        """Retorna estadÃ­sticas generales del bot."""
         u = self._fetchone("SELECT COUNT(*) as count FROM users")
         a = self._fetchone(
             "SELECT COUNT(*) as count FROM users WHERE active_alerts = 1"
@@ -1041,7 +1136,7 @@ class Database:
         }
 
     def delete_user_data(self, telegram_id: int):
-        """Elimina toda la información de un usuario (GDPR)."""
+        """Elimina toda la informaciÃ³n de un usuario (GDPR)."""
         self._execute("DELETE FROM keywords WHERE telegram_id = ?", (telegram_id,))
         self._execute("DELETE FROM jobs_seen WHERE telegram_id = ?", (telegram_id,))
         self._execute("DELETE FROM custom_feeds WHERE telegram_id = ?", (telegram_id,))
@@ -1054,7 +1149,7 @@ class Database:
     def add_application(
         self, telegram_id: int, job_title: str, company: str, url: str, notes: str = ""
     ):
-        """Registra una nueva postulación."""
+        """Registra una nueva postulaciÃ³n."""
         self._execute(
             """
             INSERT INTO applications (telegram_id, job_title, company, url, notes)
@@ -1063,45 +1158,105 @@ class Database:
             (telegram_id, job_title, company, url, notes),
         )
 
-    def get_user_applications(self, telegram_id: int) -> List[Dict]:
+    def get_user_applications(self, telegram_id: int, limit: Optional[int] = None) -> List[Dict]:
         """Retorna todas las postulaciones de un usuario."""
-        return self._fetchall(
-            "SELECT * FROM applications WHERE telegram_id = ? ORDER BY applied_at DESC",
+        query = "SELECT * FROM applications WHERE telegram_id = ? ORDER BY applied_at DESC"
+        params: tuple = (telegram_id,)
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (telegram_id, int(limit))
+        return self._fetchall(query, params)
+
+    def get_application_funnel_counts(self, telegram_id: int) -> Dict[str, int]:
+        """Obtiene el resumen del funnel sin cargar todo el historial en memoria."""
+        rows = self._fetchall(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM applications
+            WHERE telegram_id = ?
+            GROUP BY status
+            """,
             (telegram_id,),
         )
+        funnel = {"applied": 0, "interview": 0, "rejected": 0, "offer": 0}
+        status_map = {
+            "aplicado": "applied",
+            "entrevista": "interview",
+            "rechazado": "rejected",
+            "oferta": "offer",
+        }
+        for row in rows:
+            bucket = status_map.get((row.get("status") or "").lower())
+            if bucket:
+                funnel[bucket] = int(row.get("count") or 0)
+        return funnel
 
-    def get_weekly_applications_count(self, telegram_id: int) -> int:
-        """Cuenta las postulaciones de la última semana calendario para el usuario."""
-        import datetime
+    def get_weekly_applications_count(
+        self,
+        telegram_id: int,
+        apps: Optional[List[Dict]] = None,
+    ) -> int:
+        """Cuenta las postulaciones de la Ãºltima semana calendario para el usuario.
 
-        apps = self.get_user_applications(telegram_id) or []
-        if not apps:
-            return 0
+        Si el caller ya tiene `apps` cargadas, reutilizamos esa lista para evitar
+        una consulta duplicada en el hot path del dashboard.
+        """
+        if apps is not None:
+            import datetime
 
-        now = datetime.datetime.utcnow()
-        seven_days_ago = now - datetime.timedelta(days=7)
-        count = 0
-        for app in apps:
-            created = app.get("applied_at") or app.get("created_at")
-            if not created:
-                continue
-            try:
-                if isinstance(created, str):
-                    created_dt = datetime.datetime.fromisoformat(
-                        created.replace("Z", "+00:00")
-                    )
-                else:
-                    created_dt = created
-                # Normalizar sin tz para comparación simple
-                if created_dt.tzinfo is not None:
-                    created_dt = created_dt.astimezone(datetime.timezone.utc).replace(
-                        tzinfo=None
-                    )
-            except Exception:
-                continue
-            if created_dt >= seven_days_ago:
-                count += 1
-        return count
+            if not apps:
+                return 0
+
+            now = datetime.datetime.utcnow()
+            seven_days_ago = now - datetime.timedelta(days=7)
+            count = 0
+            for app in apps:
+                created = app.get("applied_at") or app.get("created_at")
+                if not created:
+                    continue
+                try:
+                    if isinstance(created, str):
+                        created_dt = datetime.datetime.fromisoformat(
+                            created.replace("Z", "+00:00")
+                        )
+                    else:
+                        created_dt = created
+                    if created_dt.tzinfo is not None:
+                        created_dt = created_dt.astimezone(datetime.timezone.utc).replace(
+                            tzinfo=None
+                        )
+                except Exception:
+                    continue
+                if created_dt >= seven_days_ago:
+                    count += 1
+            return count
+
+        try:
+            if self.db_type == "supabase":
+                row = self._fetchone(
+                    """SELECT COUNT(*) AS count
+                       FROM applications
+                       WHERE telegram_id = ?
+                         AND applied_at >= NOW() - INTERVAL '7 days'""",
+                    (telegram_id,),
+                )
+            else:
+                import datetime
+
+                cutoff = (
+                    datetime.datetime.utcnow() - datetime.timedelta(days=7)
+                ).strftime("%Y-%m-%d %H:%M:%S")
+                row = self._fetchone(
+                    """SELECT COUNT(*) AS count
+                       FROM applications
+                       WHERE telegram_id = ?
+                         AND applied_at >= ?""",
+                    (telegram_id, cutoff),
+                )
+            return int(row["count"]) if row else 0
+        except Exception:
+            apps = self.get_user_applications(telegram_id) or []
+            return self.get_weekly_applications_count(telegram_id, apps=apps)
 
     def get_company_filters(self, telegram_id: int) -> Dict:
         """Obtiene listas de empresas bloqueadas/preferidas para filtrado de ofertas."""
@@ -1139,7 +1294,7 @@ class Database:
         )
 
     def update_application_status(self, app_id: int, telegram_id: int, status: str):
-        """Actualiza el estado de una postulación (aplicado, entrevista, rechazado, oferta)."""
+        """Actualiza el estado de una postulaciÃ³n (aplicado, entrevista, rechazado, oferta)."""
         self._execute(
             "UPDATE applications SET status = ? WHERE id = ? AND telegram_id = ?",
             (status, app_id, telegram_id),
@@ -1158,11 +1313,12 @@ class Database:
 
     def create_web_user(self, telegram_id: int, email: str, password_hash: str):
         """Crea un usuario web vinculado a Telegram."""
+        normalized_hash = _ensure_password_hash(password_hash)
         self._execute(
             """INSERT OR IGNORE INTO web_users 
                (telegram_id, email, password_hash, plan, created_at)
                VALUES (?, ?, ?, 'free', CURRENT_TIMESTAMP)""",
-            (telegram_id, email, password_hash),
+            (telegram_id, email, normalized_hash),
         )
 
     def generate_web_account_id(self) -> int:
@@ -1263,7 +1419,7 @@ class Database:
         )
 
     def consume_telegram_link_code(self, code: str) -> Optional[Dict]:
-        """Consume un codigo de vinculación Telegram y devuelve la cuenta web asociada."""
+        """Consume un codigo de vinculaciÃ³n Telegram y devuelve la cuenta web asociada."""
         record = self._fetchone(
             """SELECT code, web_telegram_id, expires_at, used_at
                FROM telegram_link_codes
@@ -1308,7 +1464,7 @@ class Database:
 
         existing_link = self.get_web_user(telegram_id)
         if existing_link and int(existing_link.get("telegram_id")) != int(web_telegram_id):
-            raise ValueError("Ese usuario de Telegram ya está vinculado a otra cuenta")
+            raise ValueError("Ese usuario de Telegram ya estÃ¡ vinculado a otra cuenta")
 
         for column, definition in (
             ("github_url", "TEXT DEFAULT ''"),
@@ -1446,55 +1602,7 @@ class Database:
             "plan": self.get_user_plan(telegram_id),
             "has_telegram_link": True,
         }
-
-    def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
-        """Actualiza el plan del usuario."""
-        # Actualizar plan + metadatos de suscripción
-        if expires_at:
-            self._execute(
-                """UPDATE web_users SET plan = ?, subscription_status = 'active', 
-                   subscription_expires_at = ? WHERE telegram_id = ?""",
-                (plan, expires_at, telegram_id),
-            )
-        else:
-            self._execute(
-                "UPDATE web_users SET plan = ? WHERE telegram_id = ?",
-                (plan, telegram_id),
-            )
-
-        # Ajustar límites según el plan elegido
-        plan = (plan or "free").lower()
-        if plan == "free":
-            # Valores conservadores para el tier gratuito
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 2,
-                        searches_limit    = 5,
-                        job_tracker_enabled = 0
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-        elif plan == "pro":
-            # Pro: búsquedas y análisis prácticamente ilimitados + tracker
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 0,
-                        searches_limit    = 0,
-                        job_tracker_enabled = 1
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-        elif plan == "premium":
-            # Premium: igual que Pro pero lo usamos para gatear features extra
-            self._execute(
-                """UPDATE web_users SET 
-                        ai_analyses_limit = 0,
-                        searches_limit    = 0,
-                        job_tracker_enabled = 1
-                   WHERE telegram_id = ?""",
-                (telegram_id,),
-            )
-
+
     def update_user_plan(self, telegram_id: int, plan: str, expires_at: str = None):
         """Actualiza el plan del usuario con limites comerciales vigentes."""
         if expires_at:
@@ -1514,7 +1622,7 @@ class Database:
             self._execute(
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
-                        searches_limit    = 5,
+                        searches_limit    = 3,
                         job_tracker_enabled = 0,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1525,7 +1633,7 @@ class Database:
             self._execute(
                 """UPDATE web_users SET
                         ai_analyses_limit = 0,
-                        searches_limit    = 30,
+                        searches_limit    = 12,
                         job_tracker_enabled = 1,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1535,8 +1643,8 @@ class Database:
         elif normalized_plan == "pro":
             self._execute(
                 """UPDATE web_users SET
-                        ai_analyses_limit = 5,
-                        searches_limit    = 80,
+                        ai_analyses_limit = 4,
+                        searches_limit    = 40,
                         job_tracker_enabled = 1,
                         interviews_limit = 0,
                         interviews_used = 0
@@ -1546,10 +1654,10 @@ class Database:
         elif normalized_plan == "premium":
             self._execute(
                 """UPDATE web_users SET
-                        ai_analyses_limit = 30,
-                        searches_limit    = 0,
+                        ai_analyses_limit = 20,
+                        searches_limit    = 120,
                         job_tracker_enabled = 1,
-                        interviews_limit = 20,
+                        interviews_limit = 10,
                         interviews_used = 0
                    WHERE telegram_id = ?""",
                 (telegram_id,),
@@ -1567,7 +1675,7 @@ class Database:
         return (user.get("plan") or "free").lower()
 
     def increment_usage(self, telegram_id: int, usage_type: str):
-        """Incrementa el uso de un tipo específico."""
+        """Incrementa el uso de un tipo especÃ­fico."""
         column = f"{usage_type}_used"
         self._execute(
             f"UPDATE web_users SET {column} = {column} + 1 WHERE telegram_id = ?",
@@ -1577,8 +1685,8 @@ class Database:
     def check_usage_limit(self, telegram_id: int, usage_type: str) -> bool:
         """Verifica si el usuario puede usar un recurso.
 
-        Para SQLite se interpretan los límites como "por día": al primer uso
-        de cada día se resetean los contadores *_used y se marca la fecha
+        Para SQLite se interpretan los lÃ­mites como "por dÃ­a": al primer uso
+        de cada dÃ­a se resetean los contadores *_used y se marca la fecha
         actual en usage_period_start. En Supabase se mantiene el comportamiento
         anterior (contadores acumulativos), ya que el esquema vive en
         schema_supabase.sql.
@@ -1589,12 +1697,12 @@ class Database:
         if not user:
             return True  # Si no tiene cuenta web, usamos comportamiento por defecto
 
-        # Solo aplicamos lógica de periodo diario en SQLite, donde controlamos el esquema
+        # Solo aplicamos lÃ³gica de periodo diario en SQLite, donde controlamos el esquema
         if self.db_type != "supabase":
             today = datetime.date.today().isoformat()
             period_start = user.get("usage_period_start")
 
-            # Si es un nuevo día (o nunca se seteo), reseteamos contadores diarios
+            # Si es un nuevo dÃ­a (o nunca se seteo), reseteamos contadores diarios
             if period_start != today:
                 try:
                     self._execute(
@@ -1648,7 +1756,7 @@ class Database:
         )
 
     # ----------------------------------------------------------
-    # SAAS: ANÁLISIS IA
+    # SAAS: ANÃLISIS IA
     # ----------------------------------------------------------
 
     def record_ai_analysis(
@@ -1659,7 +1767,7 @@ class Database:
         prompt_tokens: int = 0,
         response_tokens: int = 0,
     ):
-        """Registra un análisis de IA."""
+        """Registra un anÃ¡lisis de IA."""
         self._execute(
             """INSERT INTO ai_analyses 
                (telegram_id, cv_analyzed, job_matched, prompt_tokens, response_tokens, created_at)
@@ -1674,7 +1782,7 @@ class Database:
         )
 
     def get_user_ai_analyses(self, telegram_id: int) -> List[Dict]:
-        """Obtiene historial de análisis de IA del usuario."""
+        """Obtiene historial de anÃ¡lisis de IA del usuario."""
         return self._fetchall(
             "SELECT * FROM ai_analyses WHERE telegram_id = ? ORDER BY created_at DESC",
             (telegram_id,),
@@ -1711,7 +1819,7 @@ class Database:
         Obtiene datos cacheados de una empresa.
         
         Returns:
-            Dict con 'data' (dict) y 'cached_at' (int timestamp) o None si no existe o expiró
+            Dict con 'data' (dict) y 'cached_at' (int timestamp) o None si no existe o expirÃ³
         """
         import time
         
@@ -1724,7 +1832,7 @@ class Database:
         if not row:
             return None
         
-        # Verificar si expiró
+        # Verificar si expirÃ³
         current_time = int(time.time())
         if current_time > row["expires_at"]:
             return None
@@ -1740,12 +1848,12 @@ class Database:
 
     def set_company_data(self, domain: str, data: Dict, ttl_seconds: int = 604800):
         """
-        Guarda datos de empresa en caché.
+        Guarda datos de empresa en cachÃ©.
         
         Args:
             domain: Dominio de la empresa (ej: google.com)
             data: Dict con datos de la empresa
-            ttl_seconds: Tiempo de vida del caché (default 7 días = 604800 seg)
+            ttl_seconds: Tiempo de vida del cachÃ© (default 7 dÃ­as = 604800 seg)
         """
         import time
         import json
@@ -1823,6 +1931,9 @@ class Database:
         except Exception as e:
             logger.error(f"Error creando batch para usuario {telegram_id}: {e}")
             return -1
+        finally:
+            if "conn" in locals() and self.db_path != ":memory:":
+                conn.close()
 
     def get_job_batch(self, batch_id: int) -> Optional[Dict]:
         """Recupera un batch por su ID."""
@@ -1904,15 +2015,18 @@ class Database:
             self._log_batch_interaction(row["id"], 'expired')
         
         # Eliminar batches muy viejos
-        cursor = self._get_conn().cursor()
-        cursor.execute(
-            "DELETE FROM pending_job_batches WHERE created_at < ?",
-            (cutoff,)
-        )
-        deleted = cursor.rowcount
-        
-        if self.db_path != ":memory:":
-            self._get_conn().commit()
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM pending_job_batches WHERE created_at < ?",
+                (cutoff,)
+            )
+            deleted = cursor.rowcount
+            conn.commit()
+        finally:
+            if self.db_path != ":memory:":
+                conn.close()
         
         if deleted > 0:
             logger.info(f"[BATCH] Eliminados {deleted} batches antiguos")
@@ -2111,6 +2225,9 @@ class Database:
         except Exception as e:
             logger.error(f"Error cleaning up audit logs: {e}")
             return 0
+        finally:
+            if "conn" in locals() and self.db_path != ":memory:":
+                conn.close()
 
     # ----------------------------------------------------------
     # SECURITY: TOKEN BLACKLIST
@@ -2178,6 +2295,9 @@ class Database:
         except Exception as e:
             logger.error(f"Error cleaning up token blacklist: {e}")
             return 0
+        finally:
+            if "conn" in locals() and self.db_path != ":memory:":
+                conn.close()
 
     # ----------------------------------------------------------
     # SECURITY: REFRESH TOKENS
@@ -2347,3 +2467,7 @@ class Database:
         except Exception as e:
             logger.error(f"Error cleaning up refresh tokens: {e}")
             return 0
+        finally:
+            if "conn" in locals() and self.db_path != ":memory:":
+                conn.close()
+

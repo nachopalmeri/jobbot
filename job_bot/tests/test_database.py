@@ -52,5 +52,31 @@ class TestDatabase(unittest.TestCase):
         user = self.db.get_user(123)
         self.assertIsNone(user)
 
+    def test_update_user_plan_starter_sets_expected_limits(self):
+        self.db.create_web_user(321, "starter@example.com", "hash")
+
+        self.db.update_user_plan(321, "starter")
+
+        user = self.db.get_web_user(321)
+        self.assertEqual(user["plan"], "starter")
+        self.assertEqual(user["ai_analyses_limit"], 0)
+        self.assertEqual(user["searches_limit"], 12)
+        self.assertEqual(user["job_tracker_enabled"], 1)
+        self.assertEqual(user["interviews_limit"], 0)
+        self.assertEqual(user["interviews_used"], 0)
+
+    def test_update_user_plan_premium_sets_expected_limits(self):
+        self.db.create_web_user(654, "premium@example.com", "hash")
+
+        self.db.update_user_plan(654, "premium")
+
+        user = self.db.get_web_user(654)
+        self.assertEqual(user["plan"], "premium")
+        self.assertEqual(user["ai_analyses_limit"], 20)
+        self.assertEqual(user["searches_limit"], 120)
+        self.assertEqual(user["job_tracker_enabled"], 1)
+        self.assertEqual(user["interviews_limit"], 10)
+        self.assertEqual(user["interviews_used"], 0)
+
 if __name__ == "__main__":
     unittest.main()
