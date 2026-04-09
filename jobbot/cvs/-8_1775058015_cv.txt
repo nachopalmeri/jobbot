@@ -1,1 +1,0 @@
-Frontend Developer with React, TypeScript, Next.js, testing and UX experience. Built dashboards and improved performance.

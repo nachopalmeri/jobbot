@@ -1,2 +1,0 @@
-QA User
-Backend developer with Python, FastAPI, PostgreSQL, Docker, React. Built APIs and dashboards. Strong communication and teamwork.

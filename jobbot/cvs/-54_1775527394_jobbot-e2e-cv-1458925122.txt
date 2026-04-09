@@ -1,2 +1,0 @@
-﻿Nombre: E2E User
-Experiencia: Python, FastAPI, SQL, React

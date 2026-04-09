@@ -1,7 +1,0 @@
-[
-  "api/tests/test_auth.py::TestAuthLogin::test_login_success_with_valid_credentials",
-  "api/tests/test_auth.py::TestRegistration::test_register_web_only_returns_coherent_session_shape",
-  "api/tests/test_auth.py::TestTelegramLinkCompatibility::test_users_telegram_link_code_alias_returns_link_payload",
-  "api/tests/test_payments.py::TestPaymentCheckout::test_create_billing_checkout_alias",
-  "api/tests/test_security.py::TestRateLimiting::test_dashboard_preview_falls_back_when_search_is_unavailable"
-]
