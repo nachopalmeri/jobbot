@@ -3,7 +3,7 @@ Audit Logging Middleware for JobBot API
 Logs all HTTP requests with user ID, endpoint, method, timestamp, IP, and response status.
 """
 
-import json
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -44,6 +44,8 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         ip_address = _client_ip(request)
         method = request.method
         endpoint = str(request.url.path)
+        skip_paths = ("/health", "/ready", "/metrics", "/docs", "/openapi.json")
+        should_log = not any(endpoint.startswith(path) for path in skip_paths)
         
         # Get user ID from state (set by auth middleware)
         user_id = _extract_user_id(request)
@@ -59,21 +61,27 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             # Calculate duration
             duration_ms = round((time.time() - start_time) * 1000, 2)
             
-            # Log to database (non-blocking, don't fail the request)
-            try:
-                self._log_audit_entry(
-                    user_id=user_id,
-                    endpoint=endpoint,
-                    method=method,
-                    ip_address=ip_address,
-                    status_code=status_code,
-                    duration_ms=duration_ms,
-                    timestamp=datetime.now(timezone.utc).isoformat()
-                )
-            except Exception as e:
-                # Log errors silently to avoid breaking requests
-                import logging
-                logging.getLogger("jobbot.audit").error(f"Failed to log audit entry: {e}")
+            if should_log:
+                # Log to database off the request path.
+                try:
+                    thread = threading.Thread(
+                        target=self._log_audit_entry,
+                        kwargs={
+                            "user_id": user_id,
+                            "endpoint": endpoint,
+                            "method": method,
+                            "ip_address": ip_address,
+                            "status_code": status_code,
+                            "duration_ms": duration_ms,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                        daemon=True,
+                    )
+                    thread.start()
+                except Exception as e:
+                    # Log errors silently to avoid breaking requests
+                    import logging
+                    logging.getLogger("jobbot.audit").error(f"Failed to queue audit entry: {e}")
         
         return response
     

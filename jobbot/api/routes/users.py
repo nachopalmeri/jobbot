@@ -11,7 +11,8 @@ except ImportError:
     from database import Database
     from cv_analyzer import extract_keywords, parse_cv
 
-from .auth import get_authenticated_user, get_db
+from .auth import get_authenticated_user, get_db, _create_telegram_link_code_payload
+from ..core.cache import CacheManager, cache, user_dashboard_key
 
 
 router = APIRouter()
@@ -34,6 +35,57 @@ class PreferencesUpdate(BaseModel):
     active_alerts: bool = False
     blocked_companies: str = ""
     preferred_companies: str = ""
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        return default if value is None else int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _profile_from_user(user: dict) -> dict:
+    return {
+        "experience_level": user.get("experience_level", "junior"),
+        "role_type": user.get("role_type", ""),
+        "technologies": user.get("technologies", ""),
+        "job_modality": user.get("job_modality", "cualquiera"),
+        "max_job_age_days": _safe_int(user.get("max_job_age_days"), 30),
+        "match_threshold": _safe_int(user.get("match_threshold"), 70),
+    }
+
+
+def _schedule_from_user(user: dict) -> dict:
+    return {
+        "check_interval_hours": _safe_int(user.get("check_interval_hours"), 6),
+        "alert_start_hour": _safe_int(user.get("alert_start_hour"), 8),
+        "alert_end_hour": _safe_int(user.get("alert_end_hour"), 22),
+        "timezone": user.get("timezone") or "America/Buenos_Aires",
+    }
+
+
+def _company_filters_from_user(user: dict) -> dict:
+    blocked_raw = user.get("blocked_companies") or ""
+    preferred_raw = user.get("preferred_companies") or ""
+
+    def _to_set(raw: str):
+        items = []
+        for part in raw.split(","):
+            name = part.strip()
+            if name:
+                items.append(name.lower())
+        return set(items)
+
+    return {
+        "blocked": _to_set(blocked_raw),
+        "preferred": _to_set(preferred_raw),
+        "blocked_raw": blocked_raw,
+        "preferred_raw": preferred_raw,
+    }
+
+
+def _invalidate_dashboard_cache(telegram_id: int):
+    cache.delete("users", user_dashboard_key(telegram_id))
 
 
 def _parse_application_datetime(raw_value):
@@ -123,9 +175,14 @@ def _build_coaching_tips(
     return tips[:3]
 
 
-def _build_cv_insights(db: Database, telegram_id: int) -> dict:
-    user = db.get_user(telegram_id) or {}
-    profile = db.get_user_profile(telegram_id)
+def _build_cv_insights(
+    db: Database,
+    telegram_id: int,
+    user: dict | None = None,
+    profile: dict | None = None,
+) -> dict:
+    user = user or db.get_user(telegram_id) or {}
+    profile = profile or _profile_from_user(user)
     cv_path = user.get("cv_path")
     if not cv_path:
         return {
@@ -219,20 +276,17 @@ def _build_cv_insights(db: Database, telegram_id: int) -> dict:
 
 
 def _build_dashboard_payload(db: Database, telegram_id: int) -> dict:
-    profile = db.get_user_profile(telegram_id)
-    schedule = db.get_user_schedule(telegram_id)
-    apps = db.get_user_applications(telegram_id)
-    funnel = {
-        "applied": len([a for a in apps if a.get("status") == "aplicado"]),
-        "interview": len([a for a in apps if a.get("status") == "entrevista"]),
-        "rejected": len([a for a in apps if a.get("status") == "rechazado"]),
-        "offer": len([a for a in apps if a.get("status") == "oferta"]),
-    }
-    company_filters = db.get_company_filters(telegram_id)
-    cv_insights = _build_cv_insights(db, telegram_id)
-    weekly_goal = db.get_weekly_goal(telegram_id)
+    user = db.get_user(telegram_id) or {}
+    profile = _profile_from_user(user)
+    schedule = _schedule_from_user(user)
+    apps = db.get_user_applications(telegram_id, limit=12)
+    streak_apps = db.get_user_applications(telegram_id, limit=60)
+    funnel = db.get_application_funnel_counts(telegram_id)
+    company_filters = _company_filters_from_user(user)
+    cv_insights = _build_cv_insights(db, telegram_id, user=user, profile=profile)
+    weekly_goal = _safe_int(user.get("weekly_goal_apps"), 0)
     weekly_applied = db.get_weekly_applications_count(telegram_id)
-    streak = _compute_application_streak(apps)
+    streak = _compute_application_streak(streak_apps)
 
     return {
         "telegram_id": str(telegram_id),
@@ -261,8 +315,8 @@ def _build_dashboard_payload(db: Database, telegram_id: int) -> dict:
             cv_insights.get("score"),
         ),
         "cv_insights": cv_insights,
-        "digest_mode": db.get_digest_mode(telegram_id),
-        "active_alerts": bool((db.get_user(telegram_id) or {}).get("active_alerts")),
+        "digest_mode": (user.get("digest_mode") or "realtime").lower(),
+        "active_alerts": bool(user.get("active_alerts")),
         "blocked_companies": company_filters.get("blocked_raw", ""),
         "preferred_companies": company_filters.get("preferred_raw", ""),
         "check_interval_hours": schedule.get("check_interval_hours", 6),
@@ -324,7 +378,29 @@ async def get_usage(
 async def get_dashboard(
     current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
 ):
-    return _build_dashboard_payload(db, current_user["telegram_id"])
+    telegram_id = current_user["telegram_id"]
+    cache_key = user_dashboard_key(telegram_id)
+    cached = cache.get("users", cache_key)
+    if cached:
+        return cached
+
+    payload = _build_dashboard_payload(db, telegram_id)
+    cache.set("users", cache_key, payload, ttl=CacheManager.TTL_SHORT)
+    return payload
+
+
+@router.get("/applications")
+async def get_applications(
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    telegram_id = current_user["telegram_id"]
+    return {
+        "applications": db.get_user_applications(telegram_id),
+        "funnel": db.get_application_funnel_counts(telegram_id),
+        "weekly_goal": _safe_int((db.get_user(telegram_id) or {}).get("weekly_goal_apps"), 0),
+        "weekly_applied": db.get_weekly_applications_count(telegram_id),
+    }
 
 
 @router.get("/preferences")
@@ -332,20 +408,21 @@ async def get_preferences(
     current_user: dict = Depends(get_authenticated_user), db: Database = Depends(get_db)
 ):
     telegram_id = current_user["telegram_id"]
-    profile = db.get_user_profile(telegram_id)
-    schedule = db.get_user_schedule(telegram_id)
-    company_filters = db.get_company_filters(telegram_id)
+    user = db.get_user(telegram_id) or {}
+    profile = _profile_from_user(user)
+    schedule = _schedule_from_user(user)
+    company_filters = _company_filters_from_user(user)
 
     return {
         **profile,
-        "alert_channel": (db.get_user(telegram_id) or {}).get("alert_channel", "telegram"),
+        "alert_channel": (user.get("alert_channel") or "telegram").lower(),
         "check_interval_hours": schedule.get("check_interval_hours", 6),
         "alert_start_hour": schedule.get("alert_start_hour", 8),
         "alert_end_hour": schedule.get("alert_end_hour", 22),
         "timezone": schedule.get("timezone", "America/Buenos_Aires"),
-        "weekly_goal": db.get_weekly_goal(telegram_id),
-        "digest_mode": db.get_digest_mode(telegram_id),
-        "active_alerts": bool((db.get_user(telegram_id) or {}).get("active_alerts")),
+        "weekly_goal": _safe_int(user.get("weekly_goal_apps"), 0),
+        "digest_mode": (user.get("digest_mode") or "realtime").lower(),
+        "active_alerts": bool(user.get("active_alerts")),
         "blocked_companies": company_filters.get("blocked_raw", ""),
         "preferred_companies": company_filters.get("preferred_raw", ""),
     }
@@ -383,9 +460,18 @@ async def update_preferences(
         payload.blocked_companies,
         payload.preferred_companies,
     )
+    _invalidate_dashboard_cache(telegram_id)
 
     return {
         "ok": True,
         "message": "Preferencias actualizadas",
         "preferences": await get_preferences(current_user, db),
     }
+
+
+@router.post("/telegram-link-code")
+async def create_telegram_link_code_alias(
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    return _create_telegram_link_code_payload(current_user, db)

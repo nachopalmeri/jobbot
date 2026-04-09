@@ -8,9 +8,11 @@ from pydantic import BaseModel
 try:
     from job_bot.database import Database
     from job_bot.job_scraper import JobScraper
+    from job_bot.cv_analyzer import build_profile_context, compare_cv_with_offer
 except ImportError:
     from database import Database
     from job_scraper import JobScraper
+    from cv_analyzer import build_profile_context, compare_cv_with_offer
 
 from .auth import get_authenticated_user
 
@@ -109,30 +111,19 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
     haystack = (
         f"{job.get('title', '')} {job.get('description', '')} {job.get('company', '')}"
     ).lower()
-    score = 45
+    profile_context = build_profile_context(profile)
+    analysis = compare_cv_with_offer(profile_context, haystack) if profile_context else {"score": 45}
+    score = int(analysis["score"])
 
     terms = [part.strip().lower() for part in query.split() if part.strip()]
-    tech_terms = [
-        part.strip().lower()
-        for part in (profile.get("technologies") or "").split(",")
-        if part.strip()
-    ]
-    role = (profile.get("role_type") or "").strip().lower()
 
     for term in terms[:5]:
         if term in haystack:
-            score += 10
-
-    for tech in tech_terms[:5]:
-        if tech in haystack:
-            score += 8
-
-    if role and role in haystack:
-        score += 12
+            score += 4
 
     for tag in tags_filter:
         if tag in haystack:
-            score += 6
+            score += 3
 
     modality = _serialize_modality(job)
     target_modality = _normalize_modality(profile.get("job_modality") or "cualquiera")
@@ -142,8 +133,10 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
         "presencial": "onsite",
     }.get(target_modality):
         score += 5
+    else:
+        score -= 8
 
-    return max(50, min(95, score))
+    return max(0, min(95, score))
 
 
 def _serialize_job(job: dict, score: int) -> dict:

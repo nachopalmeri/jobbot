@@ -1,0 +1,1 @@
+QA User Python FastAPI PostgreSQL Docker React achievements communication

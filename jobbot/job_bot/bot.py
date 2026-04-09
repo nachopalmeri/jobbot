@@ -115,6 +115,15 @@ try:
 except ImportError:
     from job_bot.github_analyzer import fetch_github_repos, analyze_github_match
 
+try:
+    from api.core.cache import cache as api_cache, user_dashboard_key
+except ImportError:
+    try:
+        from job_bot.api.core.cache import cache as api_cache, user_dashboard_key
+    except ImportError:
+        api_cache = None
+        user_dashboard_key = None
+
 # ============================================================
 # LOGGING
 # ============================================================
@@ -404,6 +413,13 @@ async def _link_telegram_account(update: Update, code: str) -> bool:
             "Intentá de nuevo en unos minutos.",
         )
         return True
+
+    if api_cache is not None and user_dashboard_key is not None:
+        try:
+            api_cache.delete("users", user_dashboard_key(int(record["web_telegram_id"])))
+            api_cache.delete("users", user_dashboard_key(user.id))
+        except Exception:
+            pass
 
     base_url = (config.LANDING_URL or "https://jobbot.ar").rstrip("/")
     await update.message.reply_text(

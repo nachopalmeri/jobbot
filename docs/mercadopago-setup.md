@@ -85,7 +85,7 @@ Rutas involucradas:
 
 Antes de abrir ventas:
 
-1. Inicia checkout de un plan desde `https://app-jobbot.vercel.app/dashboard/suscripcion`
+1. Inicia checkout de un plan desde `https://jobbot.ar/pricing`
 2. Completa un pago productivo de prueba en Mercado Pago
 3. Verifica que el webhook active el plan
 4. Revisa `GET /subscriptions/status`

@@ -11,6 +11,7 @@ class TestDatabase(unittest.TestCase):
         self.db = Database(self.db_path)
 
     def tearDown(self):
+        self.db.close()
         # On Windows, the file might be locked for a split second
         import time
         for i in range(5):

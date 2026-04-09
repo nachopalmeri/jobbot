@@ -217,14 +217,15 @@ curl -X POST http://localhost:8000/cv/analyze \
 |----------|--------|------|-------------|
 | `/subscriptions/plans` | GET | - | Ver planes disponibles |
 | `/subscriptions/me` | GET | ✅ | Mi suscripción |
-| `/subscriptions/create-checkout-session` | POST | ✅ | Crear sesión de pago |
+| `/subscriptions/create-checkout` | POST | ✅ | Crear checkout de suscripción |
+| `/billing/checkout` | POST | ✅ | Alias compatible de checkout |
 | `/subscriptions/cancel` | POST | ✅ | Cancelar suscripción |
 | `/subscriptions/upgrade` | POST | ✅ | Upgrade de plan |
 
 #### Ejemplo: Crear Checkout Session
 
 ```bash
-curl -X POST http://localhost:8000/subscriptions/create-checkout-session \
+curl -X POST http://localhost:8000/subscriptions/create-checkout \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -445,7 +446,7 @@ curl -X POST http://localhost:8000/cv/analyze \
 curl http://localhost:8000/subscriptions/plans
 
 # Crear sesión de pago
-curl -X POST http://localhost:8000/subscriptions/create-checkout-session \
+curl -X POST http://localhost:8000/subscriptions/create-checkout \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"plan":"pro","payment_method":"stripe"}'
 ```

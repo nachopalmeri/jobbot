@@ -15,6 +15,9 @@ os.environ["TELEGRAM_BOT_TOKEN"] = "test_bot_token"
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.routes import auth as auth_routes
+from api.routes import jobs as jobs_routes
+from api.routes import public as public_routes
 from api.core.security import (
     create_access_token,
     create_refresh_token,
@@ -36,15 +39,27 @@ except ImportError:
 
 
 @pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
+def test_db_path(tmp_path):
+    """Shared sqlite file path for each test run."""
+    return str(tmp_path / "jobbot_test.db")
 
 
 @pytest.fixture
-def db():
-    """Create a test database instance with in-memory SQLite."""
-    return Database(db_path=":memory:")
+def client(test_db_path):
+    """Create a test client with DB dependencies bound to a shared sqlite test file."""
+    app.dependency_overrides[auth_routes.get_db] = lambda: Database(db_path=test_db_path)
+    app.dependency_overrides[jobs_routes.get_db] = lambda: Database(db_path=test_db_path)
+    app.dependency_overrides[public_routes.get_db] = lambda: Database(db_path=test_db_path)
+    test_client = TestClient(app)
+    yield test_client
+    test_client.close()
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def db(test_db_path):
+    """Create a test database instance using the same sqlite test file as API dependencies."""
+    return Database(db_path=test_db_path)
 
 
 @pytest.fixture

@@ -29,6 +29,8 @@ from .payload_limit import (
     validate_payload_size,
 )
 
+from .rate_limit import RateLimitMiddleware
+
 __all__ = [
     # Audit logging
     "AuditLogMiddleware",
@@ -48,4 +50,6 @@ __all__ = [
     "PayloadSizeMiddleware",
     "PayloadTooLargeError",
     "validate_payload_size",
+    # Rate limiting
+    "RateLimitMiddleware",
 ]

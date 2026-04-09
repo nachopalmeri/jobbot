@@ -42,6 +42,11 @@ class TestAuthLogin:
         assert "refresh_token" in data
         assert data["token_type"] == "bearer"
         assert data["telegram_id"] == test_user["telegram_id"]
+        assert data["email"] == test_user["email"]
+        assert data["plan"] == "free"
+        assert data["has_telegram_link"] is True
+        assert data["account_type"] == "telegram-linked"
+        assert data["name"] == test_user["name"]
 
         # Verify token is valid
         token_data = decode_token(data["access_token"])
@@ -475,6 +480,8 @@ class TestRegistration:
         assert "access_token" in data
         assert "refresh_token" in data
         assert data["account_type"] == "web-only"
+        assert data["plan"] == "free"
+        assert data["name"] == user_data["name"]
 
     def test_register_fails_with_duplicate_email(self, client, test_user):
         """Test registration fails with existing email."""
@@ -512,3 +519,33 @@ class TestRegistration:
 
         assert response.status_code == 400
         assert "email y password son requeridos" in response.json()["detail"]
+
+    def test_register_web_only_returns_coherent_session_shape(self, client):
+        """Test web-only registration includes plan and account metadata."""
+        user_data = {
+            "email": "coherent@example.com",
+            "password": "securepassword123",
+            "name": "Coherent User",
+        }
+
+        response = client.post("/auth/register", json=user_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan"] == "free"
+        assert data["has_telegram_link"] is False
+        assert data["account_type"] == "web-only"
+        assert data["name"] == user_data["name"]
+
+
+class TestTelegramLinkCompatibility:
+    """Compatibility tests for Telegram linking aliases."""
+
+    def test_users_telegram_link_code_alias_returns_link_payload(self, client, auth_headers):
+        response = client.post("/users/telegram-link-code", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["already_linked"] is True
+        assert data["has_telegram_link"] is True
+        assert data["account_type"] == "telegram-linked"

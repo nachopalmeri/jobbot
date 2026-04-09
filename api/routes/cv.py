@@ -34,6 +34,7 @@ class CVProposalRequest(BaseModel):
     job_url: str
     job_title: str
     company_name: str
+    job_description: Optional[str] = None
     user_cv: Optional[str] = None
 
 
@@ -380,22 +381,35 @@ async def analyze_cv(
 
     _consume_ai_quota(db, current_user["telegram_id"])
 
+    user_cv = _clean_text(request.user_cv) or _load_saved_cv_text(current_user)
+    if not user_cv:
+        raise HTTPException(
+            status_code=400,
+            detail="Necesitamos tu CV para analizar el match contra la oferta",
+        )
+
+    local_analysis = compare_cv_with_offer(user_cv, request.job_description or request.job_url)
     prompt = f"""
-Analiza el siguiente CV contra la descripcion del empleo:
+Analizá el siguiente CV contra la oferta. No seas vago ni genérico.
 
-URL del empleo: {request.job_url}
-
-Descripcion del empleo:
-{request.job_description or "No proporcionada"}
+Oferta:
+- URL: {request.job_url}
+- Descripción: {request.job_description or "No proporcionada"}
 
 CV del candidato:
-{request.user_cv or "No proporcionado"}
+{user_cv}
 
-Proporciona:
-1. Lista de keywords que matchean
-2. Keywords faltantes
-3. Score de match (0-100%)
-4. Recomendaciones especificas para mejorar
+Señales calculadas localmente:
+- Match score: {local_analysis["score"]}%
+- Keywords que coinciden: {", ".join(local_analysis["matching"]) or "Ninguna clara"}
+- Keywords faltantes: {", ".join(local_analysis["missing"]) or "No detectadas"}
+- Posibles alertas: {", ".join(local_analysis["penalties"]) or "Sin alertas duras"}
+
+Devolvé:
+1. Diagnóstico corto y honesto
+2. Qué sí encaja del CV con la oferta
+3. Qué está faltando o queda flojo
+4. Recomendación final: aplicar ahora, aplicar ajustando CV, o no priorizar esta oferta
 """
 
     analysis = await analyze_with_groq(prompt)
@@ -404,6 +418,10 @@ Proporciona:
     return {
         "job_url": request.job_url,
         "analysis": analysis,
+        "match_score": local_analysis["score"],
+        "matching_keywords": local_analysis["matching"],
+        "missing_keywords": local_analysis["missing"],
+        "penalties": local_analysis["penalties"],
     }
 
 
@@ -427,20 +445,38 @@ async def generate_proposal(
             detail="Necesitamos el texto de tu CV o uno cargado previamente en JobBot",
         )
 
+    local_analysis = compare_cv_with_offer(
+        user_cv,
+        " ".join(
+            value for value in [request.job_title, request.company_name, request.job_description or ""]
+            if value
+        ),
+    )
     prompt = f"""
-Genera una propuesta personalizada para el siguiente empleo:
+Escribí una cover letter breve y creíble para esta vacante.
 
-Empresa: {request.company_name}
-Puesto: {request.job_title}
+Contexto del puesto:
+- Empresa: {request.company_name}
+- Puesto: {request.job_title}
+- URL: {request.job_url}
+- Descripción: {request.job_description or "No provista"}
 
 CV del candidato:
 {user_cv}
 
-La propuesta debe:
-1. Ser de 2-3 parrafos maximo
-2. Destacar la experiencia relevante
-3. Ser personalizada y profesional
-4. Incluir un llamado a la accion claro
+Señales de match:
+- Match score local: {local_analysis["score"]}%
+- Coincidencias: {", ".join(local_analysis["matching"]) or "Sin coincidencias fuertes"}
+- Faltantes: {", ".join(local_analysis["missing"]) or "No detectados"}
+- Alertas: {", ".join(local_analysis["penalties"]) or "Sin alertas duras"}
+
+Instrucciones:
+1. Máximo 220 palabras.
+2. 3 párrafos.
+3. No inventes experiencia ni tecnologías.
+4. Mencioná solo fortalezas respaldadas por el CV.
+5. Si faltan detalles de la oferta, mantené la carta sobria y específica al rol, sin humo.
+6. Cerrá con una línea breve de interés genuino.
 """
 
     proposal = await analyze_with_groq(prompt)

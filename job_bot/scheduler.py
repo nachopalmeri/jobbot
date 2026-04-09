@@ -31,9 +31,9 @@ except ImportError:
     from job_bot.job_scraper import JobScraper
 
 try:
-    from cv_analyzer import parse_cv, format_job_with_score
+    from cv_analyzer import build_profile_context, parse_cv, format_job_with_score
 except ImportError:
-    from job_bot.cv_analyzer import parse_cv, format_job_with_score
+    from job_bot.cv_analyzer import build_profile_context, parse_cv, format_job_with_score
 
 logger = logging.getLogger(__name__)
 
@@ -230,19 +230,35 @@ async def check_jobs_for_user(
             )
         return
 
-    # --- Enriquecer con CV match si el usuario tiene CV ---
-    cv_text = None
+    # --- Enriquecer con match si el usuario tiene CV o perfil suficiente ---
+    match_context = None
     if user.get("cv_path"):
-        cv_text = parse_cv(user["cv_path"])
+        match_context = parse_cv(user["cv_path"])
+    if not match_context:
+        match_context = build_profile_context(profile)
 
-    if cv_text:
+    if match_context:
         enriched_jobs = []
         for job in new_jobs:
-            enriched_job, score = format_job_with_score(job, cv_text)
+            enriched_job, score = format_job_with_score(job, match_context)
             enriched_jobs.append(enriched_job)
-        # Ordenar por relevancia (mayor score primero)
-        new_jobs = sorted(enriched_jobs, key=lambda j: j.get("match_score", 0), reverse=True)
-        logger.info("Jobs enriquecidos con match de CV para usuario %s", telegram_id)
+        min_match = profile.get("match_threshold", 70)
+        new_jobs = [
+            job for job in enriched_jobs if job.get("match_score", 0) >= min_match
+        ]
+        new_jobs = sorted(new_jobs, key=lambda j: j.get("match_score", 0), reverse=True)
+        logger.info(
+            "Jobs enriquecidos con match para usuario %s y filtrados por threshold %s",
+            telegram_id,
+            min_match,
+        )
+
+    if not new_jobs:
+        logger.info(
+            "Sin nuevas ofertas que superen el threshold para %s",
+            telegram_id,
+        )
+        return
 
     # Ordenar para priorizar empresas preferidas, si hubiera
     if preferred:

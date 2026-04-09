@@ -1,0 +1,3 @@
+Nombre: Acceptance User
+Stack: Python, FastAPI, SQL, React
+Experiencia: He trabajado con APIs, dashboards y automatizacion.

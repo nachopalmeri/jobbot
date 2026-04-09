@@ -1,6 +1,7 @@
 import os
 import tempfile
 from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,8 +17,15 @@ os.environ.setdefault("APP_ENV", "testing")
 
 @pytest.fixture
 def temp_db() -> Generator[Database, None, None]:
-    with tempfile.NamedTemporaryFile(suffix=".db") as db_file:
-        yield Database(db_path=db_file.name, db_type="sqlite")
+    fd, db_path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    try:
+        yield Database(db_path=db_path, db_type="sqlite")
+    finally:
+        try:
+            Path(db_path).unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @pytest.fixture

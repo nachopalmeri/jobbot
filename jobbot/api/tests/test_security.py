@@ -7,6 +7,7 @@ import hashlib
 import os
 import time
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -34,6 +35,7 @@ from api.rate_limit import (
     RateLimitCategory,
     is_exempt_from_rate_limit,
 )
+from api.routes import jobs as jobs_routes
 from api.middleware.security_headers import get_security_headers
 
 
@@ -303,6 +305,96 @@ class TestRateLimiting:
             "/auth/login", "same-user"
         )
         assert allowed is False
+
+    def test_endpoint_rate_limiter_falls_back_when_backend_fails(self, monkeypatch):
+        """Test the limiter degrades safely to in-memory when Redis-like backend fails."""
+        limiter = EndpointRateLimiter()
+
+        class FailingLimiter:
+            def check(self, *args, **kwargs):
+                raise RuntimeError("redis down")
+
+            def get_current_count(self, *args, **kwargs):
+                raise RuntimeError("redis down")
+
+        limiter._limiter = FailingLimiter()
+        limiter._redis_enabled = True
+
+        allowed, remaining, retry_after = limiter.check_endpoint("/auth/login", "same-user")
+
+        assert allowed is True
+        assert remaining >= 0
+        assert retry_after == 0
+        assert isinstance(limiter._limiter, InMemoryRateLimiter)
+
+    def test_endpoint_rate_limiter_uses_redis_backend_when_available(self, monkeypatch):
+        """Test the limiter selects the Redis backend when configured."""
+        import sys
+        import types
+        import api.rate_limit as rate_limit_module
+
+        class FakeRedisClient:
+            def register_script(self, _script):
+                def runner(keys=None, args=None):
+                    return [1, 4, 0]
+
+                return runner
+
+            def pipeline(self):
+                class FakePipeline:
+                    def zremrangebyscore(self, *args, **kwargs):
+                        return self
+
+                    def zcard(self, *args, **kwargs):
+                        return self
+
+                    def execute(self):
+                        return (0, 1)
+
+                return FakePipeline()
+
+            def delete(self, *_args, **_kwargs):
+                return None
+
+        fake_redis_module = types.SimpleNamespace()
+        fake_redis_module.Redis = types.SimpleNamespace(
+            from_url=lambda *_args, **_kwargs: FakeRedisClient()
+        )
+        monkeypatch.setitem(sys.modules, "redis", fake_redis_module)
+        monkeypatch.setenv("RATE_LIMIT_BACKEND", "redis")
+        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+
+        limiter = rate_limit_module.EndpointRateLimiter()
+
+        assert isinstance(limiter._limiter, rate_limit_module.RedisRateLimiter)
+        allowed, remaining, retry_after = limiter.check_endpoint(
+            "/auth/login", "redis-user"
+        )
+        assert allowed is True
+        assert remaining == 4
+        assert retry_after == 0
+
+    def test_dashboard_preview_falls_back_when_search_is_unavailable(
+        self, client, auth_headers, monkeypatch
+    ):
+        """Dashboard preview should stay usable when job search is unavailable."""
+
+        async def raise_unavailable(*args, **kwargs):
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=503,
+                detail="Job search temporarily unavailable. Please try again later.",
+            )
+
+        monkeypatch.setattr(jobs_routes, "_search_jobs_with_cache", raise_unavailable)
+
+        response = client.get("/jobs/dashboard-preview", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["jobs"]) > 0
+        assert data["unavailable"] is True
 
     def test_is_exempt_from_rate_limit(self):
         """Test exemption from rate limiting."""

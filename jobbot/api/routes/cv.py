@@ -18,6 +18,7 @@ except ImportError:
     from cv_analyzer import extract_keywords, parse_cv
 
 from .auth import get_authenticated_user, get_db
+from ..core.cache import cache, user_dashboard_key
 
 
 router = APIRouter()
@@ -237,6 +238,7 @@ async def upload_cv(
 
     db.create_user_if_not_exists(current_user["telegram_id"], current_user["name"])
     db.set_user_cv(current_user["telegram_id"], str(target_path))
+    cache.delete("users", user_dashboard_key(current_user["telegram_id"]))
 
     parsed = parse_cv(str(target_path))
     if not parsed:

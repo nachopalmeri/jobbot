@@ -30,6 +30,7 @@ from .auth import get_authenticated_user, get_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+billing_router = APIRouter()
 
 PLANS = {
     "starter": {
@@ -200,6 +201,15 @@ async def create_checkout_session(
     raise HTTPException(status_code=400, detail="Proveedor no valido")
 
 
+@billing_router.post("/checkout")
+async def create_billing_checkout_session(
+    checkout: CheckoutRequest,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    return await create_checkout_session(checkout, current_user, db)
+
+
 @retry(
     max_retries=3,
     base_delay_seconds=1.0,
@@ -216,7 +226,7 @@ async def create_stripe_checkout(checkout: CheckoutRequest, user: dict, plan: di
             detail="Stripe no configurado",
         )
     
-    def _create_session():
+    async def _create_session():
         session_payload = {
             "payment_method_types": ["card"],
             "line_items": [{"price": plan["stripe_price_id"], "quantity": 1}],

@@ -8,11 +8,20 @@ import { useSearchParams } from "next/navigation";
 import { apiRequest } from "@/lib/api";
 
 const defaultPreferences = {
+  location: "Buenos Aires Argentina",
   experience_level: "junior",
   role_type: "",
   technologies: "",
   job_modality: "cualquiera",
   job_schedule: "cualquiera",
+  max_job_age_days: 30,
+  match_threshold: 70,
+  check_interval_hours: 6,
+  alert_start_hour: 8,
+  alert_end_hour: 22,
+  timezone: "America/Buenos_Aires",
+  blocked_companies: "",
+  preferred_companies: "",
   weekly_goal: 10,
   digest_mode: "realtime",
   active_alerts: false,
@@ -87,14 +96,6 @@ export default function ConfiguracionPage() {
           body: JSON.stringify({
             ...form,
             alert_channel: account?.has_telegram_link ? "telegram" : "web",
-            check_interval_hours: 6,
-            alert_start_hour: 8,
-            alert_end_hour: 22,
-            timezone: "America/Buenos_Aires",
-            blocked_companies: "",
-            preferred_companies: "",
-            max_job_age_days: 30,
-            match_threshold: 70,
           }),
         },
         true,
@@ -228,6 +229,16 @@ export default function ConfiguracionPage() {
                 </select>
               </label>
             </div>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">Ubicacion objetivo</span>
+              <input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+                placeholder="Buenos Aires, Argentina o Remoto LATAM"
+              />
+            </label>
 
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Rol buscado</span>

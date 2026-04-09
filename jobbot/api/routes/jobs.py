@@ -5,9 +5,11 @@ Production-ready job search with Redis caching and circuit breaker protection.
 
 import hashlib
 import re
+import os
 from typing import Optional
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -29,6 +31,7 @@ except ImportError:
     from job_scraper import JobScraper
 
 from .auth import get_authenticated_user
+from ..core.cache import user_dashboard_key
 
 
 router = APIRouter()
@@ -55,6 +58,23 @@ def _normalize_modality(value: str) -> str:
         "presencial": "presencial",
     }
     return mapping.get((value or "").strip().lower(), "cualquiera")
+
+
+def _profile_from_user(user: dict) -> dict:
+    def _safe_int(value, default: int) -> int:
+        try:
+            return default if value is None else int(value)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "experience_level": user.get("experience_level", "junior"),
+        "role_type": user.get("role_type", ""),
+        "technologies": user.get("technologies", ""),
+        "job_modality": user.get("job_modality", "cualquiera"),
+        "max_job_age_days": _safe_int(user.get("max_job_age_days"), 30),
+        "match_threshold": _safe_int(user.get("match_threshold"), 70),
+    }
 
 
 def _serialize_modality(job: dict) -> str:
@@ -174,6 +194,49 @@ def _serialize_job(job: dict, score: int) -> dict:
     }
 
 
+def _build_preview_fallback_jobs(profile: dict, query: str, location: str) -> list[dict]:
+    role = (profile.get("role_type") or query or "Backend Developer").strip() or "Backend Developer"
+    role_label = role.title()
+    techs = [term.strip() for term in (profile.get("technologies") or "").split(",") if term.strip()]
+    keywords = techs[:3] or ["python", "fastapi", "sql"]
+    modality = _normalize_modality(profile.get("job_modality") or "cualquiera")
+    if modality == "cualquiera":
+        modality = "remote"
+
+    candidates = [
+        (f"{role_label} | Python & FastAPI", "JobBot Labs", 88),
+        (f"{keywords[0].title()} Engineer", "Remote Sprint", 84),
+        ("Junior Software Developer", "LATAM Builders", 80),
+    ]
+
+    jobs: list[dict] = []
+    for index, (title, company, score) in enumerate(candidates):
+        search_phrase = quote_plus(f"{title} {location}")
+        jobs.append(
+            {
+                "id": hashlib.md5(f"preview:{role}:{company}:{index}".encode("utf-8")).hexdigest(),
+                "title": title,
+                "company": company,
+                "location": location,
+                "modality": modality,
+                "salary_min": None,
+                "salary_max": None,
+                "salary_currency": None,
+                "posted_at": "",
+                "match_score": score,
+                "tags": [keywords[0], *keywords[1:3], "preview"][:5],
+                "description": (
+                    "Vista previa generada localmente para mantener el dashboard útil "
+                    "cuando la búsqueda externa no responde."
+                ),
+                "url": f"/dashboard/buscar?q={search_phrase}",
+                "source": "preview",
+            }
+        )
+
+    return jobs
+
+
 class TrackRequest(BaseModel):
     job_title: str
     company: str
@@ -257,7 +320,7 @@ async def _search_jobs_with_cache(
     if consume_quota:
         _require_search_quota(db, telegram_id)
     
-    profile = db.get_user_profile(telegram_id)
+    profile = _profile_from_user(user)
     search_location = location or user.get("location") or "Buenos Aires Argentina"
     threshold = match_threshold or profile.get("match_threshold", 70)
     tags_filter = [tag.strip().lower() for tag in (tags or "").split(",") if tag.strip()]
@@ -267,9 +330,27 @@ async def _search_jobs_with_cache(
         query_keywords = db.generate_smart_keywords(telegram_id)
     if not query_keywords:
         query_keywords = ["python junior"]
-    
+
+    profile_signature = hashlib.md5(
+        "|".join(
+            [
+                profile.get("experience_level", ""),
+                profile.get("role_type", ""),
+                profile.get("technologies", ""),
+                profile.get("job_modality", ""),
+                str(profile.get("max_job_age_days", 30)),
+                str(profile.get("match_threshold", 70)),
+                str(current_user.get("plan", "free")),
+            ]
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+
     # Generate cache key
-    cache_key = f"search:{telegram_id}:{hashlib.md5(f'{q}:{modality}:{location}:{limit}:{offset}:{max_age_days}:{match_threshold}:{tags}'.encode()).hexdigest()[:16]}"
+    cache_key = (
+        f"{telegram_id}:search:"
+        f"{profile_signature}:"
+        f"{hashlib.md5(f'{q}:{modality}:{search_location}:{limit}:{offset}:{max_age_days}:{threshold}:{tags}'.encode()).hexdigest()[:16]}"
+    )
     
     # Check cache first
     cached_result = cache.get("jobs", cache_key)
@@ -383,7 +464,7 @@ async def get_recommended_jobs(
     current_user: dict = Depends(get_authenticated_user),
 ):
     """Get recommended jobs based on user profile."""
-    profile = db.get_user_profile(current_user["telegram_id"])
+    profile = _profile_from_user(db.get_user(current_user["telegram_id"]) or {})
     role = profile.get("role_type") or ""
     
     return await _search_jobs_with_cache(
@@ -405,29 +486,66 @@ async def get_dashboard_preview_jobs(
     Get preview jobs for dashboard with aggressive caching.
     Does not consume quota.
     """
-    cache_key = f"dashboard:{current_user['telegram_id']}:preview"
+    profile = _profile_from_user(db.get_user(current_user["telegram_id"]) or {})
+    profile_signature = hashlib.md5(
+        "|".join(
+            [
+                profile.get("experience_level", ""),
+                profile.get("role_type", ""),
+                profile.get("technologies", ""),
+                profile.get("job_modality", ""),
+                str(profile.get("max_job_age_days", 30)),
+                str(profile.get("match_threshold", 70)),
+                str(current_user.get("plan", "free")),
+            ]
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    cache_key = f"{current_user['telegram_id']}:preview:{profile_signature}"
     
     # Check cache
     cached = cache.get("dashboard", cache_key)
     if cached:
         return cached
     
-    profile = db.get_user_profile(current_user["telegram_id"])
     role = profile.get("role_type") or ""
     
-    result = await _search_jobs_with_cache(
-        db=db,
-        scraper=scraper,
-        current_user=current_user,
-        q=role,
-        limit=3,
-        consume_quota=False,
-    )
-    
+    preview_unavailable = False
+    timeout_seconds = float(os.getenv("DASHBOARD_PREVIEW_TIMEOUT_SECONDS", "4"))
+    try:
+        result = await asyncio.wait_for(
+            _search_jobs_with_cache(
+                db=db,
+                scraper=scraper,
+                current_user=current_user,
+                q=role,
+                limit=3,
+                consume_quota=False,
+            ),
+            timeout=timeout_seconds,
+        )
+    except (asyncio.TimeoutError, HTTPException) as exc:
+        if isinstance(exc, HTTPException) and exc.status_code != 503:
+            raise
+        result = {"jobs": [], "query": role, "total": 0}
+        preview_unavailable = True
+
+    if not result.get("jobs"):
+        result = {
+            "jobs": _build_preview_fallback_jobs(
+                profile,
+                role,
+                profile.get("location") or "Buenos Aires Argentina",
+            ),
+            "query": role,
+            "total": 3,
+        }
+        preview_unavailable = True
+
     response = {
         "jobs": result["jobs"],
         "query": result["query"],
-        "total": result["total"]
+        "total": result["total"],
+        "unavailable": preview_unavailable,
     }
     
     # Cache for 5 minutes
@@ -463,8 +581,8 @@ async def track_application(
     apps = db.get_user_applications(telegram_id)
     created = apps[0] if apps else {}
     
-    # Invalidate dashboard cache
-    cache.delete("dashboard", f"{telegram_id}:preview")
+    # Invalidate dashboard summary cache after mutating application data.
+    cache.delete("users", user_dashboard_key(telegram_id))
     
     return {
         "id": created.get("id"),
@@ -495,4 +613,5 @@ async def update_application(
 ):
     """Update application status."""
     db.update_application_status(app_id, current_user["telegram_id"], payload.status)
+    cache.delete("users", user_dashboard_key(current_user["telegram_id"]))
     return {"id": app_id, "status": payload.status, "message": "Estado actualizado"}

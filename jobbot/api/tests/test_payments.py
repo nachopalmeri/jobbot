@@ -482,6 +482,33 @@ class TestPaymentCheckout:
         assert response.status_code == 400
         assert "Proveedor no valido" in response.json()["detail"]
 
+    def test_create_billing_checkout_alias(self, client, test_user, auth_headers):
+        """Test compatibility alias for billing checkout."""
+        checkout_data = {
+            "provider": "stripe",
+            "plan": "pro",
+            "success_url": "https://jobbot.ar/success",
+            "cancel_url": "https://jobbot.ar/cancel",
+        }
+
+        with patch("stripe.checkout.Session") as mock_session:
+            mock_session.create.return_value = MagicMock(
+                url="https://checkout.stripe.com/test",
+                id="cs_test_billing",
+            )
+
+            response = client.post(
+                "/billing/checkout",
+                json=checkout_data,
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["provider"] == "stripe"
+            assert "url" in data
+            assert "session_id" in data
+
 
 @pytest.mark.payment
 class TestSubscriptionManagement:

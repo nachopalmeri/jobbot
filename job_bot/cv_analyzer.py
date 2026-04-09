@@ -12,7 +12,6 @@ import logging
 import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
-from collections import Counter
 
 try:
     import config
@@ -53,6 +52,56 @@ SOFT_KEYWORDS = {
     "problem solving", "resolución de problemas", "gestión de proyectos",
     "project management", "metodologías ágiles", "agile", "scrum",
     "mentoring", "coaching", "negociación", "presentaciones",
+}
+
+ROLE_KEYWORDS = {
+    "backend": {
+        "backend", "back-end", "api", "apis", "microservices", "fastapi",
+        "django", "flask", "spring", "java", "python", "node", "golang",
+    },
+    "frontend": {
+        "frontend", "front-end", "react", "nextjs", "next.js", "vue",
+        "angular", "typescript", "javascript", "html", "css", "tailwind",
+    },
+    "fullstack": {
+        "fullstack", "full-stack", "full stack", "frontend", "backend",
+        "react", "node", "typescript", "javascript", "python",
+    },
+    "data": {
+        "data", "analytics", "analyst", "bi", "etl", "pandas", "numpy",
+        "spark", "airflow", "dbt", "tableau", "power bi", "machine learning",
+    },
+    "devops": {
+        "devops", "platform", "sre", "aws", "azure", "gcp", "docker",
+        "kubernetes", "terraform", "ci/cd", "jenkins",
+    },
+    "mobile": {
+        "mobile", "android", "ios", "swift", "kotlin", "flutter",
+        "react native",
+    },
+    "qa": {
+        "qa", "quality assurance", "testing", "test automation",
+        "selenium", "cypress", "pytest",
+    },
+}
+
+SENIORITY_PATTERNS = {
+    "entry": [
+        r"\btrainee\b", r"\bintern(ship)?\b", r"\bentry level\b",
+        r"\bsin experiencia\b", r"\bpasant[ií]a\b",
+    ],
+    "junior": [r"\bjunior\b", r"\bjr\b"],
+    "semi_senior": [r"\bsemi[ -]?senior\b", r"\bssr\b", r"\bmid(?:dle)?\b"],
+    "senior": [r"\bsenior\b", r"\bsr\b", r"\bexpert\b"],
+    "lead": [r"\blead\b", r"\bstaff\b", r"\bprincipal\b", r"\bhead\b", r"\bmanager\b"],
+}
+
+SENIORITY_ORDER = {
+    "entry": 0,
+    "junior": 1,
+    "semi_senior": 2,
+    "senior": 3,
+    "lead": 4,
 }
 
 
@@ -145,6 +194,66 @@ def extract_keywords(text: str) -> Dict[str, List[str]]:
     }
 
 
+def build_profile_context(profile: Dict) -> str:
+    """Construye un texto mínimo del perfil para reutilizar el mismo motor de matching."""
+    if not profile:
+        return ""
+
+    fragments: List[str] = []
+    experience_level = (profile.get("experience_level") or "").strip()
+    role_type = (profile.get("role_type") or "").strip()
+    technologies = (profile.get("technologies") or "").strip()
+    modality = (profile.get("job_modality") or "").strip()
+    schedule = (profile.get("job_schedule") or "").strip()
+
+    if experience_level:
+        fragments.append(f"Nivel: {experience_level}")
+    if role_type:
+        fragments.append(f"Rol objetivo: {role_type}")
+    if technologies:
+        fragments.append(f"Tecnologías: {technologies}")
+    if modality and modality != "cualquiera":
+        fragments.append(f"Modalidad preferida: {modality}")
+    if schedule and schedule != "cualquiera":
+        fragments.append(f"Jornada preferida: {schedule}")
+
+    return "\n".join(fragments)
+
+
+def _extract_role_focus(text: str) -> List[str]:
+    text_lower = (text or "").lower()
+    found = []
+    for role, tokens in ROLE_KEYWORDS.items():
+        if any(token in text_lower for token in tokens):
+            found.append(role)
+    return found
+
+
+def _extract_seniority_signal(text: str) -> Optional[str]:
+    text_lower = (text or "").lower()
+    for seniority, patterns in reversed(list(SENIORITY_PATTERNS.items())):
+        if any(re.search(pattern, text_lower) for pattern in patterns):
+            return seniority
+    return None
+
+
+def _seniority_alignment(cv_level: Optional[str], offer_level: Optional[str]) -> tuple[int, Optional[str]]:
+    if not offer_level:
+        return 10, None
+    if not cv_level:
+        return 4, "La oferta marca seniority y tu CV no da señales claras de ese nivel."
+
+    cv_rank = SENIORITY_ORDER.get(cv_level, 1)
+    offer_rank = SENIORITY_ORDER.get(offer_level, 1)
+    if cv_rank == offer_rank:
+        return 10, None
+    if cv_rank > offer_rank:
+        return 8, None
+    if offer_rank - cv_rank == 1:
+        return 4, "La oferta parece pedir un seniority un poco más alto que el que muestra tu CV."
+    return 0, "La oferta pide un seniority bastante más alto que el que muestra tu CV."
+
+
 # ============================================================
 # COMPARACIÓN CV vs OFERTA
 # ============================================================
@@ -161,42 +270,104 @@ def compare_cv_with_offer(cv_text: str, offer_text: str) -> Dict:
     cv_kws = extract_keywords(cv_text)
     offer_kws = extract_keywords(offer_text)
 
-    # Combinar tech + soft para comparación
-    cv_all = set(cv_kws["tech"] + cv_kws["soft"])
-    offer_all = set(offer_kws["tech"] + offer_kws["soft"])
+    cv_tech = set(cv_kws["tech"])
+    offer_tech = set(offer_kws["tech"])
+    cv_soft = set(cv_kws["soft"])
+    offer_soft = set(offer_kws["soft"])
+
+    cv_all = cv_tech | cv_soft
+    offer_all = offer_tech | offer_soft
 
     matching = cv_all & offer_all
     missing = offer_all - cv_all
-    extra = cv_all - offer_all  # Lo que tiene el CV pero no pide la oferta
+    extra = cv_all - offer_all
 
-    # Score basado en cuántas keywords de la oferta cubrimos
-    if len(offer_all) == 0:
-        score = 50  # No podemos calcular, asumimos neutral
+    cv_roles = set(_extract_role_focus(cv_text))
+    offer_roles = set(_extract_role_focus(offer_text))
+    role_overlap = cv_roles & offer_roles
+
+    cv_seniority = _extract_seniority_signal(cv_text)
+    offer_seniority = _extract_seniority_signal(offer_text)
+
+    score = 15
+
+    if offer_tech:
+        score += round((len(cv_tech & offer_tech) / len(offer_tech)) * 55)
+    elif cv_tech:
+        score += 10
+
+    if offer_soft:
+        score += round((len(cv_soft & offer_soft) / len(offer_soft)) * 10)
+
+    if offer_roles:
+        score += 15 if role_overlap else 0
     else:
-        score = int((len(matching) / len(offer_all)) * 100)
+        score += 8 if cv_roles else 0
 
-    # Generar sugerencias
-    suggestions = _generate_suggestions(matching, missing, score)
+    seniority_points, seniority_warning = _seniority_alignment(cv_seniority, offer_seniority)
+    score += seniority_points
+
+    penalties = []
+    if offer_roles and cv_roles and not role_overlap:
+        score -= 20
+        penalties.append("El rol de la oferta no coincide con el foco principal que muestra tu CV.")
+    if offer_tech and not (cv_tech & offer_tech):
+        score -= 15
+        penalties.append("Tu CV no cubre ninguna de las tecnologías principales que aparecen en la oferta.")
+    if seniority_warning:
+        penalties.append(seniority_warning)
+
+    score = max(0, min(score, 100))
+
+    suggestions = _generate_suggestions(
+        matching=matching,
+        missing=missing,
+        score=score,
+        penalties=penalties,
+        role_overlap=sorted(role_overlap),
+        offer_roles=sorted(offer_roles),
+    )
 
     return {
         "matching": sorted(matching),
         "missing": sorted(missing),
         "extra": sorted(extra),
-        "score": min(score, 100),
+        "score": score,
         "cv_keywords": cv_kws,
         "offer_keywords": offer_kws,
         "suggestions": suggestions,
+        "role_alignment": sorted(role_overlap),
+        "offer_roles": sorted(offer_roles),
+        "cv_roles": sorted(cv_roles),
+        "cv_seniority": cv_seniority,
+        "offer_seniority": offer_seniority,
+        "penalties": penalties,
     }
 
 
-def _generate_suggestions(matching: set, missing: set, score: int) -> List[str]:
+def _generate_suggestions(
+    matching: set,
+    missing: set,
+    score: int,
+    penalties: List[str],
+    role_overlap: List[str],
+    offer_roles: List[str],
+) -> List[str]:
     """Genera sugerencias accionables basadas en la comparación."""
     suggestions = []
 
+    if penalties:
+        suggestions.extend(penalties[:2])
+
     if missing:
-        top_missing = list(missing)[:5]
+        top_missing = sorted(missing)[:5]
         suggestions.append(
             f"📝 Agregá estas keywords a tu CV: {', '.join(top_missing)}"
+        )
+
+    if offer_roles and not role_overlap:
+        suggestions.append(
+            f"El puesto apunta más a {', '.join(offer_roles)} que a lo que hoy transmite tu CV."
         )
 
     if score >= 80:
@@ -273,8 +444,10 @@ def format_job_with_score(job: Dict, cv_text: str) -> Tuple[Dict, int]:
     job_enriched = job.copy()
     job_enriched["match_score"] = analysis["score"]
 
-    missing_top = analysis["missing"][:3]
-    if missing_top:
+    if analysis["penalties"]:
+        job_enriched["match_info"] = analysis["penalties"][0]
+    elif analysis["missing"]:
+        missing_top = analysis["missing"][:3]
         job_enriched["match_info"] = f"Te faltan: {', '.join(missing_top)}"
     else:
         job_enriched["match_info"] = "¡Tu CV cubre los requisitos!"

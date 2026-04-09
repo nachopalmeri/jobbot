@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     template: `%s | ${siteName}`,
   },
   description:
-    "JobBot centraliza tu búsqueda laboral: pipeline, alertas, CV Intelligence, mock interviews y seguimiento real de tu proceso.",
+    "JobBot AR automatiza tu búsqueda de empleo tech en LATAM: pipeline, alertas, CV Intelligence y preparación para entrevistas con IA.",
   keywords: [
     "jobbot",
     "dashboard laboral",
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     siteName,
     title: `${siteName} | Dashboard y CV Intelligence`,
     description:
-      "Buscá empleo, analizá tu CV y gestioná tus postulaciones desde un solo dashboard.",
+      "JobBot AR centraliza tu búsqueda de empleo tech en LATAM: analiza CVs con IA y facilita aplicaciones con información relevante.",
     images: [
       {
         url: `${landingUrl}/og-jobbot-dashboard.png`,

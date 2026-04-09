@@ -32,6 +32,7 @@ export default function CoverLetterPage() {
         method: "POST",
         body: JSON.stringify({
           job_url: jobUrlOrDescription,
+          job_description: jobUrlOrDescription,
           job_title: jobTitle,
           company_name: companyName,
           user_cv: userCv,

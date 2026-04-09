@@ -23,6 +23,7 @@ PLAN_LIMITS = {
 
 
 class PreferencesUpdate(BaseModel):
+    location: str = "Buenos Aires Argentina"
     experience_level: str = "junior"
     role_type: str = ""
     technologies: str = ""
@@ -40,6 +41,35 @@ class PreferencesUpdate(BaseModel):
     active_alerts: bool = False
     blocked_companies: str = ""
     preferred_companies: str = ""
+
+
+def _normalize_modality(value: str) -> str:
+    mapping = {
+        "remote": "remoto",
+        "remoto": "remoto",
+        "hybrid": "hibrido",
+        "hibrido": "hibrido",
+        "híbrido": "hibrido",
+        "onsite": "presencial",
+        "presencial": "presencial",
+        "all": "cualquiera",
+        "cualquiera": "cualquiera",
+    }
+    return mapping.get((value or "").strip().lower(), "cualquiera")
+
+
+def _normalize_schedule(value: str) -> str:
+    mapping = {
+        "all": "cualquiera",
+        "cualquiera": "cualquiera",
+        "full_time": "full_time",
+        "full-time": "full_time",
+        "fulltime": "full_time",
+        "part_time": "part_time",
+        "part-time": "part_time",
+        "parttime": "part_time",
+    }
+    return mapping.get((value or "").strip().lower(), "cualquiera")
 
 
 def _parse_application_datetime(raw_value):
@@ -208,6 +238,7 @@ async def get_preferences(
 
     return {
         **profile,
+        "location": (db.get_user(telegram_id) or {}).get("location", "Buenos Aires Argentina"),
         "alert_channel": (db.get_user(telegram_id) or {}).get("alert_channel", "telegram"),
         "check_interval_hours": schedule.get("check_interval_hours", 6),
         "alert_start_hour": schedule.get("alert_start_hour", 8),
@@ -228,13 +259,14 @@ async def update_preferences(
     db: Database = Depends(get_db),
 ):
     telegram_id = current_user["telegram_id"]
+    db.set_user_location(telegram_id, payload.location.strip() or "Buenos Aires Argentina")
     db.set_user_profile(
         telegram_id,
         payload.experience_level,
         payload.role_type,
         payload.technologies,
-        payload.job_modality,
-        payload.job_schedule,
+        _normalize_modality(payload.job_modality),
+        _normalize_schedule(payload.job_schedule),
         payload.max_job_age_days,
         payload.match_threshold,
     )
