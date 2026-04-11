@@ -17,6 +17,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+PAID_STATUSES = ("paid", "completed")
 
 def verify_admin_access(current_user: dict):
     """Verifica acceso admin real desde el flag persistido en users."""
@@ -51,11 +52,11 @@ async def get_admin_metrics(
         )
         # Pagos totales
         total_revenue = db._fetchone(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'"
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status IN ('paid', 'completed')"
         )
         # Pagos del mes
         monthly_revenue = db._fetchone(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '30 days'"
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status IN ('paid', 'completed') AND created_at >= NOW() - INTERVAL '30 days'"
         )
         # Suscripciones activas por plan
         plan_distribution = db._fetchall(
@@ -80,10 +81,10 @@ async def get_admin_metrics(
             "SELECT COUNT(*) as count FROM web_users WHERE created_at >= datetime('now', '-7 days')"
         )
         total_revenue = db._fetchone(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'"
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status IN ('paid', 'completed')"
         )
         monthly_revenue = db._fetchone(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed' AND created_at >= datetime('now', '-30 days')"
+            "SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status IN ('paid', 'completed') AND created_at >= datetime('now', '-30 days')"
         )
         plan_distribution = db._fetchall(
             "SELECT plan, COUNT(*) as count FROM web_users GROUP BY plan"

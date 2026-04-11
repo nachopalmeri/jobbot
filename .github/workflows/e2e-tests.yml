@@ -1,0 +1,150 @@
+name: E2E Tests with agent-browser
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'dashboard/**'
+      - 'e2e/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'dashboard/**'
+      - 'e2e/**'
+  workflow_dispatch:
+
+jobs:
+  # Security scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Secret Detection (truffleHog)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: 🔍 Dependency Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './dashboard'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📤 Upload Trivy Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # E2E Tests
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: 📦 Install agent-browser
+        run: |
+          npm install -g agent-browser
+          agent-browser install --with-deps
+          agent-browser --version
+
+      - name: 📦 Install dashboard dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: 🔨 Build dashboard
+        working-directory: ./dashboard
+        run: npm run build
+
+      - name: 🚀 Start dashboard
+        working-directory: ./dashboard
+        run: |
+          npm start -- --port 3000 &
+          sleep 5
+          curl -s http://localhost:3000 || (sleep 5 && curl -s http://localhost:3000)
+
+      - name: 🧪 Run Smoke Tests
+        working-directory: ./e2e
+        run: |
+          chmod +x smoke.sh
+          ./smoke.sh
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: 🧪 Run E2E Tests
+        working-directory: ./e2e
+        run: |
+          chmod +x suite.sh
+          ./suite.sh all
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: 🔒 Run Security Tests
+        working-directory: ./e2e
+        run: |
+          ./suite.sh security
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: 📊 Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: |
+            e2e/reports/
+            e2e/screenshots/
+          retention-days: 7
+
+      - name: 💬 Comment PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary = '';
+            
+            try {
+              const json = fs.readFileSync('./e2e/reports/summary.json', 'utf8');
+              const data = JSON.parse(json);
+              
+              summary = `## 🧪 E2E Tests Results
+              
+              | Metric | Value |
+              |--------|-------|
+              | Total | ${data.total} |
+              | ✅ Passed | ${data.passed} |
+              | ❌ Failed | ${data.failed} |
+              | Duration | ${Object.values(data.results).reduce((a, r) => a + r.duration, 0)}s |
+              
+              ${data.failed === 0 ? '✅ All tests passed!' : '❌ Some tests failed. Check the artifacts for screenshots.'}
+              `;
+            } catch (e) {
+              summary = '## 🧪 E2E Tests Results\n\n❌ Failed to load test results';
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });

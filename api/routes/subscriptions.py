@@ -6,6 +6,7 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+import httpx
 from pydantic import BaseModel
 
 try:
@@ -347,8 +348,6 @@ async def create_stripe_checkout(
 async def create_mercadopago_checkout(
     checkout: CheckoutRequest, user: dict, plan: dict, billing_cycle: str
 ):
-    import requests
-
     access_token = os.getenv("MP_ACCESS_TOKEN", "")
     if not access_token:
         raise HTTPException(
@@ -378,15 +377,21 @@ async def create_mercadopago_checkout(
     if user.get("email") and "@" in user["email"]:
         preapproval_payload["payer_email"] = user["email"]
 
-    response = requests.post(
-        "https://api.mercadopago.com/preapproval",
-        headers={
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        },
-        json=preapproval_payload,
-        timeout=20,
-    )
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(
+                "https://api.mercadopago.com/preapproval",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=preapproval_payload,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo iniciar MercadoPago",
+        ) from exc
     if response.status_code >= 400:
         logger.error("[MP] Error creando preapproval: %s", response.text)
         raise HTTPException(
@@ -430,14 +435,19 @@ def _mercadopago_access_token() -> str:
     return access_token
 
 
-def _fetch_mercadopago_resource(path: str) -> dict:
-    import requests
+async def _fetch_mercadopago_resource(path: str) -> dict:
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(
+                f"https://api.mercadopago.com{path}",
+                headers={"Authorization": f"Bearer {_mercadopago_access_token()}"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo validar la suscripción de MercadoPago",
+        ) from exc
 
-    response = requests.get(
-        f"https://api.mercadopago.com{path}",
-        headers={"Authorization": f"Bearer {_mercadopago_access_token()}"},
-        timeout=20,
-    )
     if response.status_code >= 400:
         logger.error("[MP] Error consultando %s: %s", path, response.text)
         raise HTTPException(
@@ -525,7 +535,7 @@ async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
     )
 
     if event_type == "preapproval" and resource_id:
-        preapproval = _fetch_mercadopago_resource(f"/preapproval/{resource_id}")
+        preapproval = await _fetch_mercadopago_resource(f"/preapproval/{resource_id}")
         preapproval_id = str(preapproval.get("id", ""))
         event_key = f"mp:preapproval:{preapproval_id}:{preapproval.get('status', '')}"
         if preapproval_id and db.is_webhook_processed(event_key):
@@ -558,7 +568,7 @@ async def mercadopago_webhook(request: Request, db: Database = Depends(get_db)):
             db.mark_webhook_processed(event_key, "mercadopago", f"preapproval.{preapproval.get('status')}")
 
     elif event_type == "payment" and resource_id:
-        payment = _fetch_mercadopago_resource(f"/v1/payments/{resource_id}")
+        payment = await _fetch_mercadopago_resource(f"/v1/payments/{resource_id}")
         payment_id = str(payment.get("id", ""))
         event_key = f"mp:payment:{payment_id}:{payment.get('status', '')}"
         if payment_id and db.is_webhook_processed(event_key):
@@ -797,18 +807,23 @@ def _create_stripe_billing_portal(subscription_id: str) -> str:
     return session.url
 
 
-def _cancel_mercadopago_subscription(subscription_id: str):
-    import requests
+async def _cancel_mercadopago_subscription(subscription_id: str):
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.put(
+                f"https://api.mercadopago.com/preapproval/{subscription_id}",
+                headers={
+                    "Authorization": f"Bearer {_mercadopago_access_token()}",
+                    "Content-Type": "application/json",
+                },
+                json={"status": "cancelled"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No pudimos cancelar MercadoPago en este momento",
+        ) from exc
 
-    response = requests.put(
-        f"https://api.mercadopago.com/preapproval/{subscription_id}",
-        headers={
-            "Authorization": f"Bearer {_mercadopago_access_token()}",
-            "Content-Type": "application/json",
-        },
-        json={"status": "cancelled"},
-        timeout=20,
-    )
     if response.status_code >= 400:
         logger.error("[MP] Error cancelando preapproval %s: %s", subscription_id, response.text)
         raise HTTPException(
@@ -863,7 +878,7 @@ async def cancel_subscription(
         }
 
     if provider == "mercadopago" and subscription_id:
-        _cancel_mercadopago_subscription(subscription_id)
+        await _cancel_mercadopago_subscription(subscription_id)
         db.set_subscription_metadata(
             current_user["telegram_id"],
             provider,

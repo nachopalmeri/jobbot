@@ -1,0 +1,21 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["get", "url"],
+  ["screenshot", "./screenshots/sec-session-01-logged-in.png"],
+  ["storage", "local"],
+  ["storage", "session"],
+  ["cookies"],
+  ["open", "http://localhost:3000/dashboard"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/sec-session-02-still-logged.png"],
+  ["wait", "5000"],
+  ["open", "http://localhost:3000/cv"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/sec-session-03-active.png"]
+]

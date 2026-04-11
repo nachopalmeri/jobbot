@@ -1,0 +1,17 @@
+[
+  ["open", "http://localhost:3000/legal/terminos"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["get", "title"],
+  ["screenshot", "./screenshots/legal-terminos.png"],
+  ["scroll", "down", "1000"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/legal-terminos-scroll.png"],
+  ["open", "http://localhost:3000/legal/privacidad"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/legal-privacidad.png"],
+  ["open", "http://localhost:3000/legal/reembolsos"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "./screenshots/legal-reembolsos.png"]
+]

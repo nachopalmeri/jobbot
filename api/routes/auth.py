@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import smtplib
@@ -25,6 +26,7 @@ except ImportError:
 
 
 router = APIRouter()
+logger = logging.getLogger("jobbot.auth")
 # `bcrypt` 5.x breaks passlib's backend self-check on some environments.
 # Keep backward verification for existing bcrypt hashes, but generate new
 # passwords with pbkdf2_sha256 to avoid register/login failures.
@@ -35,15 +37,16 @@ pwd_context = CryptContext(
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 APP_ENV = os.getenv("APP_ENV", "development").lower()
-SECRET_KEY = os.getenv("JWT_SECRET_KEY") or (
-    "dev-insecure-key-change-me" if APP_ENV != "production" else ""
-)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 PASSWORD_RESET_TOKEN_TTL_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_TTL_MINUTES", "60"))
 SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@jobbot.ar")
 PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", os.getenv("DASHBOARD_URL", "https://app-jobbot.vercel.app"))
-PRIMARY_ADMIN_EMAIL = (os.getenv("PRIMARY_ADMIN_EMAIL") or "admin@jobbot.com").strip().lower()
+PRIMARY_ADMIN_EMAIL = os.getenv("PRIMARY_ADMIN_EMAIL", "").strip().lower()
+
+
+def _jwt_secret_key() -> str:
+    return (os.getenv("JWT_SECRET_KEY") or "").strip()
 
 
 def _parse_env_list(name: str) -> set[str]:
@@ -163,7 +166,8 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    if not SECRET_KEY:
+    secret_key = _jwt_secret_key()
+    if not secret_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="JWT_SECRET_KEY no configurado",
@@ -173,14 +177,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> Optional[dict]:
-    if not SECRET_KEY:
+    secret_key = _jwt_secret_key()
+    if not secret_key:
         return None
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return jwt.decode(token, secret_key, algorithms=[ALGORITHM])
     except ExpiredSignatureError:
         return None
     except JWTError:
@@ -249,6 +254,17 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     token: str = Field(min_length=20, max_length=512)
     password: str = Field(min_length=8, max_length=128)
+
+
+class LinkTelegramRequest(BaseModel):
+    telegram_id: int
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    telegram_name: Optional[str] = Field(default="Usuario", max_length=120)
+
+
+class TelegramInitRequest(BaseModel):
+    dashboard_url: Optional[str] = None
 
 
 @router.post("/register")
@@ -355,7 +371,10 @@ async def request_password_reset(
         if _smtp_configured():
             _send_password_reset_email(normalized_email, reset_url)
         else:
-            print(f"[DEV] Password reset link for {normalized_email}: {reset_url}")
+            logger.warning(
+                "Password reset requested for %s but SMTP is not configured.",
+                normalized_email,
+            )
 
     return {
         "message": "Si existe una cuenta con ese email, te enviamos un enlace para restablecer tu password."
@@ -388,8 +407,38 @@ async def confirm_password_reset(
 
 
 @router.post("/link")
-async def link_telegram(telegram_id: int, email: str, password: str):
-    return {"message": "Cuenta vinculada correctamente", "telegram_id": telegram_id}
+async def link_telegram(payload: LinkTelegramRequest, db: Database = Depends(get_db)):
+    email = str(payload.email).strip().lower()
+    web_user = db.get_web_user_by_email(email)
+    if not web_user or not verify_password(payload.password, web_user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales invalidas",
+        )
+
+    try:
+        linked = db.link_web_account_to_telegram(
+            int(web_user["telegram_id"]),
+            int(payload.telegram_id),
+            (payload.telegram_name or "Usuario").strip() or "Usuario",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+    access_token = create_access_token(
+        data={"sub": email, "telegram_id": int(payload.telegram_id), "auth_method": "link"}
+    )
+
+    return {
+        "message": "Cuenta vinculada correctamente",
+        "telegram_id": int(payload.telegram_id),
+        "email": email,
+        "is_admin": linked.get("is_admin", False),
+        "has_telegram_link": True,
+        "account_type": "telegram-linked",
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
 
 
 @router.get("/me")
@@ -487,13 +536,41 @@ async def telegram_auth(request: TelegramAuthRequest):
 
 
 @router.post("/telegram/init")
-async def init_telegram_auth(telegram_id: int):
-    token = secrets.token_urlsafe(32)
+async def init_telegram_auth(
+    payload: TelegramInitRequest,
+    current_user: dict = Depends(get_authenticated_user),
+    db: Database = Depends(get_db),
+):
+    telegram_id = int(current_user["telegram_id"])
+    bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "jobs912bot").lstrip("@")
+    dashboard_url = (
+        (payload.dashboard_url or "").strip()
+        or os.getenv("DASHBOARD_URL")
+        or os.getenv("LANDING_URL")
+        or "https://app-jobbot.vercel.app"
+    ).rstrip("/")
+
+    if telegram_id > 0:
+        return {
+            "code": None,
+            "expires_in": 0,
+            "already_linked": True,
+            "telegram_bot_username": bot_username,
+            "dashboard_url": dashboard_url,
+        }
+
+    code = secrets.token_hex(3).upper()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=20)).isoformat()
+    db.create_telegram_link_code(telegram_id, code, expires_at)
 
     return {
-        "auth_url": f"https://jobbot.ar/auth/verify?token={token}&telegram_id={telegram_id}",
-        "token": token,
-        "expires_in": 300,
+        "code": code,
+        "expires_in": 1200,
+        "already_linked": False,
+        "telegram_bot_username": bot_username,
+        "dashboard_url": dashboard_url,
+        "auth_url": f"https://t.me/{bot_username}?start=link_{code}",
+        "instructions": f"/vincular {code}",
     }
 
 

@@ -1,0 +1,21 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/cv/cover-letter"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-cover-letter.png"],
+  ["find", "role", "textbox", "fill", "--name", "Empresa", "Google"],
+  ["find", "role", "textbox", "fill", "--name", "Posición", "Senior Frontend Developer"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/cv-cover-letter-filled.png"],
+  ["find", "role", "button", "click", "--name", "Generar carta"],
+  ["wait", "3000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-cover-letter-generated.png"]
+]

@@ -1,0 +1,14 @@
+[
+  ["open", "http://localhost:3000/"],
+  ["wait", "--load", "networkidle"],
+  ["network", "requests"],
+  ["get", "url"],
+  ["eval", "document.querySelector('meta[http-equiv=Content-Security-Policy]')?.content || 'CSP not set'"],
+  ["screenshot", "./screenshots/sec-headers-landing.png"],
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/sec-headers-login.png"],
+  ["open", "http://localhost:3000/dashboard"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/sec-headers-dashboard.png"]
+]

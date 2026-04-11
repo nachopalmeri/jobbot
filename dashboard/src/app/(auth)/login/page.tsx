@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
 import PublicFooterLinks from "@/components/PublicFooterLinks"
-import { apiRequest, setToken } from "@/lib/api"
+import { apiRequest } from "@/lib/api"
 
 function LoginContent() {
   const router = useRouter()
@@ -26,11 +26,10 @@ function LoginContent() {
       try {
         setLoading(true)
         setMessage("Validando tu código de Telegram...")
-        const data = await apiRequest<{ access_token: string }>("/auth/telegram/code", {
+        await apiRequest("/auth/telegram/code", {
           method: "POST",
           body: JSON.stringify({ code }),
         })
-        setToken(data.access_token)
         router.replace(nextPath)
       } catch (error) {
         const detail =
@@ -52,7 +51,7 @@ function LoginContent() {
     setMessage("")
     
     try {
-      const data = await apiRequest<{ access_token: string }>("/auth/token", {
+      await apiRequest("/auth/token", {
         method: "POST",
         body: new URLSearchParams({
           username: email,
@@ -60,7 +59,6 @@ function LoginContent() {
         }),
       })
 
-      setToken(data.access_token)
       router.replace(nextPath)
     } catch (error) {
       const detail =
@@ -118,22 +116,28 @@ function LoginContent() {
           ) : null}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <input
-              type="email"
-              placeholder="tu@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-              required
-            />
-            <input
-              type="password"
-              placeholder="Tu password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-              required
-            />
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">Email</span>
+              <input
+                type="email"
+                placeholder="tu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">Password</span>
+              <input
+                type="password"
+                placeholder="Tu password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+                required
+              />
+            </label>
             <button
               type="submit"
               disabled={loading || !!code}

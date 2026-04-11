@@ -1,0 +1,68 @@
+name: Repo Checks
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "api/**"
+      - "dashboard/**"
+      - "job_bot/**"
+      - ".github/workflows/repo-checks.yml"
+      - "pytest.ini"
+  pull_request:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "dashboard/**"
+      - "job_bot/**"
+      - ".github/workflows/repo-checks.yml"
+      - "pytest.ini"
+  workflow_dispatch:
+
+jobs:
+  backend-and-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt
+          pip install -r job_bot/requirements.txt
+
+      - name: Run Python test suite
+        run: python -m pytest -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: Run dashboard tests
+        working-directory: ./dashboard
+        run: npm test
+
+      - name: Build dashboard
+        working-directory: ./dashboard
+        env:
+          JOBBOT_API_ORIGIN: http://127.0.0.1:8000
+        run: npm run build

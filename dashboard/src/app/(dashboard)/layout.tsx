@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import Sidebar from "@/components/Sidebar"
-import { getToken } from "@/lib/api"
+import { apiRequest } from "@/lib/api"
 
 export default function DashboardLayout({
   children,
@@ -13,15 +13,32 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const pathname = usePathname()
-  const token = getToken()
+  const [status, setStatus] = useState<"loading" | "ready">("loading")
 
   useEffect(() => {
-    if (!token) {
-      router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`)
-    }
-  }, [pathname, router, token])
+    let active = true
 
-  if (!token) {
+    const checkSession = async () => {
+      try {
+        await apiRequest("/auth/me", {}, true)
+        if (active) {
+          setStatus("ready")
+        }
+      } catch {
+        if (active) {
+          router.replace(`/login?next=${encodeURIComponent(pathname || "/dashboard")}`)
+        }
+      }
+    }
+
+    void checkSession()
+
+    return () => {
+      active = false
+    }
+  }, [pathname, router])
+
+  if (status !== "ready") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
         Cargando tu dashboard...

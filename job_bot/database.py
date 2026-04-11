@@ -96,12 +96,16 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                conn.execute(query, params)
-                conn.commit()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     conn.execute(query, params)
+                    conn.commit()
+                else:
+                    with conn:
+                        conn.execute(query, params)
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
 
     def _fetchone(self, query: str, params: tuple = ()):
         """Retorna una sola fila como dict."""
@@ -116,11 +120,15 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                row = conn.execute(query, params).fetchone()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     row = conn.execute(query, params).fetchone()
+                else:
+                    with conn:
+                        row = conn.execute(query, params).fetchone()
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
             return dict(row) if row else None
 
     def _fetchall(self, query: str, params: tuple = ()):
@@ -136,11 +144,15 @@ class Database:
                 conn.close()
         else:
             conn = self._get_conn()
-            if self.db_path == ":memory:":
-                rows = conn.execute(query, params).fetchall()
-            else:
-                with conn:
+            try:
+                if self.db_path == ":memory:":
                     rows = conn.execute(query, params).fetchall()
+                else:
+                    with conn:
+                        rows = conn.execute(query, params).fetchall()
+            finally:
+                if self.db_path != ":memory:":
+                    conn.close()
             return [dict(r) for r in rows]
 
     def _init_db(self):

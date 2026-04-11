@@ -9,9 +9,10 @@ __pycache__
 .env
 .env.*
 job_bot.db
-dashboard
-frontend
-legacy
-docs
 node_modules
 npm-debug.log
+
+# Este contexto Docker representa el backend/bot activo.
+# El dashboard se valida y despliega por separado.
+frontend
+legacy

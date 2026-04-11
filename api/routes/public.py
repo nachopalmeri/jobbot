@@ -85,3 +85,22 @@ async def health_check(db: Database = Depends(get_db)):
 
     overall = "ok" if checks["database"] == "ok" else "degraded"
     return {"status": overall, "checks": checks}
+
+
+@router.get("/health/live")
+async def live_check():
+    return {"status": "ok"}
+
+
+@router.get("/health/ready")
+async def ready_check(db: Database = Depends(get_db)):
+    checks = {"database": "ok"}
+    try:
+        db.get_stats()
+    except Exception:
+        checks["database"] = "error"
+
+    return {
+        "status": "ready" if checks["database"] == "ok" else "not_ready",
+        "checks": checks,
+    }

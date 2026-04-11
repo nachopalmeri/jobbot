@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, Geist_Mono, Sora } from "next/font/google";
 
-import { appUrl, landingUrl, siteName } from "@/lib/site";
+import { appUrl, siteName } from "@/lib/site";
 
 import "./globals.css";
 
@@ -48,7 +48,7 @@ export const metadata: Metadata = {
       "JobBot AR centraliza tu búsqueda de empleo tech en LATAM: analiza CVs con IA y facilita aplicaciones con información relevante.",
     images: [
       {
-        url: `${landingUrl}/og-jobbot-dashboard.png`,
+        url: `${appUrl}/opengraph-image`,
         width: 1200,
         height: 630,
         alt: "JobBot dashboard y CV Suite",
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
     title: `${siteName} | Dashboard y CV Intelligence`,
     description:
       "Pipeline, CV Suite, búsquedas guiadas y preparación de entrevistas en un solo lugar.",
-    images: [`${landingUrl}/og-jobbot-dashboard.png`],
+    images: [`${appUrl}/opengraph-image`],
   },
   robots: {
     index: true,

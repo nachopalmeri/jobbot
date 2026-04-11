@@ -1,0 +1,16 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "admin@example.com"],
+  ["fill", "@e2", "admin123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/admin"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/admin.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/admin-scroll.png"]
+]

@@ -1,0 +1,22 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["click", "@e3"],
+  ["wait", "1000"],
+  ["screenshot", "./screenshots/error-login-empty.png"],
+  ["fill", "@e1", "invalid-email"],
+  ["fill", "@e2", "123"],
+  ["click", "@e3"],
+  ["wait", "1000"],
+  ["screenshot", "./screenshots/error-login-invalid.png"],
+  ["open", "http://localhost:3000/register"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e3", "short"],
+  ["click", "@e5"],
+  ["wait", "1000"],
+  ["screenshot", "./screenshots/error-register-short-password.png"],
+  ["open", "http://localhost:3000/buscar"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/error-buscar-unauthenticated.png"]
+]

@@ -36,14 +36,18 @@ TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN", "")
 # ============================================================
 # BASE DE DATOS Y ARCHIVOS
 # ============================================================
-DATABASE_TYPE = os.getenv("DATABASE_TYPE", "sqlite").lower()
+# En producción, PostgreSQL es el default. SQLite solo para desarrollo/test local.
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+_is_production = APP_ENV in ("production", "prod", "staging")
+
+DATABASE_TYPE = os.getenv("DATABASE_TYPE", "postgresql" if _is_production else "sqlite").lower()
 DATABASE_PATH = os.getenv("DATABASE_PATH", "job_bot.db")
 CV_STORAGE_PATH = os.getenv("CV_STORAGE_PATH", "cvs/")
 
 # Supabase (Postgres)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-DATABASE_URL = os.getenv("DATABASE_URL", "")  # URL de conexión directa a PG
+DATABASE_URL = os.getenv("DATABASE_URL", "")  # URL de conexión directa a PG (ej: postgresql://user:pass@host/db)
 
 # ============================================================
 # SCHEDULER (per-user — valores almacenados en DB por usuario)

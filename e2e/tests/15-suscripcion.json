@@ -1,0 +1,19 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/suscripcion"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/suscripcion.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/suscripcion-planes.png"],
+  ["scroll", "down", "600"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/suscripcion-comparacion.png"]
+]

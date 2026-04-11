@@ -115,3 +115,24 @@ def test_password_reset_confirm_rejects_invalid_token(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "El enlace de recuperacion es invalido o ya expiró"
+
+
+def test_link_telegram_links_existing_web_account(client, temp_db):
+    temp_db.create_user_if_not_exists(-10, "Web User")
+    temp_db.create_web_user(-10, "link@example.com", auth.get_password_hash("secret123"))
+
+    response = client.post(
+        "/auth/link",
+        json={
+            "telegram_id": 998,
+            "email": "link@example.com",
+            "password": "secret123",
+            "telegram_name": "Linked User",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["telegram_id"] == 998
+    assert payload["has_telegram_link"] is True
+    assert payload["account_type"] == "telegram-linked"

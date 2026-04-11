@@ -89,12 +89,15 @@ jobbot/
 
 ## Flujo de Trabajo para Jobbot
 
+Ver `GLOBAL_WORKFLOW.md` en la raíz del proyecto para el workflow global completo con Skills, Agentes y MCPs.
+
+Resumen rápido:
 ```
 1. PLANIFICAR   → tasks/todo.md con items verificables
-2. SELECCIONAR  → Elegir skills/workflows del catálogo global según el contexto
+2. SELECCIONAR  → Skills/workflows del catálogo global según contexto
 3. EJECUTAR     → Commits chicos y temáticos (ver pr_policy.md)
-4. ENSEÑAR      → Clase del Profesor Harvard post-cambio significativo
-5. VERIFICAR    → Tests, logs, diff real
-6. DOCUMENTAR   → tasks/lessons.md + tasks/architecture_log.md
-7. PR           → Según pr_policy.md: branch temática, checklist, draft → ready
+4. VERIFICAR    → verification-before-completion (tests, logs, diff)
+5. DOCUMENTAR   → tasks/lessons.md + tasks/architecture_log.md
+6. INTEGRAR     → MCPs (Google Workspace) si aplica
+7. PR           → Branch temática, checklist, draft → ready
 ```

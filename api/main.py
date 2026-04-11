@@ -8,6 +8,11 @@ from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .core.cache import cache
+from .middleware.audit_logging import AuditLogMiddleware
+from .middleware.payload_limit import PayloadSizeMiddleware
+from .middleware.security_headers import SecurityHeadersMiddleware
+from .middleware.xss_protection import XSSProtectionMiddleware
 from .rate_limit import (
     API_LIMIT,
     API_WINDOW_SECONDS,
@@ -16,6 +21,11 @@ from .rate_limit import (
     rate_limiter,
 )
 from .routes import admin, auth, credits, cv, jobs, public, subscriptions, users
+
+try:
+    from job_bot.database import Database
+except ImportError:
+    from database import Database
 
 
 logger = logging.getLogger("jobbot.api")
@@ -62,6 +72,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(PayloadSizeMiddleware, max_size_bytes=10 * 1024 * 1024)
+app.add_middleware(XSSProtectionMiddleware)
+app.add_middleware(AuditLogMiddleware, database=Database())
 
 
 def _client_ip(request: Request) -> str:
@@ -152,6 +166,56 @@ async def logging_and_rate_limit_middleware(request: Request, call_next):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.get("/health")
+async def health_check():
+    """Basic health check - always returns 200 if server is up."""
+    return {"status": "healthy", "timestamp": time.time()}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness check - verifies database connectivity."""
+    try:
+        db = Database()
+        # Try a simple query
+        db._execute("SELECT 1", ())
+        return {
+            "status": "ready",
+            "database": "connected",
+            "cache": "redis" if os.getenv("REDIS_URL") else "memory",
+            "timestamp": time.time(),
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "error": "database_connection_failed"},
+        )
+
+
+@app.get("/health/live")
+async def health_live():
+    """Liveness check - confirms the application is running."""
+    return {"status": "alive", "timestamp": time.time()}
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Basic metrics for monitoring (no sensitive data)."""
+    from .rate_limit import rate_limiter
+    
+    return {
+        "timestamp": time.time(),
+        "version": "1.0.0",
+        "rate_limiter": {
+            "active_buckets": len(rate_limiter._buckets),
+        },
+        "cache": {
+            "type": "redis" if os.getenv("REDIS_URL") else "memory",
+        },
+    }
 
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])

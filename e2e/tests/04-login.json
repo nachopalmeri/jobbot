@@ -1,0 +1,16 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/auth-login.png"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/auth-login-filled.png"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["get", "url"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/auth-login-success.png"]
+]

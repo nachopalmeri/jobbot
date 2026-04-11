@@ -4,8 +4,8 @@
 
 Production source of truth:
 
-- Public landing: `frontend/src/app/page.tsx`
-- Dashboard: `frontend/src/app/dashboard/*`
+- Public landing: `dashboard/src/app/page.tsx`
+- Dashboard: `dashboard/src/app/(dashboard)/*`
 - Backend: `api/`
 
 This folder should not be used for new pricing, feature copy, or product claims.

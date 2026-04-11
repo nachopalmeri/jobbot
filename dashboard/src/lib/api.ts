@@ -13,18 +13,18 @@ export function getApiBaseUrl() {
 }
 
 export function getToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  return localStorage.getItem("token");
+  return null;
 }
 
-export function setToken(token: string) {
-  localStorage.setItem("token", token);
+export function setToken(_: string) {
+  return;
 }
 
-export function clearToken() {
-  localStorage.removeItem("token");
+export async function clearToken() {
+  await fetch(`${resolveApiBaseUrl()}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 export async function apiRequest<T>(
@@ -46,17 +46,10 @@ export async function apiRequest<T>(
     );
   }
 
-  if (requiresAuth) {
-    const token = getToken();
-    if (!token) {
-      throw { message: "Sesion expirada", status: 401 } satisfies ApiError;
-    }
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers,
+    credentials: "include",
   });
 
   const contentType = response.headers.get("content-type") ?? "";

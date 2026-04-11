@@ -4,8 +4,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-import requests
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+import httpx
 from pydantic import BaseModel
 
 try:
@@ -89,12 +89,19 @@ async def analyze_with_groq(prompt: str) -> str:
         "max_tokens": 1024,
     }
 
-    response = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers=headers,
-        json=data,
-        timeout=30,
-    )
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=data,
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No se pudo completar el analisis",
+        ) from exc
+
     if response.status_code != 200:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

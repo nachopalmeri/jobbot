@@ -147,9 +147,9 @@ La idea es ir ampliando esta suite a medida que el bot crece.
 
 ## Estado de landing y deploy
 
-- La landing publica canonica vive en `frontend/src/app/page.tsx`.
-- `job_bot/landing/index.html` queda solo como backup de una version estatica legacy.
-- Si tenes un deploy viejo en Vercel apuntando a ese HTML, migra primero a `jobbot/frontend` antes de borrar o archivar la landing vieja.
+- La landing publica y el dashboard viven en `dashboard/`.
+- `job_bot/landing/index.html` queda como respaldo legacy, fuera del flujo canónico de release.
+- Si existe un deploy viejo apuntando a ese HTML estático, migrarlo al proyecto `dashboard/` antes de archivar el contenido legacy.
 
 ---
 

@@ -1,0 +1,14 @@
+[
+  ["open", "http://localhost:3000/"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "1000"],
+  ["snapshot", "-i"],
+  ["get", "title"],
+  ["screenshot", "./screenshots/landing-hero.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/landing-features.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/landing-bottom.png"]
+]

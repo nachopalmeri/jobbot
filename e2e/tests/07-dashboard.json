@@ -1,0 +1,17 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/dashboard"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/dashboard-home.png"],
+  ["scroll", "down", "600"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/dashboard-scroll.png"]
+]

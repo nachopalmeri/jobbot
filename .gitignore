@@ -26,6 +26,7 @@ wheels/
 
 # Virtual environments and secrets
 .env
+.env.*
 .venv
 env/
 venv/
@@ -45,10 +46,18 @@ Thumbs.db
 # Logs
 *.log
 
-# Database
+# Database and PII
 *.db
 *.sqlite
 *.sqlite3
+job_bot.db
+*.db-journal
+job_bot/cvs/
+bot/cvs/
+cvs/
+*.pdf
+uploads/
+backups/
 
 # Node
 node_modules/

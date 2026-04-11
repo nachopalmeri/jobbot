@@ -1,0 +1,12 @@
+[
+  ["open", "http://localhost:3000/register"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/auth-register.png"],
+  ["fill", "@e1", "Nuevo Usuario"],
+  ["fill", "@e2", "nuevo@example.com"],
+  ["fill", "@e3", "password123"],
+  ["fill", "@e4", "password123"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/auth-register-filled.png"]
+]

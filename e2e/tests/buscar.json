@@ -1,0 +1,19 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/buscar"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["find", "role", "textbox", "fill", "--name", "Buscar empleo", "desarrollador frontend"],
+  ["wait", "1000"],
+  ["find", "role", "button", "click", "--name", "Buscar"],
+  ["wait", "2000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/buscar-resultados.png"]
+]

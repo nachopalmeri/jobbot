@@ -14,6 +14,7 @@ except ImportError:
     from job_scraper import JobScraper
     from cv_analyzer import build_profile_context, compare_cv_with_offer
 
+from ..core.cache import cache, job_search_cache, CacheManager
 from .auth import get_authenticated_user
 
 
@@ -187,6 +188,7 @@ def _require_search_quota(db: Database, telegram_id: int):
 
 
 @router.get("/search")
+@job_search_cache  # Cache with 5min TTL by default
 async def search_jobs(
     q: str = Query("", description="Query de busqueda"),
     modality: Optional[str] = Query("all", description="remote, hybrid, onsite"),

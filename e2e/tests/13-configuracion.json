@@ -1,0 +1,22 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/configuracion"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/configuracion.png"],
+  ["find", "role", "tab", "click", "--name", "Perfil"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/configuracion-perfil.png"],
+  ["find", "role", "tab", "click", "--name", "Notificaciones"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/configuracion-notificaciones.png"],
+  ["find", "role", "tab", "click", "--name", "Seguridad"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/configuracion-seguridad.png"]
+]

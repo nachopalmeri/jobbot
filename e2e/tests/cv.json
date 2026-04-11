@@ -1,0 +1,21 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/cv"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-page.png"],
+  ["find", "role", "button", "click", "--name", "Subir CV"],
+  ["wait", "1000"],
+  ["snapshot", "-i"],
+  ["open", "http://localhost:3000/cv/historial"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-historial.png"]
+]

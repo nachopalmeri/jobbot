@@ -1,0 +1,19 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/postulaciones"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/postulaciones-kanban.png"],
+  ["find", "role", "button", "click", "--name", "Nueva postulación"],
+  ["wait", "1000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/nueva-postulacion.png"]
+]

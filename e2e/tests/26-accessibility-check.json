@@ -1,0 +1,23 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/cv/cover-letter"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/a11y-cover-letter.png"],
+  ["find", "role", "heading", "text"],
+  ["find", "role", "form", "text"],
+  ["open", "http://localhost:3000/postulaciones"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/a11y-postulaciones.png"],
+  ["open", "http://localhost:3000/configuracion"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/a11y-configuracion.png"]
+]

@@ -1,0 +1,22 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/cv/historial"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-historial-list.png"],
+  ["click", "@e1"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/cv-historial-detail.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/cv-historial-detail-scroll.png"]
+]

@@ -1,0 +1,23 @@
+[
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/buscar"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/buscar-empty.png"],
+  ["find", "role", "textbox", "fill", "--name", "Buscar empleo", "desarrollador frontend react"],
+  ["wait", "1000"],
+  ["screenshot", "./screenshots/buscar-typing.png"],
+  ["find", "role", "button", "click", "--name", "Buscar"],
+  ["wait", "3000"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/buscar-results.png"],
+  ["scroll", "down", "800"],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/buscar-results-scroll.png"]
+]

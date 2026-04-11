@@ -33,10 +33,10 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: https:",
-      "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
+      "font-src 'self' https://fonts.gstatic.com",
       `connect-src 'self' ${Array.from(new Set(apiOrigins)).join(" ")}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
@@ -52,16 +52,6 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
-  },
-  async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: "/",
-          destination: "/legacy/jobbot-lime.html",
-        },
-      ],
-    };
   },
   async headers() {
     return [

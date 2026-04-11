@@ -1,0 +1,22 @@
+[
+  ["set", "viewport", "768", "1024", "2"],
+  ["open", "http://localhost:3000/"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/tablet-landing.png"],
+  ["open", "http://localhost:3000/login"],
+  ["wait", "--load", "networkidle"],
+  ["fill", "@e1", "test@example.com"],
+  ["fill", "@e2", "password123"],
+  ["click", "@e3"],
+  ["wait", "--load", "networkidle"],
+  ["wait", "2000"],
+  ["open", "http://localhost:3000/dashboard"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/tablet-dashboard.png"],
+  ["open", "http://localhost:3000/buscar"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/tablet-buscar.png"],
+  ["open", "http://localhost:3000/postulaciones"],
+  ["wait", "--load", "networkidle"],
+  ["screenshot", "./screenshots/tablet-postulaciones.png"]
+]

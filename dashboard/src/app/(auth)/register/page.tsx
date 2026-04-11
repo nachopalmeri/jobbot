@@ -5,10 +5,9 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import PublicFooterLinks from "@/components/PublicFooterLinks"
-import { apiRequest, setToken } from "@/lib/api"
+import { apiRequest } from "@/lib/api"
 
 interface RegisterResponse {
-  access_token: string
   is_temp_account?: boolean
 }
 
@@ -38,7 +37,6 @@ export default function RegisterPage() {
         }),
       })
 
-      setToken(data.access_token)
       router.replace(
         data.is_temp_account ?? !trimmedTelegramId
           ? "/dashboard/configuracion?linkTelegram=1"
@@ -99,39 +97,53 @@ export default function RegisterPage() {
           ) : null}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <input
-              type="text"
-              placeholder="Tu nombre"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-            />
-            <input
-              type="text"
-              placeholder="ID de Telegram opcional"
-              value={telegramId}
-              onChange={(e) => setTelegramId(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-            />
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">Nombre</span>
+              <input
+                type="text"
+                placeholder="Tu nombre"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">
+                ID de Telegram opcional
+              </span>
+              <input
+                type="text"
+                placeholder="ID de Telegram opcional"
+                value={telegramId}
+                onChange={(e) => setTelegramId(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+              />
+            </label>
             <p className="px-1 text-xs leading-6 text-white/58">
               Si lo completás ahora, la cuenta queda lista para alertas y automatizaciones del bot.
             </p>
-            <input
-              type="email"
-              placeholder="tu@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-              required
-            />
-            <input
-              type="password"
-              placeholder="Elegí una password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
-              required
-            />
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">Email</span>
+              <input
+                type="email"
+                placeholder="tu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-white/78">Password</span>
+              <input
+                type="password"
+                placeholder="Elegí una password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-2xl border border-white/12 bg-white/10 px-4 py-3 text-white placeholder:text-white/38 focus:border-indigo-300 focus:outline-none"
+                required
+              />
+            </label>
             <button
               type="submit"
               disabled={loading}

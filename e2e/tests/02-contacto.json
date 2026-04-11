@@ -1,0 +1,11 @@
+[
+  ["open", "http://localhost:3000/contacto"],
+  ["wait", "--load", "networkidle"],
+  ["snapshot", "-i"],
+  ["screenshot", "./screenshots/contacto.png"],
+  ["fill", "@e1", "Usuario de Prueba"],
+  ["fill", "@e2", "test@example.com"],
+  ["fill", "@e3", "Este es un mensaje de prueba para el formulario de contacto."],
+  ["wait", "500"],
+  ["screenshot", "./screenshots/contacto-filled.png"]
+]
