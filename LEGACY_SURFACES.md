@@ -10,13 +10,9 @@ Todo lo demás debe tratarse como legado o histórico hasta que sea migrado o ar
 
 ## Directorios fuera del camino canónico
 
-- `jobbot/`
-- `jobobt/`
-- `frontend/`
-- `y/`
-- `legacy/`
-- `job_bot/landing/`
-- `dashboard/public/legacy/`
+- `archive/jobbot/`
+- `archive/jobobt/`
+- `archive/y/`
 
 ## Regla operativa
 
@@ -24,3 +20,8 @@ Todo lo demás debe tratarse como legado o histórico hasta que sea migrado o ar
 - No agregar features nuevas allí.
 - No extender CI ni documentación activa usando esos paths.
 - Si se necesita conservar material histórico, moverlo a una estrategia explícita de archivo.
+
+## Excepción activa
+
+- `job_bot/landing/` ya no se trata como legacy de deploy.
+- Hoy funciona como la landing pública marketinera separada de la app.

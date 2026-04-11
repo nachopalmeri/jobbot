@@ -45,6 +45,7 @@ Thumbs.db
 
 # Logs
 *.log
+firebase-debug.log
 
 # Database and PII
 *.db
@@ -73,6 +74,8 @@ htmlcov/
 # Backup
 backups/
 *.backup
+*.bak
+*.orig
 
 # Temporary
 tmp/
@@ -81,3 +84,4 @@ temp/
 *.tar.gz
 .vercel/
 .codex
+session-ses_*.md

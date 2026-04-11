@@ -4,11 +4,11 @@ export const supportEmail =
 export const supportMailto = `mailto:${supportEmail}`;
 
 export const appUrl =
-  process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://app.jobbot.ar";
+  process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://app-jobbot.vercel.app";
 
 export const landingUrl =
   process.env.NEXT_PUBLIC_LANDING_URL?.trim() ||
-  "https://jobbot.ar";
+  "https://jobbot-lime.vercel.app";
 
 export const siteName = "JobBot";
 

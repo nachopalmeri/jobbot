@@ -8,19 +8,19 @@
   <meta name="description" content="JobBot AR automatiza tu búsqueda de empleo tech en LATAM: analiza tu CV con IA, monitorea múltiples fuentes y te notifica solo las ofertas con alto match." />
   <meta name="robots" content="index,follow" />
   <meta name="keywords" content="jobbot, empleo argentina, ats checker, rank my cv, dashboard laboral, busqueda de trabajo" />
-  <link rel="canonical" href="https://jobbot.ar/" />
+  <link rel="canonical" href="https://jobbot-lime.vercel.app/" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://jobbot.ar/" />
+  <meta property="og:url" content="https://jobbot-lime.vercel.app/" />
   <meta property="og:title" content="JobBot AR — Tu asistente para conseguir trabajo sin quemarte" />
   <meta property="og:description" content="Búsquedas guiadas, pipeline, CV Intelligence y alertas para conseguir trabajo con más foco." />
-  <meta property="og:image" content="https://jobbot.ar/og-jobbot-dashboard.png" />
+  <meta property="og:image" content="https://jobbot-lime.vercel.app/og-jobbot-dashboard.png" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "Organization",
     "name": "JobBot AR",
-    "url": "https://jobbot.ar",
-    "logo": "https://jobbot.ar/jobbot-logo.svg",
+    "url": "https://jobbot-lime.vercel.app",
+    "logo": "https://jobbot-lime.vercel.app/jobbot-logo.svg",
     "sameAs": [
       "https://www.linkedin.com/company/jobbot",
       "https://x.com/jobbot"
@@ -30,7 +30,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="JobBot AR — Tu asistente para conseguir trabajo sin quemarte" />
   <meta name="twitter:description" content="Búsquedas guiadas, ATS checker, CV Suite y un dashboard que organiza todo tu proceso." />
-  <meta name="twitter:image" content="https://jobbot.ar/og-jobbot-dashboard.png" />
+  <meta name="twitter:image" content="https://jobbot-lime.vercel.app/og-jobbot-dashboard.png" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -3896,23 +3896,8 @@
     }
 
     .plan-badge.free {
-
-    .plan-badge.starter {
-      background: var(--accent-soft);
-      color: var(--accent-hover);
-    }
       background: var(--surface-soft);
-
-    .plan-badge.starter {
-      background: var(--accent-soft);
-      color: var(--accent-hover);
-    }
       color: var(--text-muted);
-
-    .plan-badge.starter {
-      background: var(--accent-soft);
-      color: var(--accent-hover);
-    }
     }
 
     .plan-badge.starter {
@@ -4003,6 +3988,76 @@
       font-size: 0.78rem;
       font-weight: 600;
       color: var(--primary);
+    }
+
+    .pricing-launch-note {
+      max-width: 760px;
+      margin: 1.5rem auto 0;
+      padding: 1rem 1.25rem;
+      border: 1px solid rgba(16, 185, 129, 0.24);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(34, 197, 94, 0.06));
+      color: var(--text);
+      text-align: center;
+      font-size: 0.95rem;
+    }
+
+    .pricing-card.is-coming-soon {
+      overflow: hidden;
+    }
+
+    .pricing-card.is-coming-soon .plan-price,
+    .pricing-card.is-coming-soon .plan-desc,
+    .pricing-card.is-coming-soon .plan-features,
+    .pricing-card.is-coming-soon .plan-note,
+    .pricing-card.is-coming-soon .plan-billing-note {
+      filter: blur(2px);
+      opacity: 0.72;
+    }
+
+    .pricing-card.is-coming-soon .btn {
+      opacity: 0.65;
+      pointer-events: none;
+      cursor: not-allowed;
+    }
+
+    .coming-soon-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      background: linear-gradient(180deg, rgba(247, 248, 250, 0.16), rgba(247, 248, 250, 0.78));
+      backdrop-filter: blur(4px);
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .coming-soon-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.75rem 1rem;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.9);
+      color: white;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .coming-soon-pill i {
+      color: #facc15;
+    }
+
+    .coming-soon-subcopy {
+      margin-top: 0.85rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: center;
     }
 
     /* Pricing Comparison Table */
@@ -5390,11 +5445,15 @@
         <div class="section-header gs-fade">
           <span class="section-icon">💎</span>
           <h2>Elegí tu plan</h2>
-          <p>Empezá gratis y escalá cuando quieras. Sin compromisos.</p>
+          <p>Mostramos la estructura de planes y créditos para el lanzamiento público. Acceso comercial completo: próximamente.</p>
+        </div>
+
+        <div class="pricing-launch-note gs-fade">
+          <strong>Controlled launch beta:</strong> hoy JobBot está entrando en acceso anticipado. El pricing ya está definido, pero la apertura pública de planes y créditos llega próximamente.
         </div>
 
         <div class="pricing-grid">
-          <div class="pricing-card free gs-fade">
+          <div class="pricing-card free is-coming-soon gs-fade">
             <div class="plan-badge free">Free</div>
             <div class="plan-price">
               <span class="currency">$</span><span class="amount">0</span><span class="period">/mes</span>
@@ -5409,9 +5468,15 @@
               <li><i class="fas fa-times"></i> Pipeline de postulaciones</li>
               <li><i class="fas fa-times"></i> Mock interviews</li>
             </ul>
-            <a href="https://app-jobbot.vercel.app/register" class="btn btn-ghost btn-full">Empezar gratis</a>
+            <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
+            <div class="coming-soon-overlay">
+              <div>
+                <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                <p class="coming-soon-subcopy">Apertura gradual durante la beta cerrada.</p>
+              </div>
+            </div>
           </div>
-          <div class="pricing-card starter gs-fade">
+          <div class="pricing-card starter is-coming-soon gs-fade">
             <div class="plan-badge starter">Starter</div>
             <div class="plan-price">
               <span class="currency">$</span><span class="amount">4</span><span class="period">/mes</span>
@@ -5428,11 +5493,17 @@
               <li><i class="fas fa-times"></i> Match score avanzado</li>
               <li><i class="fas fa-times"></i> Cover letters</li>
             </ul>
-            <a href="https://app-jobbot.vercel.app/dashboard/suscripcion" class="btn btn-ghost btn-full">Obtener Starter</a>
+            <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
             <p class="plan-note">Para quienes buscan con intención pero aún no necesitan IA.</p>
+            <div class="coming-soon-overlay">
+              <div>
+                <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                <p class="coming-soon-subcopy">Precio definido, habilitación pública en próximas semanas.</p>
+              </div>
+            </div>
           </div>
 
-          <div class="pricing-card pro popular gs-fade">
+          <div class="pricing-card pro popular is-coming-soon gs-fade">
             <div class="plan-badge pro">Más popular</div>
             <div class="plan-price">
               <span class="currency">$</span><span class="amount">8</span><span class="period">/mes</span>
@@ -5449,11 +5520,17 @@
               <li><i class="fas fa-times"></i> Cover letters premium</li>
               <li><i class="fas fa-times"></i> Mock interviews</li>
             </ul>
-            <a href="https://app-jobbot.vercel.app/dashboard/suscripcion" class="btn btn-primary btn-full">Obtener Pro</a>
+            <a href="#" class="btn btn-primary btn-full" aria-disabled="true">Próximamente</a>
             <p class="plan-note">El mejor equilibrio entre volumen, tracker y CV Suite.</p>
+            <div class="coming-soon-overlay">
+              <div>
+                <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                <p class="coming-soon-subcopy">Este será el plan principal cuando abramos al público.</p>
+              </div>
+            </div>
           </div>
 
-          <div class="pricing-card premium gs-fade">
+          <div class="pricing-card premium is-coming-soon gs-fade">
             <div class="plan-badge premium">Premium</div>
             <div class="plan-price">
               <span class="currency">$</span><span class="amount">12</span><span class="period">/mes</span>
@@ -5470,8 +5547,14 @@
               <li><i class="fas fa-check"></i> Priorización para aplicar mejor</li>
               <li><i class="fas fa-check"></i> Mejor experiencia operativa web + bot</li>
             </ul>
-            <a href="https://app-jobbot.vercel.app/dashboard/suscripcion" class="btn btn-ghost btn-full">Obtener Premium</a>
+            <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
             <p class="plan-note">También podés ir por créditos si solo querés usar CV Suite bajo demanda.</p>
+            <div class="coming-soon-overlay">
+              <div>
+                <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                <p class="coming-soon-subcopy">Listo para launch controlado, todavía no abierto masivamente.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -5525,7 +5608,7 @@
           </div>
 
           <div class="pricing-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-            <div class="pricing-card gs-fade" style="border: 2px solid var(--primary);">
+            <div class="pricing-card is-coming-soon gs-fade" style="border: 2px solid var(--primary);">
               <div class="plan-badge" style="background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%); color: white;">CV Suite Unlock</div>
               <div class="plan-price">
                 <span class="currency">$</span><span class="amount">9</span>
@@ -5537,10 +5620,16 @@
                 <li><i class="fas fa-check"></i> <strong>1 crédito = 1 análisis IA</strong> o 1 cover letter</li>
                 <li><i class="fas fa-check"></i> Los créditos <strong>nunca expiran</strong></li>
               </ul>
-              <a href="https://app-jobbot.vercel.app/dashboard/creditos" class="btn btn-primary btn-full">Desbloquear CV Suite</a>
+              <a href="#" class="btn btn-primary btn-full" aria-disabled="true">Próximamente</a>
+              <div class="coming-soon-overlay">
+                <div>
+                  <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                  <p class="coming-soon-subcopy">Los créditos también salen por etapas.</p>
+                </div>
+              </div>
             </div>
 
-            <div class="pricing-card gs-fade">
+            <div class="pricing-card is-coming-soon gs-fade">
               <div class="plan-badge">25 AI Credits</div>
               <div class="plan-price">
                 <span class="currency">$</span><span class="amount">7</span>
@@ -5552,10 +5641,15 @@
                 <li><i class="fas fa-check"></i> No expiran</li>
                 <li><i class="fas fa-check"></i> ≈ $0.28 por análisis</li>
               </ul>
-              <a href="https://app-jobbot.vercel.app/dashboard/creditos" class="btn btn-ghost btn-full">Comprar 25 créditos</a>
+              <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
+              <div class="coming-soon-overlay">
+                <div>
+                  <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                </div>
+              </div>
             </div>
 
-            <div class="pricing-card gs-fade" style="border: 2px solid var(--success);">
+            <div class="pricing-card is-coming-soon gs-fade" style="border: 2px solid var(--success);">
               <div class="plan-badge" style="background: var(--success); color: white;">⭐ Best Value</div>
               <div class="plan-price">
                 <span class="currency">$</span><span class="amount">15</span>
@@ -5567,10 +5661,15 @@
                 <li><i class="fas fa-check"></i> No expiran</li>
                 <li><i class="fas fa-check"></i> ≈ $0.25 por análisis</li>
               </ul>
-              <a href="https://app-jobbot.vercel.app/dashboard/creditos" class="btn btn-ghost btn-full">Comprar 60 créditos</a>
+              <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
+              <div class="coming-soon-overlay">
+                <div>
+                  <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                </div>
+              </div>
             </div>
 
-            <div class="pricing-card gs-fade">
+            <div class="pricing-card is-coming-soon gs-fade">
               <div class="plan-badge">150 AI Credits</div>
               <div class="plan-price">
                 <span class="currency">$</span><span class="amount">29</span>
@@ -5582,7 +5681,12 @@
                 <li><i class="fas fa-check"></i> No expiran</li>
                 <li><i class="fas fa-check"></i> ≈ $0.19 por análisis</li>
               </ul>
-              <a href="https://app-jobbot.vercel.app/dashboard/creditos" class="btn btn-ghost btn-full">Comprar 150 créditos</a>
+              <a href="#" class="btn btn-ghost btn-full" aria-disabled="true">Próximamente</a>
+              <div class="coming-soon-overlay">
+                <div>
+                  <div class="coming-soon-pill"><i class="fas fa-eye-slash"></i> Coming Soon</div>
+                </div>
+              </div>
             </div>
           </div>
 

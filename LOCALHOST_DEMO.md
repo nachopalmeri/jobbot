@@ -8,16 +8,20 @@
 
 ## 🎯 Visión General
 
-JobBot ha evolucionado de "demo potente" a **producto launchable** con arquitectura enterprise-grade.
+JobBot hoy expone dos superficies web distintas:
+
+- **Landing pública marketinera**: `job_bot/landing/index.html`
+- **App real / dashboard**: `dashboard/`
+
+No cumplen el mismo rol y no deben documentarse como si fueran una sola home.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    JOBBOT PRODUCTION READY                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  🌐 LANDING              ✅ Next.js 16, SSR, SEO-optimized        │
-│     └── /                 Modern gradient design                 │
-│         "Controlled launch beta" badge (transparencia)          │
+│  🌐 LANDING PÚBLICA      ✅ HTML/CSS/JS estático                  │
+│     └── :3011            Marketing, pricing y CTAs               │
 │                                                                  │
 │  🔐 AUTH                 ✅ Cookies httpOnly, JWT, bcrypt         │
 │     ├── /login          Real authentication                     │
@@ -52,9 +56,9 @@ JobBot ha evolucionado de "demo potente" a **producto launchable** con arquitect
 
 ## 🔗 URLs Locales (Simulación)
 
-### Frontend (Next.js)
+### App (Next.js)
 ```
-http://localhost:3000/                    ← Landing page (SSR)
+http://localhost:3000/                    ← Home interna de la app
 http://localhost:3000/login               ← Auth login
 http://localhost:3000/register            ← Auth register  
 http://localhost:3000/dashboard           ← Main dashboard (auth required)
@@ -63,6 +67,11 @@ http://localhost:3000/dashboard/postulaciones ← Pipeline
 http://localhost:3000/dashboard/cv        ← CV Suite
 http://localhost:3000/dashboard/suscripcion   ← Plans & checkout
 http://localhost:3000/dashboard/configuracion ← Preferences
+```
+
+### Landing pública (HTML legacy publicado)
+```
+http://127.0.0.1:3011/                    ← Landing marketinera pública
 ```
 
 ### Backend API (FastAPI)
@@ -443,7 +452,7 @@ docker run -d \
   jobbot-api
 
 # Verify health
-curl https://api.jobbot.ar/health/ready
+curl http://127.0.0.1:8000/health/ready
 ```
 
 ### Deploy Dashboard (Vercel)
@@ -468,7 +477,7 @@ python workers/run_worker.py beat &
 ### Post-Deploy Verification
 ```bash
 # 1. Health check
-curl -f https://api.jobbot.ar/health/ready || exit 1
+curl -f http://127.0.0.1:8000/health/ready || exit 1
 
 # 2. Auth test
 # (register + login flow)
@@ -477,7 +486,7 @@ curl -f https://api.jobbot.ar/health/ready || exit 1
 # (create test checkout, verify webhook processed)
 
 # 4. Job search test
-curl -f "https://api.jobbot.ar/jobs/search?q=python&limit=5" || exit 1
+curl -f "http://127.0.0.1:8000/jobs/search?q=python&limit=5" || exit 1
 
 # 5. Dashboard loads
 # (open https://app-jobbot.vercel.app, verify no console errors)

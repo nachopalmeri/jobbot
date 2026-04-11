@@ -2,15 +2,18 @@
 
 ## Stack canonico
 
-- Frontend publico: `frontend/`
+- Landing publica: `job_bot/landing/`
+- App real / dashboard: `dashboard/`
 - Backend API: `api/`
 - Bot de Telegram: `job_bot/`
 
 Importante:
 
-- La landing canónica para salir a mercado es `frontend/src/app/page.tsx`.
-- `job_bot/landing/index.html` queda solo como landing legacy de respaldo.
-- Si hoy tenes Vercel apuntando al `index.html` viejo, no hagas un redeploy ciego sobre ese proyecto. Crea o migra un proyecto nuevo con root en `jobbot/frontend`.
+- La landing pública publicada hoy sale de `job_bot/landing/index.html`.
+- El dashboard es la app real y sale de `dashboard/`.
+- Mientras sigas en Vercel free, usá:
+  - Landing: `https://jobbot-lime.vercel.app`
+  - App: `https://app-jobbot.vercel.app`
 
 ## Requisitos
 
@@ -54,18 +57,24 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000
 ## Frontend
 
 ```bash
-cd jobbot/frontend
+cd jobbot/dashboard
 npm install
 npm run build
 npm run start
 ```
 
-En Vercel:
+En Vercel para la app:
 
 1. Crear proyecto nuevo.
-2. Setear `Root Directory` en `jobbot/frontend`.
-3. Agregar variables `NEXT_PUBLIC_API_BASE_URL` y las que use el frontend.
-4. Verificar que el dominio principal apunte a este proyecto, no al HTML legacy.
+2. Setear `Root Directory` en `jobbot/dashboard`.
+3. Agregar `NEXT_PUBLIC_APP_URL=https://app-jobbot.vercel.app`.
+4. Agregar `NEXT_PUBLIC_LANDING_URL=https://jobbot-lime.vercel.app`.
+
+En Vercel para la landing:
+
+1. Crear proyecto estático separado.
+2. Setear `Root Directory` en `jobbot/job_bot/landing`.
+3. Verificar que los CTAs apunten a `https://app-jobbot.vercel.app`.
 
 ## Webhooks
 
@@ -111,4 +120,4 @@ En Vercel:
 - `503 en IA`: revisar `GROQ_API_KEY`.
 - `checkout falla`: revisar `STRIPE_SECRET_KEY` o `MP_ACCESS_TOKEN`.
 - `plan no sube`: revisar logs del webhook y secreto correspondiente.
-- `Vercel sigue mostrando la landing vieja`: revisar el `Root Directory` del proyecto y que el dominio este conectado al deploy de `jobbot/frontend`.
+- `Vercel sigue mostrando la landing vieja`: revisar qué proyecto está publicando `job_bot/landing/` y cuál está publicando `dashboard/`.

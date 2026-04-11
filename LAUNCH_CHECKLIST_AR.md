@@ -74,7 +74,7 @@ Desde `jobbot/`:
 python -m pytest
 ```
 
-Desde `jobbot/frontend/`:
+Desde `jobbot/dashboard/`:
 
 ```bash
 npm run build

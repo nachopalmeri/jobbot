@@ -1,50 +1,58 @@
-# JobBot — Autopilot for Your Job Search in LATAM
+# JobBot
 
-JobBot es una plataforma de búsqueda laboral tech para LATAM que automatiza 90% de la búsqueda de trabajo con IA.
+JobBot tiene hoy dos superficies web separadas:
 
-**Status**: Controlled launch beta — Producto funcional, 100% conectado, lista para usuarios reales.
+- **Landing pública marketinera** en `job_bot/landing/`
+- **App real / dashboard** en `dashboard/`
 
-## Superficies Activas
+Eso no es un accidente: la landing vende y deriva tráfico; el dashboard es donde vive el producto autenticado.
 
-| Superficie | Tecnología | Estado |
-|------------|------------|--------|
-| `api/` | FastAPI + PostgreSQL | ✅ Producción-ready (auth, billing, jobs, CV Suite) |
-| `dashboard/` | Next.js 16 App Router | ✅ Producción-ready (landing, auth, dashboard real) |
-| `job_bot/` | Python Telegram Bot | ✅ Producción-ready (14 comandos, alertas, scraping) |
+**Status**: Controlled launch beta
 
-## Qué Funciona Hoy
+## Superficies activas
 
-### ✅ Features Productivas (Launch Ready)
-- **Auth real**: JWT en cookies httpOnly, registro/login funcionando
-- **Dashboard real**: Datos de PostgreSQL, 0% mock data
-- **Pipeline de postulaciones**: CRUD completo, kanban view
-- **Checkout funcional**: Stripe + MercadoPago + webhooks automáticos
-- **Planes**: Free, Starter ($4), Pro ($8), Premium ($12)
-- **CV Suite**: ATS scoring, match con ofertas, cover letters (Groq/Llama)
-- **Bot Telegram**: 14 comandos, alertas programadas, Smart Summary UX
-- **Landing**: Next.js SSR, SEO-optimized, CTAs reales
-- **Cache**: Redis distribuido activo en endpoints críticos
-- **Workers**: Celery async para scraping, notificaciones, AI
-- **CI/CD**: GitHub Actions (tests, security, integration, deploy)
-- **Health**: `/health/ready` para Kubernetes/ALB
+| Superficie | Tecnología | Rol operativo |
+|------------|------------|---------------|
+| `job_bot/landing/` | HTML/CSS/JS estático | Landing pública que se publica en Vercel |
+| `dashboard/` | Next.js 16 App Router | App real: auth, dashboard, billing, CV Suite |
+| `api/` | FastAPI + PostgreSQL | Backend real para auth, jobs, subscriptions y admin |
+| `job_bot/` | Python Telegram Bot | Canal Telegram, alertas y automatizaciones |
 
-### ⚠️ En Beta / Mejoras Futuras
-- Analytics PostHog (tracking conversiones) - opcional pre-launch
-- GDPR data export endpoint - opcional pre-launch
-- NPS survey - post-launch
+## Setup actual en Vercel free
 
-## Estructura Canónica
+- **Landing pública**: `https://jobbot-lime.vercel.app`
+- **App / dashboard**: `https://app-jobbot.vercel.app`
 
-```
+Mientras siga el free tier, estas URLs de Vercel son la referencia operativa. No asumir dominio custom.
+
+## Regla canónica
+
+- La landing pública que se publica hoy sale de `job_bot/landing/`.
+- El dashboard publicado sale de `dashboard/`.
+- Los CTAs de la landing deben apuntar siempre a `app-jobbot.vercel.app`.
+- El código legacy o duplicado fuera de `api/`, `dashboard/`, `job_bot/` y `job_bot/landing/` no entra en el camino de release.
+
+## Qué funciona hoy
+
+- Auth real con cookies `httpOnly`
+- Dashboard conectado a la API real
+- Checkout funcional con Stripe y MercadoPago
+- Planes consistentes: Free, Starter ($4), Pro ($8), Premium ($12)
+- Sistema de créditos para CV Suite
+- Bot de Telegram con alertas, linking y flujos premium
+- Health checks y CI del repo
+
+## Estructura canónica
+
+```text
 jobbot/
-├── api/              # FastAPI: auth, billing, jobs, admin
-├── dashboard/        # Next.js: landing, auth, dashboard
-├── job_bot/          # Telegram bot + scrapers + scheduler
-├── archive/          # Duplicados históricos (inactivos)
-└── tasks/            # todo.md, lessons.md, architecture_log.md
+├── api/              # Backend real
+├── dashboard/        # App real autenticada
+├── job_bot/          # Bot Telegram
+│   └── landing/      # Landing pública marketinera
+├── archive/          # Históricos y duplicados
+└── tasks/            # Documentación de trabajo
 ```
-
-**No considerar para release**: Código fuera de `api/`, `dashboard/`, `job_bot/`.
 
 ## Desarrollo Local
 
@@ -66,6 +74,13 @@ export JWT_SECRET_KEY=$(openssl rand -hex 32)
 cd dashboard
 npm install
 npm run dev  # http://localhost:3000
+```
+
+### Landing pública
+```bash
+cd job_bot/landing
+.venv/bin/python -m http.server 3011
+# http://127.0.0.1:3011
 ```
 
 ### Bot Telegram
@@ -122,6 +137,7 @@ TELEGRAM_TOKEN=...:...
 ```
 
 ## Documentación
+- [Vercel Free Setup](VERCEL_FREE_SETUP.md)
 - [Plan Final Implementation](.kilo/plans/1775760920752-gentle-lagoon.md)
 - [Architecture Log](tasks/architecture_log.md)
 - [Lessons Learned](tasks/lessons.md)

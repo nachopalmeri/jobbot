@@ -30,13 +30,12 @@
 □ GROQ_API_KEY=<opcional-para-IA>
 ```
 
-### 2. Archivos de Logo (frontend/public/)
+### 2. Assets públicos
 
 ```bash
-□ jobbot-logo.svg ✓ (creado)
-□ icon.svg ✓ (creado)
-□ manifest.json ✓ (creado)
-□ (Opcional) Reemplazar con tus PNGs siguiendo LOGO_INSTRUCTIONS.md
+□ Landing pública en `job_bot/landing/`
+□ App real en `dashboard/`
+□ CTAs de la landing apuntando a `app-jobbot.vercel.app`
 ```
 
 ### 3. Base de Datos
@@ -132,39 +131,37 @@ sudo systemctl start jobbot-api
 sudo systemctl status jobbot-api
 ```
 
-### PASO 2: Frontend (Vercel)
+### PASO 2: App real (Vercel)
 
 ```bash
 # 1. Instalar Vercel CLI
 npm i -g vercel
 
-# 2. Ir al frontend
-cd jobbot/frontend
+# 2. Ir al dashboard
+cd jobbot/dashboard
 
 # 3. Deploy
 vercel --prod
 
 # 4. Configurar en dashboard de Vercel:
 #    - Framework: Next.js
-#    - Root: frontend/
+#    - Root: dashboard/
 #    - Build: npm run build
 ```
 
 **Variables de entorno en Vercel:**
 ```
-NEXT_PUBLIC_API_BASE_URL=https://tu-api.railway.app
+JOBBOT_API_ORIGIN=https://tu-api.railway.app
+NEXT_PUBLIC_APP_URL=https://app-jobbot.vercel.app
+NEXT_PUBLIC_LANDING_URL=https://jobbot-lime.vercel.app
 ```
 
-### PASO 3: Configurar Dominio
+### PASO 3: Landing pública (Vercel)
 
 ```bash
-# En Vercel Dashboard:
-# Settings → Domains → Add Domain → jobbot.ar
-
-# Configurar DNS en tu registrador:
-# CNAME → cname.vercel-dns.com
-# o
-# A → 76.76.21.21 (IP de Vercel)
+# Proyecto separado
+# Root: job_bot/landing
+# URL operativa: jobbot-lime.vercel.app
 ```
 
 ### PASO 4: Webhooks de Pagos
@@ -193,7 +190,7 @@ curl https://tu-api.railway.app/stats
 # Expected: {"jobs_count":..., "active_users":...}
 
 # Test 3: Landing page
-curl -I https://jobbot.ar
+curl -I https://jobbot-lime.vercel.app
 # Expected: HTTP 200
 
 # Test 4: Telegram Bot
@@ -209,9 +206,9 @@ curl -I https://jobbot.ar
 
 ```bash
 # Crear productos:
-# 1. Starter - USD 3/mes
-# 2. Pro - USD 7/mes  
-# 3. Premium - USD 15/mes
+# 1. Starter - USD 4/mes
+# 2. Pro - USD 8/mes
+# 3. Premium - USD 12/mes
 
 # Copiar los Price IDs:
 STRIPE_STARTER_PRICE_ID=price_...
@@ -235,7 +232,7 @@ MP_PREMIUM_PRICE_ID=...
 /start
 /setdomain
 # Elegir tu bot
-# Ingresar: https://jobbot.ar
+# Ingresar la URL pública que uses para la landing o app según el flujo actual
 ```
 
 ### 4. Google Search Console

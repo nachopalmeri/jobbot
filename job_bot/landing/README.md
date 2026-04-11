@@ -1,13 +1,22 @@
-# Landing Legacy
+# Public Marketing Landing
 
-`index.html` is kept here only as a backup for the old static Vercel deployment.
+`job_bot/landing/index.html` es la landing pública marketinera que hoy se publica por separado del dashboard.
 
-Production source of truth:
+Superficies reales:
 
-- Public landing: `dashboard/src/app/page.tsx`
-- Dashboard: `dashboard/src/app/(dashboard)/*`
+- Public marketing landing: `job_bot/landing/index.html`
+- Product app: `dashboard/`
 - Backend: `api/`
 
-This folder should not be used for new pricing, feature copy, or product claims.
+URLs operativas actuales en Vercel free:
 
-If you still have Vercel pointing to this static file, migrate first and archive this folder after the new Next.js deployment is live.
+- Landing: `https://jobbot-lime.vercel.app`
+- App: `https://app-jobbot.vercel.app`
+
+Regla operativa:
+
+- Esta landing vende el producto y deriva tráfico.
+- El dashboard es la app real donde entra el usuario autenticado.
+- Los CTAs de esta landing deben apuntar siempre a la app Vercel, no a proyectos viejos.
+
+Esta carpeta no es legacy para deploy. Sí debe tratarse como una superficie de marketing separada del dashboard.

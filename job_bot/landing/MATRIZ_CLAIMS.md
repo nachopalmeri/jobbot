@@ -75,10 +75,10 @@
 
 | Elemento | Anterior | Corregido | Estado |
 |----------|----------|-----------|--------|
-| Canonical | jobbot.ar | ✅ jobbot.ar | Consistente |
-| OG URL | jobbotlandingclean.vercel.app | ✅ app-jobbot.vercel.app | Unificado |
-| OG Image | jobbotlandingclean.vercel.app | ✅ app-jobbot.vercel.app | Unificado |
-| Twitter Image | jobbotlandingclean.vercel.app | ✅ app-jobbot.vercel.app | Unificado |
+| Canonical | jobbot.ar | ✅ jobbot-lime.vercel.app | Ajustado a Vercel free |
+| OG URL | jobbotlandingclean.vercel.app | ✅ jobbot-lime.vercel.app | Landing pública unificada |
+| OG Image | jobbotlandingclean.vercel.app | ✅ jobbot-lime.vercel.app | Landing pública unificada |
+| Twitter Image | jobbotlandingclean.vercel.app | ✅ jobbot-lime.vercel.app | Landing pública unificada |
 | CTAs Register | app-jobbot.vercel.app | ✅ app-jobbot.vercel.app | Consistente |
 | CTAs Suscripción | app-jobbot.vercel.app | ✅ app-jobbot.vercel.app | Consistente |
 
@@ -121,7 +121,7 @@ Elementos visuales que representan funcionalidad pero NO son datos reales:
    - Gating en dashboard (`page.tsx` con plan checks)
    - Comandos bot con `@require_plan` o similares
 
-4. **Dominios:** Mantener `app-jobbot.vercel.app` como único en OG/CTAs hasta migración definitiva a dominio propio.
+4. **Dominios:** Mantener `jobbot-lime.vercel.app` para metadata de landing y `app-jobbot.vercel.app` para CTAs y app hasta migración definitiva a dominio propio.
 
 ---
 
