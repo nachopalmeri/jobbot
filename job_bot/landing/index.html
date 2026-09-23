@@ -911,7 +911,9 @@
     /* Responsive Hero */
     @media (max-width: 1024px) {
       .hero-layout-fireworks {
-        grid-template-columns: 1fr;
+        /* minmax(0, …): a plain 1fr grows to the widest child and pushes
+           the whole hero past the screen on phones. */
+        grid-template-columns: minmax(0, 1fr);
         gap: 3rem;
         text-align: center;
       }
@@ -3689,7 +3691,10 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
-      overflow: hidden;
+      /* On phones the tracker scrolls sideways inside its card instead of
+         widening the whole page. */
+      max-width: 100%;
+      overflow-x: auto;
     }
 
     .notion-table table {
@@ -5112,6 +5117,32 @@
     @media (max-width: 640px) {
       .nav-links {
         display: none;
+      }
+
+      /* Stats rows wrap on very narrow phones (320px), and grid cells may
+         shrink below their content instead of widening the page. */
+      .hero-stats {
+        flex-wrap: wrap;
+      }
+
+      .viz-metrics > *,
+      .comparison-row > *,
+      .feature-row > * {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .hero-cta {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      /* Long CTA labels wrap instead of pushing the page sideways. */
+      .btn-lg {
+        max-width: 100%;
+        white-space: normal;
+        text-align: center;
+        justify-content: center;
       }
 
       .dash-input-row {
