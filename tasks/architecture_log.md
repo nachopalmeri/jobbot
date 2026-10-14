@@ -17,6 +17,15 @@
 
 ## Log
 
+### 2026-10-13 — Cobertura de búsqueda y jornada part-time (en curso)
+
+- **Recursos seleccionados**: `writing-plans`, `test-driven-development`, `systematic-debugging`, `code-review`; investigación delegada a OpenCode.
+- **Worker de investigación**: `opencode/muse-spark-1.3-contributor-free`; web research de solo lectura; costo/uso no reportado.
+- **Decisiones**: priorizar part-time en ranking; mantener búsquedas explícitas precisas; quitar caché del endpoint con efectos de cuota; solo integrar fuentes públicas con acceso/condiciones verificables.
+- **Cambios**: API/worker, RSS personalizados, taxonomía general, API pública Get on Board, deduplicación con procedencia.
+- **Validación**: suites dirigidas API y job_bot pasan en Python del sistema; entornos del venv siguen con dependencias incompletas.
+- **Pendiente**: StartupsArgentinas no tiene API/feed verificado ni permiso de scraping; explorar opción autorizada. Seguir con fechas, ubicación, ranking por sueldo/match y métricas por fuente.
+
 ### 2026-04-10 — Creación del Workflow Global con Skills, Agentes y MCPs
 
 - **Recurso seleccionado**: Múltiples skills del catálogo global (18 skills)

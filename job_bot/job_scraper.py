@@ -19,11 +19,20 @@ Fuentes deshabilitadas (sitios bloquean scraping):
 
 import time
 import logging
+import datetime
+import re
+import unicodedata
 import requests
 import feedparser
 from bs4 import BeautifulSoup
-from urllib.parse import quote_plus, urlparse
+from email.utils import parsedate_to_datetime
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlparse, urlsplit, urlunsplit
 from typing import List, Dict, Optional, Tuple
+
+try:
+    from job_bot.search_queries import build_search_queries
+except ImportError:  # Also support execution from inside the job_bot directory.
+    from search_queries import build_search_queries
 
 try:
     from tenacity import retry, stop_after_attempt, wait_exponential
@@ -66,22 +75,48 @@ class JobScraper:
     def __init__(self):
         self._cache: Dict[str, Tuple[float, object]] = {}
         self._provider_cooldowns: Dict[str, float] = {}
+        self.last_search_metrics: List[Dict] = []
 
     # ----------------------------------------------------------
     # BÚSQUEDA PRINCIPAL
     # ----------------------------------------------------------
 
-    def search_all(self, keywords: List[str], location: str = "Buenos Aires", max_age_days: int = 30) -> List[Dict]:
+    def search_all(
+        self,
+        keywords: List[str],
+        location: str = "Buenos Aires",
+        max_age_days: int = 30,
+        include_role_taxonomy: bool = True,
+    ) -> List[Dict]:
         """
         Busca en todas las fuentes habilitadas para la lista de keywords.
         Retorna una lista de trabajos únicos (deduplicados por URL).
         """
         all_jobs: List[Dict] = []
+        self.last_search_metrics = []
 
-        # Limitar a 5 keywords por ciclo
-        active_keywords = keywords[:5]
+        # Get on Board publica un API de búsqueda sin autenticación. Mantener el
+        # alcance acotado a Argentina y dos consultas de jornada parcial; su límite
+        # de peticiones no está documentado y sus términos permiten throttling.
+        if config.SOURCES_ENABLED.get("getonbrd") and include_role_taxonomy:
+            for schedule_query in config.GETONBRD_SEARCH_QUERIES:
+                self._safe_search(
+                    "Get on Board AR",
+                    self.search_getonbrd,
+                    all_jobs,
+                    schedule_query,
+                )
+                time.sleep(config.REQUEST_DELAY_SECONDS)
+
+        active_keywords = build_search_queries(
+            keywords,
+            config.GENERAL_SEARCH_KEYWORDS,
+            limit=config.MAX_SEARCH_KEYWORDS,
+            include_broad=include_role_taxonomy,
+        )
 
         # --- APIs que buscan por query (una request por keyword) ---
+        premium_backfill_attempted = False
         for keyword in active_keywords:
             logger.info("🔍 Buscando: '%s'", keyword)
             keyword_start_count = len(all_jobs)
@@ -112,7 +147,10 @@ class JobScraper:
                 time.sleep(2)
 
             keyword_results = len(all_jobs) - keyword_start_count
-            if keyword_results < config.PREMIUM_BACKFILL_MIN_RESULTS:
+            if (
+                not premium_backfill_attempted
+                and keyword_results < config.PREMIUM_BACKFILL_MIN_RESULTS
+            ):
                 self._safe_search(
                     "Premium Backfill",
                     self.search_premium_backfill,
@@ -121,6 +159,7 @@ class JobScraper:
                     location,
                     config.PREMIUM_BACKFILL_MIN_RESULTS - keyword_results,
                 )
+                premium_backfill_attempted = True
                 time.sleep(config.REQUEST_DELAY_SECONDS)
 
         unique_jobs = self._dedupe_jobs(all_jobs)
@@ -138,13 +177,31 @@ class JobScraper:
         return date_filtered
 
     def _safe_search(self, source_name: str, func, results: list, *args):
-        """Wrapper que ejecuta un scraper con manejo de errores."""
+        """Run one source and retain privacy-safe health metrics for this search."""
+        started_at = time.perf_counter()
         try:
             jobs = func(*args)
             results.extend(jobs)
+            metric = {
+                "source": source_name,
+                "status": "ok",
+                "jobs_count": len(jobs),
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            self.last_search_metrics.append(metric)
             logger.info("  ✅ %s: %d resultado(s)", source_name, len(jobs))
         except Exception as e:
-            logger.error("  ❌ %s falló: %s", source_name, e)
+            metric = {
+                "source": source_name,
+                "status": "error",
+                "jobs_count": 0,
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                "error_type": type(e).__name__,
+                "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            self.last_search_metrics.append(metric)
+            logger.error("  ❌ %s falló (%s)", source_name, type(e).__name__)
 
     def _cache_get(self, key: str):
         cached = self._cache.get(key)
@@ -187,24 +244,58 @@ class JobScraper:
     def _job_fingerprint(self, job: Dict) -> str:
         url = (job.get("url") or "").strip().lower()
         if url:
-            return f"url:{url}"
+            return f"url:{self._canonicalize_job_url(url)}"
         title = (job.get("title") or "").strip().lower()
         company = (job.get("company") or "").strip().lower()
         location = (job.get("location") or "").strip().lower()
         return f"meta:{title}|{company}|{location}"
 
+    @staticmethod
+    def _canonicalize_job_url(url: str) -> str:
+        """Remove common tracking noise while preserving the original apply URL."""
+        try:
+            parsed = urlsplit(url.strip())
+            hostname = (parsed.hostname or "").lower()
+            if hostname.startswith("www."):
+                hostname = hostname[4:]
+            port = parsed.port
+            netloc = hostname
+            if port and not ((parsed.scheme.lower() == "https" and port == 443) or (parsed.scheme.lower() == "http" and port == 80)):
+                netloc = f"{hostname}:{port}"
+            tracking_names = {"ref", "source", "gclid", "fbclid", "mc_cid", "mc_eid"}
+            query = [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if not key.lower().startswith("utm_") and key.lower() not in tracking_names
+            ]
+            query.sort()
+            path = parsed.path.rstrip("/") or "/"
+            scheme = parsed.scheme.lower() or "https"
+            return urlunsplit((scheme, netloc, path, urlencode(query, doseq=True), ""))
+        except (TypeError, ValueError):
+            return url
+
     def _dedupe_jobs(self, jobs: List[Dict]) -> List[Dict]:
         """
         Deduplica por URL si existe; si no, por título+empresa+ubicación.
         """
-        seen: set = set()
+        seen: Dict[str, int] = {}
         unique_jobs: List[Dict] = []
         for raw_job in jobs:
             job = self._normalize_job(raw_job)
             fingerprint = self._job_fingerprint(job)
+            sources = job.get("sources") or ([job.get("source")] if job.get("source") else [])
+            if isinstance(sources, str):
+                sources = [sources]
+            job["sources"] = list(dict.fromkeys(source for source in sources if source))
+
             if fingerprint in seen:
+                existing = unique_jobs[seen[fingerprint]]
+                existing["sources"] = list(
+                    dict.fromkeys(existing["sources"] + job["sources"])
+                )
                 continue
-            seen.add(fingerprint)
+            seen[fingerprint] = len(unique_jobs)
             unique_jobs.append(job)
         return unique_jobs
 
@@ -283,6 +374,80 @@ class JobScraper:
                 self._trip_provider(provider_name)
 
         return jobs[: config.MAX_RESULTS_PER_SOURCE]
+
+    def search_getonbrd(self, query: str) -> List[Dict]:
+        """Search published Argentina listings through Get on Board's public API."""
+        data = self._requests_get_json(
+            "https://www.getonbrd.com/api/v0/search/jobs",
+            params={
+                "query": query,
+                "country_code": "ar",
+                "page": 1,
+                "per_page": config.MAX_RESULTS_PER_SOURCE,
+                "lang": "en",
+                "expand": '["company"]',
+            },
+        )
+
+        items = data.get("data", []) if isinstance(data, dict) else []
+        jobs: List[Dict] = []
+        for item in items[: config.MAX_RESULTS_PER_SOURCE]:
+            attributes = item.get("attributes") or {}
+            company = attributes.get("company") or {}
+            company_data = company.get("data") or company
+            company_attributes = company_data.get("attributes") or company_data
+            company_name = company_attributes.get("name") or company_data.get("id") or "N/A"
+
+            country_names = attributes.get("countries") or []
+            remote_zone = attributes.get("remote_zone")
+            is_remote = bool(attributes.get("remote"))
+            location_parts = list(country_names)
+            if remote_zone and remote_zone not in location_parts:
+                location_parts.append(remote_zone)
+            if is_remote:
+                location_parts.append("Remoto")
+            location = " · ".join(str(part) for part in location_parts if part) or "Argentina"
+
+            description_parts = (
+                attributes.get("description_headline"),
+                attributes.get("description"),
+                attributes.get("functions"),
+                attributes.get("projects"),
+                attributes.get("desirable"),
+            )
+            description = BeautifulSoup(
+                " ".join(str(part) for part in description_parts if part),
+                "html.parser",
+            ).get_text(separator=" ").strip()
+
+            published_at = attributes.get("published_at")
+            try:
+                published_date = time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(published_at))
+                )
+            except (TypeError, ValueError, OverflowError):
+                published_date = ""
+
+            modality = attributes.get("modality") or {}
+            modality_data = modality.get("data") or {}
+            links = item.get("links") or {}
+            jobs.append(
+                {
+                    "title": attributes.get("title") or "Sin título",
+                    "company": company_name,
+                    "location": location,
+                    "url": links.get("public_url") or item.get("url") or "",
+                    "description": description[:1200],
+                    "source": "Get on Board",
+                    "date": published_date,
+                    "employment_type": modality_data.get("type") or "",
+                    "salary_min": attributes.get("min_salary"),
+                    "salary_max": attributes.get("max_salary"),
+                    "salary_currency": None,
+                }
+            )
+
+        return jobs
 
     # ----------------------------------------------------------
     # 1. REMOTIVE — API PÚBLICA GRATUITA
@@ -978,44 +1143,52 @@ class JobScraper:
         Rechaza:
           - Trabajos en países/ciudades específicas que no coinciden
         """
-        user_loc_lower = user_location.lower()
+        def normalize(value: str) -> str:
+            decomposed = unicodedata.normalize("NFKD", value.lower())
+            return "".join(char for char in decomposed if not unicodedata.combining(char))
 
-        # Extraer país y ciudad del usuario
-        # "Buenos Aires Argentina" -> ["buenos", "aires", "argentina"]
-        user_parts = user_loc_lower.replace(",", " ").split()
+        def has_phrase(text: str, phrase: str) -> bool:
+            normalized_phrase = normalize(phrase.strip())
+            return bool(
+                normalized_phrase
+                and re.search(r"(?<![a-z0-9])" + re.escape(normalized_phrase) + r"(?![a-z0-9])", text)
+            )
 
-        # Palabras de ubicación del usuario para matching
-        user_terms = set(user_parts)
-        # Agregar variantes comunes si detectamos Argentina o Buenos Aires
-        if any(term in ["argentina", "buenos", "aires"] for term in user_terms):
+        user_loc = normalize(user_location or "")
+        user_terms = set(user_loc.split())
+        if any(term in {"argentina", "buenos", "aires", "caba"} for term in user_terms):
             user_terms.update(config.LOCATION_VARIANTS)
-
-        # Términos que indican "abierto a cualquiera" (se aceptan siempre)
-        global_terms = config.GLOBAL_LOCATION_TERMS
+        explicitly_global_terms = config.GLOBAL_LOCATION_TERMS - {
+            "remote", "remoto", "international", "americas", "america"
+        }
+        remote_terms = {"remote", "remoto", "work from anywhere", "work from home", "wfh"}
 
         filtered = []
         for job in jobs:
-            job_loc = job.get("location", "").lower()
+            job_loc = normalize(str(job.get("location") or ""))
 
-            # Si no tiene ubicación, aceptar (mejor mostrar de más que de menos)
+            # Unknown and globally remote listings stay visible, but are not
+            # presented as confirmed Argentina-eligible opportunities.
             if not job_loc or job_loc == "n/a":
+                job["location_match"] = "unknown"
                 filtered.append(job)
                 continue
 
-            # Si la ubicación contiene algún término global → aceptar
-            if any(g in job_loc for g in global_terms):
+            if any(has_phrase(job_loc, term) for term in user_terms):
+                job["location_match"] = "eligible"
                 filtered.append(job)
                 continue
 
-            # Si la ubicación coincide con algún término del usuario → aceptar
-            if any(term in job_loc for term in user_terms):
+            if any(has_phrase(job_loc, term) for term in explicitly_global_terms):
+                job["location_match"] = "eligible"
                 filtered.append(job)
                 continue
 
-            # Si la ubicación del job es genérica sin país específico → aceptar
-            # (ej: solo dice el nombre del puesto, sin ciudad/país)
+            if any(has_phrase(job_loc, term) for term in remote_terms):
+                job["location_match"] = "unknown"
+                filtered.append(job)
+                continue
 
-            # Si llegamos acá, el job tiene una ubicación específica que no coincide → rechazar
             logger.debug("Filtrado por ubicación: '%s' (job: %s)", job_loc, job.get("title", ""))
 
         return filtered
@@ -1068,30 +1241,11 @@ class JobScraper:
 
         filtered = []
         for job in jobs:
-            text = f"{job.get('title','')} {job.get('location','')} {job.get('description','')}".lower()
-            is_part_time = any(
-                token in text
-                for token in [
-                    "part time",
-                    "part-time",
-                    "media jornada",
-                    "half time",
-                    "jornada reducida",
-                ]
-            )
-            is_full_time = any(
-                token in text
-                for token in [
-                    "full time",
-                    "full-time",
-                    "tiempo completo",
-                    "jornada completa",
-                ]
-            )
+            inferred_schedule = JobScraper.infer_job_schedule(job)
 
-            if normalized == "part_time" and is_part_time:
+            if normalized == "part_time" and inferred_schedule == "part_time":
                 filtered.append(job)
-            elif normalized == "full_time" and (is_full_time or not is_part_time):
+            elif normalized == "full_time" and inferred_schedule == "full_time":
                 filtered.append(job)
 
         logger.debug(
@@ -1101,6 +1255,47 @@ class JobScraper:
             len(jobs),
         )
         return filtered
+
+    @staticmethod
+    def infer_job_schedule(job: Dict) -> str:
+        """Infer a listing's stated schedule without treating unknown as full-time."""
+        text = " ".join(
+            str(job.get(field) or "")
+            for field in ("title", "location", "description", "employment_type", "schedule")
+        ).lower().replace("_", " ")
+
+        part_time_terms = (
+            "part time",
+            "part-time",
+            "parttime",
+            "media jornada",
+            "half time",
+            "jornada reducida",
+        )
+        full_time_terms = (
+            "full time",
+            "full-time",
+            "fulltime",
+            "tiempo completo",
+            "jornada completa",
+        )
+
+        if any(term in text for term in part_time_terms):
+            return "part_time"
+        if any(term in text for term in full_time_terms):
+            return "full_time"
+        return "unknown"
+
+    @staticmethod
+    def prioritize_part_time(jobs: List[Dict]) -> List[Dict]:
+        """Rank explicit part-time listings first, then rank each group by match."""
+        return sorted(
+            jobs,
+            key=lambda job: (
+                JobScraper.infer_job_schedule(job) != "part_time",
+                -int(job.get("match_score") or 0),
+            ),
+        )
 
     @staticmethod
     def apply_profile_relevance_filter(
@@ -1141,6 +1336,37 @@ class JobScraper:
             len(jobs),
         )
         return filtered
+
+    @staticmethod
+    def annotate_profile_relevance(
+        jobs: List[Dict], role_type: str = "", technologies: str = ""
+    ) -> List[Dict]:
+        """Keep broad-search results visible while labeling profile overlap."""
+        role_terms = [
+            part.strip().lower()
+            for part in (role_type or "").replace("/", ",").split(",")
+            if part.strip()
+        ]
+        tech_terms = [
+            part.strip().lower()
+            for part in (technologies or "").split(",")
+            if part.strip()
+        ]
+        annotated = []
+        for original in jobs:
+            job = dict(original)
+            haystack = f"{job.get('title', '')} {job.get('description', '')} {job.get('company', '')}".lower()
+            role_hits = sum(1 for term in role_terms if term in haystack)
+            tech_hits = sum(1 for term in tech_terms if term in haystack)
+            if role_hits or tech_hits >= 2:
+                relevance = "strong"
+            elif tech_hits:
+                relevance = "possible"
+            else:
+                relevance = "exploratory" if role_terms or tech_terms else "unscored"
+            job["profile_relevance"] = relevance
+            annotated.append(job)
+        return annotated
 
     # ----------------------------------------------------------
     # FILTRO EXTRA POR KEYWORDS NEGATIVAS
@@ -1204,51 +1430,50 @@ class JobScraper:
         Elimina trabajos que fueron publicados hace demasiados días.
         Parsea tanto formatos ISO (Remotive/Arbeitnow) como RSS (Google/LinkedIn).
         """
-        import datetime
-        from email.utils import parsedate_to_datetime
-        
         filtered = []
         now = datetime.datetime.now(datetime.timezone.utc)
         
         for job in jobs:
-            date_str = str(job.get("date", "")).strip()
-            if not date_str:
+            date_str = str(job.get("date") or "").strip()
+            job_date = JobScraper.parse_job_date(date_str)
+            if job_date is None:
+                job["date_status"] = "unknown"
                 filtered.append(job)
                 continue
-                
-            job_date = None
-            
-            # Intentar formato ISO
-            try:
-                if "-" in date_str[:7] and ("T" in date_str or " " in date_str):
-                    clean_date = date_str.replace("Z", "+00:00")
-                    if clean_date.isdigit():
-                        job_date = datetime.datetime.fromtimestamp(int(clean_date), tz=datetime.timezone.utc)
-                    else:
-                        job_date = datetime.datetime.fromisoformat(clean_date[:25])
-            except ValueError:
-                pass
-                
-            # Intentar formato RSS si ISO falló o no aplicaba
-            if job_date is None:
-                try:
-                    if "," in date_str and ":" in date_str:
-                        job_date = parsedate_to_datetime(date_str)
-                except Exception:
-                    pass
-                    
-            if job_date:
-                if job_date.tzinfo is None:
-                    job_date = job_date.replace(tzinfo=datetime.timezone.utc)
-                
-                days_old = (now - job_date).days
-                if days_old <= max_days:
-                    filtered.append(job)
-                else:
-                    logger.debug("Filtrado por fecha antigua (%d días): '%s' [%s]", days_old, job.get("title", ""), date_str)
-            else:
-                # Formato desconocido / error, dejamos pasar
-                logger.debug("Error parseando fecha (desconocida): '%s'", date_str)
+
+            job["date_status"] = "published"
+            days_old = (now - job_date).days
+            if days_old <= max_days:
                 filtered.append(job)
+            else:
+                logger.debug("Filtrado por fecha antigua (%d días): '%s' [%s]", days_old, job.get("title", ""), date_str)
                 
         return filtered
+
+    @staticmethod
+    def parse_job_date(value: str) -> Optional[datetime.datetime]:
+        """Parse common feed/API timestamps to UTC, returning None when uncertain."""
+        date_str = str(value or "").strip()
+        if not date_str:
+            return None
+        if date_str.isdigit():
+            if len(date_str) < 9:
+                return None
+            try:
+                timestamp = int(date_str)
+                if len(date_str) >= 13:
+                    timestamp = timestamp / 1000
+                return datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+        clean_date = date_str.replace("Z", "+00:00")
+        try:
+            parsed = datetime.datetime.fromisoformat(clean_date)
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(date_str)
+            except (TypeError, ValueError, OverflowError):
+                return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+        return parsed.astimezone(datetime.timezone.utc)

@@ -82,6 +82,20 @@ DEFAULT_KEYWORDS = [
     "web developer junior",
 ]
 
+# Cobertura común, independiente de la carrera configurada por cada usuario.
+# Se consultan primero y se reservan dos lugares para keywords personales.
+GENERAL_SEARCH_KEYWORDS = [
+    "part-time developer Argentina",
+    "part-time QA Argentina",
+    "part-time AI automation RPA Argentina",
+    "part-time systems analyst Argentina",
+    "AI trainee pasantía becario Argentina",
+    "analista funcional junior Argentina",
+    "redes soporte IT trainee Argentina",
+    "AI startup part-time remote Argentina",
+]
+MAX_SEARCH_KEYWORDS = int(os.getenv("MAX_SEARCH_KEYWORDS", "10"))
+
 # Palabras que EXCLUYEN un resultado (para no mostrar roles senior)
 NEGATIVE_KEYWORDS = [
     "senior", "10 años de experiencia", "8 años", "7 años",
@@ -137,6 +151,7 @@ GLOBAL_LOCATION_TERMS = {
 # ============================================================
 # APIs gratuitas que funcionan sin key:
 SOURCES_ENABLED = {
+    "getonbrd":        True,            # API pública de avisos publicados (Argentina)
     "linkedin_google": True,            # LinkedIn AR via Google News RSS (local!) ✅
     "remotive":        True,            # API pública gratuita (trabajos remotos IT) ✅
     "arbeitnow":       True,            # API pública gratuita (trabajos remotos/global) ✅
@@ -146,6 +161,9 @@ SOURCES_ENABLED = {
     "serpapi_google":  bool(SERPAPI_KEY),       # Requiere API key de SerpAPI
     "twitter":         bool(TWITTER_BEARER_TOKEN),  # Requiere plan Basic de Twitter
 }
+
+# Consultas acotadas para captar jornadas parciales locales sin hacer descargas masivas.
+GETONBRD_SEARCH_QUERIES = ("part-time", "media jornada")
 
 # ============================================================
 # RATE LIMITING - Para no quemar los servidores ni ser baneado

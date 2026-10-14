@@ -1,5 +1,16 @@
 # ✅ Todo — ESTADO ACTUAL: Fases 1-3 Completadas - Listo para Launch
 
+## Trabajo activo — Mejora de cobertura de oportunidades (2026-10-13)
+
+- [x] Corregir caché de búsqueda que fallaba por firma y podía omitir cuotas.
+- [x] Corregir registro/deduplicación de avisos en worker.
+- [x] Ampliar búsquedas generales a ocho familias + hasta dos términos del perfil; queries explícitas preservadas.
+- [x] Añadir fuente Get on Board API pública y conectar RSS personalizados al endpoint.
+- [x] Priorizar part-time y conservar procedencia al deduplicar.
+- [ ] StartupsArgentinas: identificar integración permitida (sin scraping hasta confirmar API/feed o permiso).
+- [ ] Mejorar ubicación/fechas/URLs, relevancia explicable y telemetría por fuente.
+- [ ] Ejecutar pasada comparativa de cobertura/precisión antes de considerar rollout.
+
 > Implementación del Plan Final - JobBot Launchable
 > Fecha: 2026-04-10
 > Estado: **LISTO PARA CONTROLLED LAUNCH** 🚀

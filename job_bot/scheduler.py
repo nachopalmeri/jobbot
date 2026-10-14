@@ -266,7 +266,16 @@ async def check_jobs_for_user(
             name = (job.get("company") or "").strip().lower()
             return 0 if name in preferred else 1
 
-        new_jobs = sorted(new_jobs, key=pref_key)
+        new_jobs = sorted(
+            new_jobs,
+            key=lambda job: (
+                pref_key(job),
+                JobScraper.infer_job_schedule(job) != "part_time",
+                -int(job.get("match_score") or 0),
+            ),
+        )
+    else:
+        new_jobs = JobScraper.prioritize_part_time(new_jobs)
 
     logger.info("Enviando %d nuevas ofertas al usuario %s", len(new_jobs), telegram_id)
 

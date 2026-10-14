@@ -12,6 +12,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from ..job_bot.database import Database
 from ..job_bot.job_scraper import JobScraper
 from ..job_bot.config import DEFAULT_LOCATION
+from ..job_bot.job_seen import collect_new_jobs
 
 try:
     from ..job_bot.bot import send_job_to_user
@@ -85,12 +86,7 @@ def scrape_jobs_for_user(
             jobs = JobScraper.apply_schedule_filter(jobs, schedule)
         
         # Check for new jobs (not already seen)
-        new_jobs = []
-        for job in jobs:
-            job_hash = scraper._generate_hash(job)
-            if not db.is_job_seen(telegram_id, job_hash):
-                new_jobs.append(job)
-                db.mark_job_seen(telegram_id, job_hash, job.get("source", "unknown"))
+        new_jobs = collect_new_jobs(jobs, db, telegram_id)
         
         return {
             "telegram_id": telegram_id,

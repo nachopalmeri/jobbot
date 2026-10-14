@@ -14,11 +14,11 @@ except ImportError:
     from job_scraper import JobScraper
     from cv_analyzer import build_profile_context, compare_cv_with_offer
 
-from ..core.cache import cache, job_search_cache, CacheManager
 from .auth import get_authenticated_user
 
 
 router = APIRouter()
+CLEARLY_HIGH_MATCH_SCORE = 85
 
 
 def get_db() -> Database:
@@ -126,6 +126,8 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
         if tag in haystack:
             score += 3
 
+    score += {"strong": 8, "possible": 3}.get(job.get("profile_relevance"), 0)
+
     modality = _serialize_modality(job)
     target_modality = _normalize_modality(profile.get("job_modality") or "cualquiera")
     if target_modality == "cualquiera" or modality == {
@@ -141,7 +143,15 @@ def _score_job(job: dict, query: str, profile: dict, tags_filter: list[str]) -> 
 
 
 def _serialize_job(job: dict, score: int) -> dict:
-    salary_min, salary_max, salary_currency = _extract_salary(job)
+    has_structured_salary = (
+        job.get("salary_min") is not None or job.get("salary_max") is not None
+    )
+    if has_structured_salary:
+        salary_min = job.get("salary_min")
+        salary_max = job.get("salary_max")
+        salary_currency = job.get("salary_currency")
+    else:
+        salary_min, salary_max, salary_currency = _extract_salary(job)
     job_url = job.get("url") or ""
     job_id = (
         hashlib.md5(job_url.encode("utf-8")).hexdigest()
@@ -155,16 +165,22 @@ def _serialize_job(job: dict, score: int) -> dict:
         "title": job.get("title", "Sin titulo"),
         "company": job.get("company", "N/A"),
         "location": job.get("location", "N/A"),
+        "location_match": job.get("location_match") or "unknown",
         "modality": _serialize_modality(job),
+        "schedule": JobScraper.infer_job_schedule(job),
         "salary_min": salary_min,
         "salary_max": salary_max,
         "salary_currency": salary_currency,
+        "salary_status": "reported" if salary_min is not None or salary_max is not None else "not_reported",
         "posted_at": job.get("date") or "",
+        "date_status": job.get("date_status") or ("published" if job.get("date") else "unknown"),
         "match_score": score,
+        "profile_relevance": job.get("profile_relevance", "unscored"),
         "tags": _extract_tags(job),
         "description": job.get("description", "")[:400],
         "url": job_url,
         "source": job.get("source", "Unknown"),
+        "sources": job.get("sources") or [job.get("source", "Unknown")],
     }
 
 
@@ -188,7 +204,7 @@ def _require_search_quota(db: Database, telegram_id: int):
 
 
 @router.get("/search")
-@job_search_cache  # Cache with 5min TTL by default
+# Keep this personalized route uncached so every call validates and consumes quota.
 async def search_jobs(
     q: str = Query("", description="Query de busqueda"),
     modality: Optional[str] = Query("all", description="remote, hybrid, onsite"),
@@ -221,11 +237,25 @@ async def search_jobs(
     if not query_keywords:
         query_keywords = ["python junior"]
 
+    effective_max_age_days = max_age_days or profile.get("max_job_age_days", 30)
     jobs = scraper.search_all(
         query_keywords,
         search_location,
-        max_age_days=max_age_days or profile.get("max_job_age_days", 30),
+        max_age_days=effective_max_age_days,
+        include_role_taxonomy=not bool(q.strip()),
     )
+    for feed in db.get_custom_feeds(telegram_id):
+        feed_name = feed.get("feed_name") or "Custom RSS"
+        scraper._safe_search(
+            feed_name,
+            scraper.search_custom_rss,
+            jobs,
+            feed["feed_url"],
+            feed_name,
+        )
+    jobs = scraper._dedupe_jobs(jobs)
+    jobs = JobScraper.apply_location_filter(jobs, search_location)
+    jobs = JobScraper.apply_date_filter(jobs, max_days=effective_max_age_days)
     jobs = JobScraper.apply_negative_filter(
         jobs, experience_level=profile.get("experience_level", "junior")
     )
@@ -238,7 +268,7 @@ async def search_jobs(
     if requested_schedule != "cualquiera":
         jobs = JobScraper.apply_schedule_filter(jobs, requested_schedule)
 
-    jobs = JobScraper.apply_profile_relevance_filter(
+    jobs = JobScraper.annotate_profile_relevance(
         jobs,
         role_type=profile.get("role_type", ""),
         technologies=profile.get("technologies", ""),
@@ -259,9 +289,16 @@ async def search_jobs(
         score = _score_job(job, q, profile, tags_filter)
         if score < threshold:
             continue
+        has_salary = job.get("salary_min") is not None or job.get("salary_max") is not None
+        if (
+            JobScraper.infer_job_schedule(job) == "full_time"
+            and not has_salary
+            and score < CLEARLY_HIGH_MATCH_SCORE
+        ):
+            continue
         serialized.append(_serialize_job(job, score))
 
-    serialized.sort(key=lambda item: item["match_score"], reverse=True)
+    serialized = JobScraper.prioritize_part_time(serialized)
     total = len(serialized)
     effective_limit = min(limit, 3) if current_user["plan"] == "free" else limit
     paginated = serialized[offset : offset + effective_limit]
@@ -273,6 +310,7 @@ async def search_jobs(
         "offset": offset,
         "limit": effective_limit,
         "query": q,
+        "source_metrics": getattr(scraper, "last_search_metrics", []),
     }
 
 
