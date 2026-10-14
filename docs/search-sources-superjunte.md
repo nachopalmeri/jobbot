@@ -51,6 +51,7 @@ La pasada diaria debe recorrer **todos los IDs del catálogo**, no sólo las API
 5. Registrar por fuente: consultada con resultados, consultada sin resultados, bloqueada (motivo), o no aplicable. No llamar “completa” a la pasada si queda una fuente sin verificar.
 6. Verificar vacantes en el empleador/ATS, elegibilidad desde Argentina, modalidad y seniority; conservar URL de origen y fecha original de publicación. Deduplicar y ordenar por match.
 7. Mantener separadas las oportunidades de empleo de las plataformas de tareas (Outlier, Alignerr, DataAnnotation, Prolific) y los eventos de networking (YC Events, Appgentina).
+8. **Siempre finalizar en Notion:** actualizar el tablero correspondiente sin duplicados, con match descendente, fuente, fecha original de publicación y fecha de alta. Si no hubo oportunidades nuevas, registrar la cobertura en el seguimiento existente; si Notion o el destino no están accesibles, informar el bloqueo y no declarar la actualización como realizada.
 
 El recorrido cubre las fuentes laborales visibles en las capturas del usuario (incluidas UADE, LinkedIn, Bumeran/Indeed/Computrabajo, FirstJob, Empleos IT, Get on Board, Wellfound, YC, Vibe Coding Jobs, Vibehackers, Cosign y las plataformas de tareas). Marcadores que son perfiles individuales, credenciales o un aviso puntual no se tratan como portales/fuentes generales.
 
