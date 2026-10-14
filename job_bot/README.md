@@ -83,6 +83,12 @@ El bot busca automáticamente en:
 - **Twitter/X** (vía API v2 - opcional) 🔑
 - **Custom RSS** (feeds que vos mismo agregues) ✅
 
+### 🔎 Superjunte de fuentes
+
+La búsqueda unificada combina Get on Board, las APIs remotas de Remotive/Arbeitnow/Jobicy/Himalayas y los RSS configurados; conserva la fuente de origen, deduplica y aplica los filtros de fecha y ubicación. Las consultas cubren desarrollo, QA, IA/automatización/RPA/agentes/workflows/prompt engineering, sistemas/soporte/redes, trainee/pasantías, startups y remoto.
+
+El catálogo completo separa lo que JobBot consulta automáticamente de las rutas que requieren revisión manual (Startups Argentina, Wellfound, YC/Work at a Startup, LinkedIn, UADE, FirstJob, Empleos IT, Bumeran, BecasIT y agregadores). Outlier, Alignerr, DataAnnotation y Prolific se mantienen como trabajo por tarea, no como empleo estable. Ver [`docs/search-sources-superjunte.md`](../docs/search-sources-superjunte.md) y [`job_bot/search_sources.py`](search_sources.py).
+
 ---
 
 ## 🏠 Filtro por Modalidad (Nuevo Hito 4)

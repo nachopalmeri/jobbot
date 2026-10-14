@@ -85,14 +85,14 @@ DEFAULT_KEYWORDS = [
 # Cobertura común, independiente de la carrera configurada por cada usuario.
 # Se consultan primero y se reservan dos lugares para keywords personales.
 GENERAL_SEARCH_KEYWORDS = [
-    "part-time developer Argentina",
-    "part-time QA Argentina",
-    "part-time AI automation RPA Argentina",
-    "part-time systems analyst Argentina",
-    "AI trainee pasantía becario Argentina",
-    "analista funcional junior Argentina",
-    "redes soporte IT trainee Argentina",
-    "AI startup part-time remote Argentina",
+    "part-time developer software Argentina",
+    "part-time QA tester quality assurance Argentina",
+    "part-time AI IA automation automatización RPA agents workflows prompt engineering Argentina",
+    "part-time systems analyst analista funcional soporte IT redes Argentina",
+    "trainee pasantía internship intern becario junior tech Argentina",
+    "AI-first startup junior part-time remote Argentina",
+    "forward deployed implementation solutions engineer junior Argentina",
+    "part-time remote startup tech LATAM hires Argentina",
 ]
 MAX_SEARCH_KEYWORDS = int(os.getenv("MAX_SEARCH_KEYWORDS", "10"))
 
