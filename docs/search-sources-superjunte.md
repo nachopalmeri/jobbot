@@ -25,12 +25,12 @@ El catálogo fuente de verdad para rutas y acceso está en [`job_bot/search_sour
 |---|---|---|
 | Startups Argentina | Startups Argentina; Startup Jobs Argentina | Revisión manual; verificar publicación y fecha en el aviso/empresa |
 | Empleo local/primer empleo | UADE, FirstJob, Empleos IT, Indeed, Computrabajo, Bumeran, BecasIT, LinkedIn Jobs y publicaciones | Manual; UADE se consulta en sesión del usuario. Sin automatizar login ni eludir controles |
-| Startups globales | Wellfound, Y Combinator Jobs, Work at a Startup | Descubrimiento manual; validar país, seniority, modalidad y fecha en la fuente primaria |
+| Startups globales | Startups Argentina, Wellfound, Cosign, Y Combinator Jobs, Work at a Startup, Startup Jobs | Descubrimiento manual; validar país, seniority, modalidad y fecha en la fuente primaria. Cosign permite explorar roles en empresas recomendadas por su red; no se verificó API/feed público |
 | Remoto integrado | Remotive, Arbeitnow, Jobicy, Himalayas; feeds RSS elegidos por el usuario | API/feed; resultados se consolidan en la lista de búsqueda y conservan la fuente |
 | Índice y backfill | LinkedIn vía índice público, Google Jobs/SerpAPI, Active Jobs DB/JSearch, Twitter/X | Parcial u opcional; proveedores con costo sólo funcionan si están configurados y el uso está autorizado |
 | Agregadores exploratorios | Vibe Coding Jobs, Vibehackers | Pistas solamente; validar vacante y ATS del empleador antes de contarla |
 | Tareas de IA | Outlier, Alignerr, DataAnnotation, Prolific | Carril separado; disponibilidad, elegibilidad, cantidad de tareas y pagos pueden variar |
-| Comunidad | Eventos de YC | Networking, no vacantes |
+| Comunidad | Eventos de YC, Appgentina (eventos tech argentinos) | Networking, no vacantes |
 
 ## Límites de automatización
 
@@ -39,6 +39,20 @@ El catálogo fuente de verdad para rutas y acceso está en [`job_bot/search_sour
 - Outlier, Alignerr, DataAnnotation y Prolific no se etiquetan como empleo con horario/sueldo estable. Confirmar país y condiciones oficiales antes de registrarse o compartir datos.
 - Las APIs remotas pueden devolver una vacante “remote” sin países elegibles claros; esas filas quedan con elegibilidad geográfica incierta hasta verificación.
 - Ninguna integración envía postulaciones ni modifica perfiles externos.
+
+## Protocolo de pasada diaria completa
+
+La pasada diaria debe recorrer **todos los IDs del catálogo**, no sólo las APIs. En cada ejecución:
+
+1. Consultar las fuentes `automated_api`, `search_index` y `user_feed` con los conectores ya disponibles, sin activar proveedores pagos ni credenciales nuevas.
+2. Revisar cada fuente `manual` en su página pública o fuente primaria; si requiere sesión, usar únicamente la sesión que ya esté abierta y no enviar datos ni postulaciones.
+3. Priorizar Startups Argentina; después roles part-time argentinos relacionados con sistemas/IA/QA/dev; luego startups extranjeras part-time que acepten Argentina; finalmente otros matches altos. Para full-time exigir match claramente alto o sueldo competitivo.
+4. Usar OpenCode con un candidato gratuito verificado para dividir búsquedas independientes. Si OpenCode y los canales directos no logran verificar una fuente, continuar en Brave del usuario cuando esté accesible.
+5. Registrar por fuente: consultada con resultados, consultada sin resultados, bloqueada (motivo), o no aplicable. No llamar “completa” a la pasada si queda una fuente sin verificar.
+6. Verificar vacantes en el empleador/ATS, elegibilidad desde Argentina, modalidad y seniority; conservar URL de origen y fecha original de publicación. Deduplicar y ordenar por match.
+7. Mantener separadas las oportunidades de empleo de las plataformas de tareas (Outlier, Alignerr, DataAnnotation, Prolific) y los eventos de networking (YC Events, Appgentina).
+
+El recorrido cubre las fuentes laborales visibles en las capturas del usuario (incluidas UADE, LinkedIn, Bumeran/Indeed/Computrabajo, FirstJob, Empleos IT, Get on Board, Wellfound, YC, Vibe Coding Jobs, Vibehackers, Cosign y las plataformas de tareas). Marcadores que son perfiles individuales, credenciales o un aviso puntual no se tratan como portales/fuentes generales.
 
 ## Cómo extenderlo
 

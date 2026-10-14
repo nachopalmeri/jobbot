@@ -25,7 +25,21 @@ class SearchSourceCatalogTests(unittest.TestCase):
         source_ids = {source["id"] for source in sources}
 
         self.assertTrue({"remotive", "arbeitnow", "jobicy", "himalayas"}.issubset(source_ids))
-        self.assertTrue({"wellfound", "yc_jobs", "startupjobs", "vibehackers"}.issubset(source_ids))
+        self.assertTrue({"wellfound", "yc_jobs", "startupjobs", "vibehackers", "cosign"}.issubset(source_ids))
+
+    def test_all_job_and_startup_routes_from_user_bookmarks_are_in_catalog(self):
+        sources = {source["id"]: source for source in get_search_source_catalog()}
+        expected_job_routes = {
+            "startups_argentina", "cosign", "wellfound", "yc_jobs", "startupjobs",
+            "firstjob", "empleosit", "indeed", "computrabajo", "getonbrd", "uade",
+            "linkedin", "vibe_coding_jobs", "vibehackers", "remotive", "arbeitnow",
+            "jobicy", "himalayas", "outlier", "alignerr", "dataannotation", "prolific",
+        }
+
+        self.assertTrue(expected_job_routes.issubset(sources))
+        self.assertEqual(sources["cosign"]["access"], "manual")
+        self.assertIn("appgentina_events", sources)
+        self.assertEqual(sources["appgentina_events"]["kind"], "ecosystem")
 
     def test_catalog_can_filter_group_without_mutating_shared_source_data(self):
         task_sources = get_search_source_catalog(group="ai_task_work")

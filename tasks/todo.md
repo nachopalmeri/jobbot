@@ -11,6 +11,14 @@
 - [ ] Mejorar ubicación/fechas/URLs, relevancia explicable y telemetría por fuente.
 - [ ] Ejecutar pasada comparativa de cobertura/precisión antes de considerar rollout.
 
+## Pasada diaria completa de fuentes (2026-10-14)
+
+- [x] Consolidar capturas + Cosign + rutas remotas en `job_bot/search_sources.py`; agregar Appgentina como networking.
+- [x] Documentar protocolo diario, prioridad de oportunidades, fechas, elegibilidad y fallback OpenCode → canales directos → Brave.
+- [x] Configurar tarea recurrente de Codex a las 09:00 local en este hilo; reportar fuentes bloqueadas sin simular cobertura.
+- [x] Validar catálogo: `python -m pytest job_bot/tests/test_search_source_registry.py -q` (6 passed).
+- [ ] Commit y push de la rama actual; integración a `main` queda a cargo del director según AGENTS.md.
+
 > Implementación del Plan Final - JobBot Launchable
 > Fecha: 2026-04-10
 > Estado: **LISTO PARA CONTROLLED LAUNCH** 🚀
